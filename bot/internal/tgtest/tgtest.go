@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +32,12 @@ type Server struct {
 	srv   *httptest.Server
 	mu    sync.Mutex
 	calls []Call
+	fail  map[int64]failure
+}
+
+type failure struct {
+	code int
+	desc string
 }
 
 func NewServer(t testing.TB) *Server {
@@ -39,6 +46,20 @@ func NewServer(t testing.TB) *Server {
 	s.srv = httptest.NewServer(http.HandlerFunc(s.handle))
 	t.Cleanup(s.srv.Close)
 	return s
+}
+
+// FailChat: sendMessage/copyMessage в chatID отвечают ошибкой Telegram; code=0 снимает.
+func (s *Server) FailChat(chatID int64, code int, description string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if code == 0 {
+		delete(s.fail, chatID)
+		return
+	}
+	if s.fail == nil {
+		s.fail = make(map[int64]failure)
+	}
+	s.fail[chatID] = failure{code, description}
 }
 
 func (s *Server) Options() []bot.Option {
@@ -79,6 +100,18 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
+	if method == "sendMessage" || method == "copyMessage" {
+		id, _ := strconv.ParseInt(r.Form.Get("chat_id"), 10, 64)
+		s.mu.Lock()
+		f, failed := s.fail[id]
+		s.mu.Unlock()
+		if failed {
+			w.WriteHeader(f.code)
+			body, _ := json.Marshal(map[string]any{"ok": false, "error_code": f.code, "description": f.desc})
+			_, _ = w.Write(body)
+			return
+		}
+	}
 	switch method {
 	case "answerCallbackQuery", "deleteMessage", "setMessageReaction":
 		_, _ = io.WriteString(w, `{"ok":true,"result":true}`)

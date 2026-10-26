@@ -2,6 +2,8 @@ package handler
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
+	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
@@ -138,5 +141,61 @@ func TestStartIgnoresGroupChat(t *testing.T) {
 	b.ProcessUpdate(t.Context(), u)
 	if n := len(srv.Calls("sendMessage")); n != 0 {
 		t.Fatalf("sendMessage calls = %d", n)
+	}
+}
+
+func TestNotifierRemind(t *testing.T) {
+	exp := time.Date(2026, time.January, 10, 12, 0, 0, 0, time.UTC)
+	const sub = "https://sub.example/abc"
+
+	for _, tc := range []struct {
+		kind reminder.Kind
+		want string
+	}{
+		{reminder.Day, "в течение суток"},
+		{reminder.Week, "скоро закончится"},
+	} {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			b, srv, _ := newTestHandler(t)
+			if err := NewNotifier(b).Remind(t.Context(), 42, tc.kind, exp, sub); err != nil {
+				t.Fatalf("Remind: %v", err)
+			}
+			sends := srv.Calls("sendMessage")
+			if len(sends) != 1 {
+				t.Fatalf("sendMessage = %d", len(sends))
+			}
+			p := sends[0].Params
+			if p.Get("chat_id") != "42" || p.Get("parse_mode") != "MarkdownV2" || !strings.Contains(p.Get("text"), tc.want) {
+				t.Fatalf("params = %v", p)
+			}
+			if m := p.Get("reply_markup"); !strings.Contains(m, `"pay"`) || !strings.Contains(m, sub) {
+				t.Fatalf("reply_markup: %s", m)
+			}
+		})
+	}
+}
+
+func TestNotifierRemindErrors(t *testing.T) {
+	for _, tc := range []struct {
+		code          int
+		desc          string
+		undeliverable bool
+	}{
+		{403, "Forbidden: bot was blocked by the user", true},
+		{400, "Bad Request: chat not found", true},
+		{429, "Too Many Requests: retry after 1", false},
+		{500, "oops", false},
+	} {
+		t.Run(fmt.Sprint(tc.code), func(t *testing.T) {
+			b, srv, _ := newTestHandler(t)
+			srv.FailChat(42, tc.code, tc.desc)
+			err := NewNotifier(b).Remind(t.Context(), 42, reminder.Week, time.Now(), "https://sub.example")
+			if err == nil {
+				t.Fatal("want error")
+			}
+			if got := errors.Is(err, reminder.ErrUndeliverable); got != tc.undeliverable {
+				t.Fatalf("ErrUndeliverable = %v, want %v (%v)", got, tc.undeliverable, err)
+			}
+		})
 	}
 }

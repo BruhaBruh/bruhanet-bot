@@ -22,25 +22,26 @@ type callbackRoute struct {
 	mws  []bot.Middleware
 }
 
-type photoRoute struct {
+type messageRoute struct {
 	name   string
 	h      bot.HandlerFunc
 	states []fsm.State
+	kind   func(*models.Message) bool
 }
 
-type PhotoOption func(*photoRoute)
+type Option func(*messageRoute)
 
-func InState(states ...fsm.State) PhotoOption {
-	return func(p *photoRoute) { p.states = append(p.states, states...) }
+func InState(states ...fsm.State) Option {
+	return func(m *messageRoute) { m.states = append(m.states, states...) }
 }
 
-func (p photoRoute) matches(st fsm.State) bool {
-	return len(p.states) == 0 || slices.Contains(p.states, st)
+func (m messageRoute) matches(msg *models.Message, st fsm.State) bool {
+	return m.kind(msg) && (len(m.states) == 0 || slices.Contains(m.states, st))
 }
 
 type Router struct {
 	callbacks []callbackRoute
-	photos    []photoRoute
+	messages  []messageRoute
 	fallback  bot.HandlerFunc
 }
 
@@ -58,12 +59,27 @@ func (r *Router) Callback(name string, h bot.HandlerFunc, mws ...bot.Middleware)
 	r.callbacks = append(r.callbacks, callbackRoute{name: name, h: h, mws: mws})
 }
 
-func (r *Router) Photo(name string, h bot.HandlerFunc, opts ...PhotoOption) {
-	p := photoRoute{name: "photo:" + name, h: h}
+func (r *Router) Message(name string, h bot.HandlerFunc, opts ...Option) {
+	r.addMessage("message:"+name, h, func(*models.Message) bool { return true }, opts)
+}
+
+func (r *Router) Command(name string, h bot.HandlerFunc, opts ...Option) {
+	cmd := "/" + name
+	r.addMessage("command:"+name, h, func(m *models.Message) bool {
+		return m.Text == cmd || strings.HasPrefix(m.Text, cmd+" ") || strings.HasPrefix(m.Text, cmd+"@")
+	}, opts)
+}
+
+func (r *Router) Photo(name string, h bot.HandlerFunc, opts ...Option) {
+	r.addMessage("photo:"+name, h, func(m *models.Message) bool { return len(m.Photo) > 0 }, opts)
+}
+
+func (r *Router) addMessage(name string, h bot.HandlerFunc, kind func(*models.Message) bool, opts []Option) {
+	m := messageRoute{name: name, h: h, kind: kind}
 	for _, opt := range opts {
-		opt(&p)
+		opt(&m)
 	}
-	r.photos = append(r.photos, p)
+	r.messages = append(r.messages, m)
 }
 
 func (r *Router) Default(h bot.HandlerFunc) {
@@ -77,8 +93,8 @@ func (r *Router) Install(b *bot.Bot) {
 			slices.Concat([]bot.Middleware{routeName("callback:" + c.name)}, c.mws)...,
 		)
 	}
-	if len(r.photos) > 0 {
-		b.RegisterHandlerMatchFunc(isPhoto, r.dispatchPhoto)
+	if len(r.messages) > 0 {
+		b.RegisterHandlerMatchFunc(isMessage, r.dispatchMessage)
 	}
 }
 
@@ -89,21 +105,21 @@ func (r *Router) HandleDefault(ctx context.Context, b *bot.Bot, u *models.Update
 	routeName("default")(r.fallback)(ctx, b, u)
 }
 
-func (r *Router) dispatchPhoto(ctx context.Context, b *bot.Bot, u *models.Update) {
+func (r *Router) dispatchMessage(ctx context.Context, b *bot.Bot, u *models.Update) {
 	st, err := fsm.From(ctx).State(ctx)
 	if err != nil && !errors.Is(err, fsm.ErrNoFSM) {
 		stlog.Error(ctx, "failed to get fsm state", "error", err)
 	}
-	for _, p := range r.photos {
-		if p.matches(st) {
-			routeName(p.name)(p.h)(ctx, b, u)
+	for _, m := range r.messages {
+		if m.matches(u.Message, st) {
+			routeName(m.name)(m.h)(ctx, b, u)
 			return
 		}
 	}
 	r.HandleDefault(ctx, b, u)
 }
 
-// matchCallback и isPhoto выполняются синхронно в polling-горутине: только проверки полей.
+// matchCallback и isMessage выполняются синхронно в polling-горутине: только проверки полей.
 func matchCallback(name string) bot.MatchFunc {
 	prefix := name + ":"
 	return func(u *models.Update) bool {
@@ -115,8 +131,8 @@ func matchCallback(name string) bot.MatchFunc {
 	}
 }
 
-func isPhoto(u *models.Update) bool {
-	return u.Message != nil && len(u.Message.Photo) > 0
+func isMessage(u *models.Update) bool {
+	return u.Message != nil
 }
 
 func routeName(name string) bot.Middleware {

@@ -153,3 +153,37 @@ func TestRouterPanicsOnBadRoutes(t *testing.T) {
 	r.Callback("pay", nil)
 	mustPanic("duplicate", func() { r.Callback("pay", nil) })
 }
+
+func TestRouterMessageInStateBeatsPhoto(t *testing.T) {
+	env := setupRouter(t, func(r *Router, rec *recorder) {
+		r.Message("bc", rec.handler("message"), InState("await_broadcast"))
+		r.Photo("payment", rec.handler("photo"))
+		r.Default(rec.handler("default"))
+	})
+	env.b.ProcessUpdate(t.Context(), tgtest.Photo(42))
+	if err := fsm.For(env.fsm, 42).Set(t.Context(), "await_broadcast"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	env.b.ProcessUpdate(t.Context(), tgtest.Photo(42))
+	env.b.ProcessUpdate(t.Context(), tgtest.Message(42, "hi"))
+	if !slices.Equal(env.rec.calls, []string{"photo", "message", "message"}) {
+		t.Fatalf("calls = %v", env.rec.calls)
+	}
+	if env.rec.routes[1] != "message:bc" {
+		t.Fatalf("routes = %v", env.rec.routes)
+	}
+}
+
+func TestRouterCommand(t *testing.T) {
+	env := setupRouter(t, func(r *Router, rec *recorder) {
+		r.Command("a", rec.handler("command"))
+		r.Default(rec.handler("default"))
+	})
+	for _, text := range []string{"/a", "/a hi", "/a@bot", "/ab", "a", "/start"} {
+		env.b.ProcessUpdate(t.Context(), tgtest.Message(42, text))
+	}
+	want := []string{"command", "command", "command", "default", "default", "default"}
+	if !slices.Equal(env.rec.calls, want) || env.rec.routes[0] != "command:a" {
+		t.Fatalf("calls = %v, routes = %v", env.rec.calls, env.rec.routes)
+	}
+}

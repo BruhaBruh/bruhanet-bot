@@ -50,6 +50,13 @@ func pluralMonths(n int) string {
 	return "месяцев"
 }
 
+func pluralPeople(n int) string {
+	if n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14) {
+		return "человека"
+	}
+	return "человек"
+}
+
 func tariffTitle(month, price int) string {
 	return fmt.Sprintf("%d %s за %d ₽", month, pluralMonths(month), price)
 }

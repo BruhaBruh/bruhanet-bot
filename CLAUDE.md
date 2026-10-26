@@ -17,15 +17,14 @@ Telegram-бот продажи VPN-подписок (панель Remnawave). О
 
 Реализация — `bot/internal/handler/routes/`: `tariffs.go` (pay/price/buy), `photo.go`, `review.go` (adm_ok/adm_no), стейты `await_photo → in_review → none`. Админ-кнопка сверяется с `Payment.AdminMessageID` (устаревшая → «Платёж устарел»); в review сначала `fsm.Transition`, потом `UpdateUser`, при ошибке панели стейт возвращается для повтора. Повторная оплата во время проверки откатывает срок и закрывает старое админ-сообщение. Подтверждение считает новый срок от max(сохранённый срок, now), отклонение возвращает сохранённый срок.
 
-Отдельный сервис `notification`: по `NOTIFICATION_CRON` напоминать юзерам о скором окончании подписки (в старом коде `Notify` с клавиатурой Продлить/Подписка).
+Напоминания живут внутри бота (cron из `NOTIFICATION_CRON`, Europe/Moscow): «скоро закончится» (≤7д) и «в течение суток» (≤24ч), по одному разу на дату окончания; дедуп-ключ `notify:<id>:<expireAt unix>:<week|day>` в Redis. Код — `internal/reminder` (отбор/дедуп, интерфейс `Notifier`), доставка — `handler.Notifier`, текст — `routes.ReminderMessage`.
 
 ## Структура
 
 Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruhanet`.
 
 - `pkg/` — общее: `app` (CompositeApp + `Run` с graceful shutdown), `lifecycle` (Start/Stop), `cfg` (env → struct + validator), `stlog` (slog + логгер в context), `remnawave` (обёртка `remnawave-api-go/v3`), `tgupdate` (user/chat/type апдейта), `fsm` (стейт + data юзера, `in_memory`/`redis`, CAS — единственное хранилище), `keyboard` (разметка inline-клавиатур, стили-константы), `callback` (имя роута + целый аргумент в callback data, без хранилища).
-- `bot/` — `cmd/main.go` → `internal/app` (wiring), `internal/config` (по файлу на секцию), `internal/handler` (`New` — сборка бота; `handler/router` — роутер; `handler/routes` — все роуты с их хендлерами и клавиатурами, файл на роут; `handler/middleware` — цепочка middleware), `internal/model`, `internal/tgtest` (фейковый Telegram API для тестов).
-- `notification/` — заготовка, пустой `main`.
+- `bot/` — `cmd/main.go` → `internal/app` (wiring), `internal/config` (по файлу на секцию), `internal/handler` (`New` — сборка бота; `handler/router` — роутер; `handler/routes` — все роуты с их хендлерами и клавиатурами, файл на роут; `handler/middleware` — цепочка middleware), `internal/model`, `internal/reminder`, `internal/tgtest` (фейковый Telegram API для тестов).
 
 ## Команды
 
@@ -53,3 +52,4 @@ Redis-реализация FSM тестируется на miniredis, docker д�
 - Грабли старого кода, не повторять: обращение к `payment.*` до проверки `err` (nil-паника), повторное нажатие Подтвердить/Отклонить, игнор ошибок `UpdateUser` при выдаче 1 дня, admin-хендлеры без проверки `AdminID`.
 - Экраны по callback — `show` (редактирование на месте, fallback — новое сообщение); ответы на фото/текст — `send`.
 - Remnawave в хендлерах — только через `routes.Remnawave`; в тестах `tgtest.NewRemnawave`. Время — `h.now()` (поле `handlers.now`).
+- Message-роуты роутера матчатся в порядке регистрации в `routes.Register` (= приоритет): `Message("broadcast", InState(await_broadcast))` и `Command("a")` — до `Photo("payment")`. Рассылка админа: `/a` → сообщение → превью + «Отправить» → `copyMessage` каждому уникальному telegram ID из панели (`broadcastInterval` между отправками).

@@ -63,3 +63,12 @@ func (rw *remnawave) getUsersPage(
 	}
 	return body.Users, "", false, nil
 }
+
+// TelegramID — Telegram ID юзера панели; ok=false, если не задан/null/0.
+func TelegramID(u api.UserItemInfo) (int64, bool) {
+	id, ok := u.TelegramId.Get()
+	if !ok || id == 0 {
+		return 0, false
+	}
+	return int64(id), true
+}

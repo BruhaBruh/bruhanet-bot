@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	_ "time/tzdata"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/app"
 	"github.com/bruhabruh/bruhanet/bot/internal/config"

@@ -8,7 +8,7 @@ vars:
   MODULE_PREFIX: github.com/bruhabruh/bruhanet
   COMPOSE: docker compose -f docker-compose.yaml
 
-  SERVICES: bot notification
+  SERVICES: bot
   MODULES: pkg {{range (splitList " " .SERVICES)}}{{.}} {{end}}
 
   GOLANGCI_LINT_VERSION: v2.15.0

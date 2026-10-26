@@ -38,3 +38,16 @@ func TestPluralMonths(t *testing.T) {
 		}
 	}
 }
+
+func TestPluralPeople(t *testing.T) {
+	tests := map[int]string{
+		1: "человек", 2: "человека", 4: "человека", 5: "человек", 11: "человек",
+		12: "человек", 14: "человек", 21: "человек", 22: "человека", 25: "человек",
+		101: "человек", 111: "человек",
+	}
+	for n, want := range tests {
+		if got := pluralPeople(n); got != want {
+			t.Errorf("pluralPeople(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
