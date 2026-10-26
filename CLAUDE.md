@@ -13,7 +13,7 @@ Telegram-бот продажи VPN-подписок (панель Remnawave). О
 6. Сразу выдаётся 1 день: `max(now, SubscriptionExpireAt) + 24h`. Юзеру — «фото на проверке, доступ на 1 день».
 7. Админ: **Подтвердить** → `SubscriptionExpireAt + Month*30d`; **Отклонить** → вернуть `SubscriptionExpireAt`. Оба: удалить pending, убрать клавиатуру, реакция 👍/👎, уведомить юзера.
 
-Инварианты: pending — один на юзера, ключ `payment:<telegramID>` в Redis без TTL. Базой для продления всегда служит сохранённый `SubscriptionExpireAt`, а не текущий срок в панели (там уже +1 день). Месяц = 30 дней. Время показывать в `Europe/Moscow`.
+Инварианты: pending-платёж — `model.Payment` в FSM data юзера (`fsm:<telegramID>`, без TTL), смены стейта при подтверждении — через `fsm.Transition` (защита от двойного нажатия). Базой для продления всегда служит сохранённый `SubscriptionExpireAt`, а не текущий срок в панели (там уже +1 день). Месяц = 30 дней. Время показывать в `Europe/Moscow`.
 
 Отдельный сервис `notification`: по `NOTIFICATION_CRON` напоминать юзерам о скором окончании подписки (в старом коде `Notify` с клавиатурой Продлить/Подписка).
 
@@ -21,15 +21,15 @@ Telegram-бот продажи VPN-подписок (панель Remnawave). О
 
 Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruhanet`.
 
-- `pkg/` — общее: `app` (CompositeApp + `Run` с graceful shutdown), `lifecycle` (Start/Stop), `cfg` (env → struct + validator), `stlog` (slog + логгер в context), `remnawave` (обёртка `remnawave-api-go/v3`: Get/Create/UpdateUser, итератор `Users`).
-- `bot/` — `cmd/main.go` → `internal/app` (сборка компонентов), `internal/config` (по файлу на секцию), `internal/handler` (Telegram, `go-telegram/bot`), `internal/model`, `internal/storage/payment` (Redis).
+- `pkg/` — общее: `app` (CompositeApp + `Run` с graceful shutdown), `lifecycle` (Start/Stop), `cfg` (env → struct + validator), `stlog` (slog + логгер в context), `remnawave` (обёртка `remnawave-api-go/v3`), `tgupdate` (user/chat/type апдейта), `fsm` (стейт + data юзера, `in_memory`/`redis`, CAS — единственное хранилище), `keyboard` (разметка inline-клавиатур, стили-константы), `callback` (имя роута + целый аргумент в callback data, без хранилища).
+- `bot/` — `cmd/main.go` → `internal/app` (wiring), `internal/config` (по файлу на секцию), `internal/handler` (`New` — сборка бота; `handler/router` — роутер; `handler/routes` — все роуты с их хендлерами и клавиатурами, файл на роут; `handler/middleware` — цепочка middleware), `internal/model`, `internal/tgtest` (фейковый Telegram API для тестов).
 - `notification/` — заготовка, пустой `main`.
 
 ## Команды
 
 `task` — список. Основное: `task setup`, `task up` (Redis в docker), `task dev SVC=bot` (air + jq), `task run SVC=bot`, `task test`, `task lint`, `task fmt`, `task tidy`.
 Новый модуль добавлять в `SERVICES` в `Taskfile.yaml`.
-Тесты `storage/payment` — интеграционные, нужен поднятый Redis и env (`REDIS_ADDR`, …).
+Redis-реализация FSM тестируется на miniredis, docker для `task test` не нужен. Хендлеры тестируются через `tgtest` (`bot.WithSkipGetMe` + `WithServerURL` + `WithNotAsyncHandlers`, апдейты через `ProcessUpdate`).
 
 ## Конвенции и подводные камни
 
@@ -42,6 +42,10 @@ Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruh
 - Тексты юзеру на русском, MarkdownV2 (`models.ParseModeMarkdown`) — всё динамическое через `bot.EscapeMarkdown`. Плюрализация «месяц/месяца/месяцев».
 - Имена файлов — нижний регистр через `_` (`in_memory.go`).
 - `MatchFunc` go-telegram выполняется синхронно до всех middleware: только проверки полей, без I/O и паник.
+- Роуты регистрируются только в `handler/routes/routes.go` (`Register`), хендлер роута — в своём файле `handler/routes/<route>.go`. Статичная кнопка — `keyboard.Callback(text, "pay")`; с аргументом — `var Price = callback.New[int]("price")`, кнопка `keyboard.Callback(text, Price.Data(6))`, в хендлере `Price.Parse(u.CallbackQuery.Data)`. Callback data подделывается клиентом — аргумент валидировать (тариф есть в `PAYMENT_PRICES`), админские роуты — с `middleware.AdminOnly`.
+- Стили кнопок — только `keyboard.Style*` константы.
+- На callback отвечать через `middleware.Answer`, или повесить на роут `middleware.AutoAnswer("текст")` (toast после хендлера); иначе глобальный `AutoAnswer()` ответит пустым.
+- Служебное состояние апдейта (route, answered, panicked) — `middleware.UpdateInfoFrom(ctx)`; это не логирование.
 - Дизайн каркаса хендлеров: `docs/superpowers/specs/2026-10-26-bot-handler-infra-design.md`.
 - Callback data в старом боте — короткие коды `"0".."5"` + `:<arg>` (лимит Telegram 64 байта).
 - Грабли старого кода, не повторять: обращение к `payment.*` до проверки `err` (nil-паника), повторное нажатие Подтвердить/Отклонить, игнор ошибок `UpdateUser` при выдаче 1 дня, admin-хендлеры без проверки `AdminID`.

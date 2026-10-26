@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 
 	"github.com/redis/go-redis/v9"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
-	"github.com/bruhabruh/bruhanet/bot/internal/storage/payment"
 	"github.com/bruhabruh/bruhanet/pkg/app"
+	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/lifecycle"
 	"github.com/bruhabruh/bruhanet/pkg/remnawave"
 )
@@ -37,9 +38,10 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 			err,
 		)
 	}
-	_ = payment.New(rdb)
 
-	bot, err := handler.New(logger, config)
+	var inflight sync.WaitGroup
+
+	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight})
 	if err != nil {
 		return nil, errors.Join(
 			errors.New("failed to create telegram bot"),
@@ -47,29 +49,46 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		)
 	}
 
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
 	return app.New(
 		app.WithLogger(logger),
 		app.WithFatal(fatal),
 		app.WithComponent("redis", lifecycle.New(
 			func(ctx context.Context) error {
-				return rdb.Ping(ctx).Err()
+				return rdb.Ping(runCtx).Err()
 			},
-			func(ctx context.Context) error {
-				rdb.Close()
-
-				return nil
+			func(context.Context) error {
+				return rdb.Close()
 			},
 		)),
 		app.WithComponent("bot", lifecycle.New(
-			func(ctx context.Context) error {
+			func(context.Context) error {
 				go func() {
-					bot.Start(context.Background())
+					defer close(done)
+					b.Start(runCtx)
 				}()
 				return nil
 			},
 			func(ctx context.Context) error {
-				_, err := bot.Close(ctx)
-				return err
+				cancelRun()
+				select {
+				case <-done:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				drained := make(chan struct{})
+				go func() {
+					inflight.Wait()
+					close(drained)
+				}()
+				select {
+				case <-drained:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			},
 		)),
 		app.WithStarted(func() {

@@ -4,9 +4,12 @@ go 1.27
 
 require (
 	github.com/Jolymmiles/remnawave-api-go/v3 v3.4.4
+	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/go-playground/validator/v10 v10.30.5
+	github.com/go-telegram/bot v1.27.0
 	github.com/google/uuid v1.6.0
+	github.com/redis/go-redis/v9 v9.23.0
 )
 
 require (
@@ -28,10 +31,12 @@ require (
 	github.com/ogen-go/ogen v1.24.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.46.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
+	go.uber.org/atomic v1.12.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
