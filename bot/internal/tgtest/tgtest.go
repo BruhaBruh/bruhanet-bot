@@ -80,7 +80,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	switch method {
-	case "answerCallbackQuery", "deleteMessage":
+	case "answerCallbackQuery", "deleteMessage", "setMessageReaction":
 		_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
 	default:
 		_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":1,"date":0,"chat":{"id":1,"type":"private"}}}`)

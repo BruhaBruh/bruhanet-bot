@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/go-telegram/bot"
 
@@ -17,15 +18,18 @@ import (
 type Deps struct {
 	FSM fsm.Storage
 	// InFlight считает выполняющиеся хендлеры; app дожидается его при остановке.
-	InFlight *sync.WaitGroup
+	InFlight  *sync.WaitGroup
+	Remnawave routes.Remnawave
+	// Now — источник времени; nil = time.Now (подменяется в тестах).
+	Now func() time.Time
 }
 
 func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option) (*bot.Bot, error) {
-	if deps.FSM == nil || deps.InFlight == nil {
-		return nil, errors.New("handler: deps.FSM and deps.InFlight are required")
+	if deps.FSM == nil || deps.InFlight == nil || deps.Remnawave == nil {
+		return nil, errors.New("handler: deps.FSM, deps.InFlight and deps.Remnawave are required")
 	}
 	r := router.New()
-	routes.Register(r, routes.Deps{Config: cfg})
+	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Now: deps.Now})
 
 	options := append([]bot.Option{
 		bot.WithDefaultHandler(r.HandleDefault),

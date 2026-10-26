@@ -27,7 +27,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		Password: config.Redis.Password,
 	})
 
-	_, err := remnawave.New(
+	rw, err := remnawave.New(
 		config.Remnawave.PanelURL,
 		config.Remnawave.Token,
 		config.Remnawave.Cookie,
@@ -41,7 +41,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 
 	var inflight sync.WaitGroup
 
-	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight})
+	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight, Remnawave: rw})
 	if err != nil {
 		return nil, errors.Join(
 			errors.New("failed to create telegram bot"),

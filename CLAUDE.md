@@ -11,9 +11,11 @@ Telegram-бот продажи VPN-подписок (панель Remnawave). О
 4. «Да» → `CreateUser` в Remnawave (если нет; `expireAt=now`). Если уже есть pending-платёж — откатить юзеру `SubscriptionExpireAt` из него и удалить. Сохранить новый pending (`TelegramID, Username, Month, Price, SubscriptionExpireAt` = текущий срок юзера). Показать реквизиты (`PAYMENT_PHONE`, `PAYMENT_BANK`, комментарии «На кофе»/…).
 5. Юзер шлёт фото при наличии pending → фото копируется админу + сообщение с кнопками Подтвердить/Отклонить (в callback — telegram ID юзера).
 6. Сразу выдаётся 1 день: `max(now, SubscriptionExpireAt) + 24h`. Юзеру — «фото на проверке, доступ на 1 день».
-7. Админ: **Подтвердить** → `SubscriptionExpireAt + Month*30d`; **Отклонить** → вернуть `SubscriptionExpireAt`. Оба: удалить pending, убрать клавиатуру, реакция 👍/👎, уведомить юзера.
+7. Админ: **Подтвердить** → `max(SubscriptionExpireAt, now) + Month*30d`; **Отклонить** → вернуть `SubscriptionExpireAt`. Оба: удалить pending, убрать клавиатуру, реакция 👍/👎, уведомить юзера.
 
 Инварианты: pending-платёж — `model.Payment` в FSM data юзера (`fsm:<telegramID>`, без TTL), смены стейта при подтверждении — через `fsm.Transition` (защита от двойного нажатия). Базой для продления всегда служит сохранённый `SubscriptionExpireAt`, а не текущий срок в панели (там уже +1 день). Месяц = 30 дней. Время показывать в `Europe/Moscow`.
+
+Реализация — `bot/internal/handler/routes/`: `tariffs.go` (pay/price/buy), `photo.go`, `review.go` (adm_ok/adm_no), стейты `await_photo → in_review → none`. Админ-кнопка сверяется с `Payment.AdminMessageID` (устаревшая → «Платёж устарел»); в review сначала `fsm.Transition`, потом `UpdateUser`, при ошибке панели стейт возвращается для повтора. Повторная оплата во время проверки откатывает срок и закрывает старое админ-сообщение. Подтверждение считает новый срок от max(сохранённый срок, now), отклонение возвращает сохранённый срок.
 
 Отдельный сервис `notification`: по `NOTIFICATION_CRON` напоминать юзерам о скором окончании подписки (в старом коде `Notify` с клавиатурой Продлить/Подписка).
 
@@ -33,7 +35,7 @@ Redis-реализация FSM тестируется на miniredis, docker д�
 
 ## Конвенции и подводные камни
 
-- Go **1.27**: есть generic-методы (`func (rw *remnawave) GetUser[T int|int64]`), stdlib `uuid`, `errors.AsType`. Не «чинить» их как ошибки.
+- Go **1.27**: есть generic-методы, stdlib `uuid`, `errors.AsType`. Не «чинить» их как ошибки. Но generic-метод не реализует метод интерфейса — поэтому `pkg/remnawave` с `int64`.
 - UUID — везде `github.com/google/uuid`, не stdlib: его требуют типы `remnawave-api-go`.
 - Ошибки: sentinel в `errors.go` пакета, оборачивать через `errors.Join(ErrX, err)`; проверять `errors.Is`.
 - Конфиг: только env-теги `caarlos0/env` + `validate`. Новый env — сразу и в `.env.example`.
@@ -49,3 +51,5 @@ Redis-реализация FSM тестируется на miniredis, docker д�
 - Дизайн каркаса хендлеров: `docs/superpowers/specs/2026-10-26-bot-handler-infra-design.md`.
 - Callback data в старом боте — короткие коды `"0".."5"` + `:<arg>` (лимит Telegram 64 байта).
 - Грабли старого кода, не повторять: обращение к `payment.*` до проверки `err` (nil-паника), повторное нажатие Подтвердить/Отклонить, игнор ошибок `UpdateUser` при выдаче 1 дня, admin-хендлеры без проверки `AdminID`.
+- Экраны по callback — `show` (редактирование на месте, fallback — новое сообщение); ответы на фото/текст — `send`.
+- Remnawave в хендлерах — только через `routes.Remnawave`; в тестах `tgtest.NewRemnawave`. Время — `h.now()` (поле `handlers.now`).

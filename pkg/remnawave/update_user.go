@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 )
 
-func (rw *remnawave) UpdateUser[T int | int64](
+func (rw *remnawave) UpdateUser(
 	ctx context.Context,
-	telegramID T,
+	telegramID int64,
 	username string,
 	expireAt time.Time,
 	squadUUID uuid.UUID,

@@ -8,4 +8,5 @@ type Payment struct {
 	Month                int       `json:"month"`
 	Price                int       `json:"price"`
 	SubscriptionExpireAt time.Time `json:"subscriptionExpireAt"`
+	AdminMessageID       int       `json:"adminMessageId,omitempty"`
 }

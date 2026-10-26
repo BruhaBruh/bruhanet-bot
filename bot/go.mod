@@ -3,6 +3,7 @@ module github.com/bruhabruh/bruhanet/bot
 go 1.27.0
 
 require (
+	github.com/Jolymmiles/remnawave-api-go/v3 v3.4.4
 	github.com/bruhabruh/bruhanet/pkg v0.0.0
 	github.com/go-telegram/bot v1.27.0
 	github.com/google/uuid v1.6.0
@@ -10,7 +11,6 @@ require (
 )
 
 require (
-	github.com/Jolymmiles/remnawave-api-go/v3 v3.4.4 // indirect
 	github.com/caarlos0/env/v11 v11.4.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect

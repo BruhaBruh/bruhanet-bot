@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 )
 
-func (rw *remnawave) CreateUser[T int | int64](
+func (rw *remnawave) CreateUser(
 	ctx context.Context,
-	telegramID T,
+	telegramID int64,
 	username string,
 	squadUUID uuid.UUID,
 ) (*api.UserItemInfo, error) {

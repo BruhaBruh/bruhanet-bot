@@ -8,9 +8,9 @@ import (
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 )
 
-func (rw *remnawave) GetUser[T int | int64](
+func (rw *remnawave) GetUser(
 	ctx context.Context,
-	telegramID T,
+	telegramID int64,
 ) (*api.UserItemInfo, error) {
 	resp, err := rw.client.Users().GetUsersStream(ctx, api.UsersGetUsersStreamParams{
 		Size:       api.NewOptInt(1),

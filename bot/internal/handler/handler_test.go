@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -22,7 +23,9 @@ func newTestHandler(t *testing.T) (*bot.Bot, *tgtest.Server, *bytes.Buffer) {
 		Telegram: config.TelegramConfig{Token: tgtest.Token, AdminID: 1},
 		Support:  config.SupportConfig{URL: "https://t.me/support"},
 	}
-	b, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}}, srv.Options()...)
+	rw := tgtest.NewRemnawave(time.Now)
+	rw.AddUser(42, time.Now().Add(24*time.Hour))
+	b, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}, Remnawave: rw}, srv.Options()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -58,8 +61,8 @@ func TestStartSendsMainMenu(t *testing.T) {
 func TestMenuCallback(t *testing.T) {
 	b, srv, buf := newTestHandler(t)
 	b.ProcessUpdate(t.Context(), tgtest.Callback(42, "menu"))
-	if n := len(srv.Calls("sendMessage")); n != 1 {
-		t.Fatalf("sendMessage calls = %d", n)
+	if n := len(srv.Calls("editMessageText")); n != 1 {
+		t.Fatalf("editMessageText calls = %d", n)
 	}
 	answers := srv.Calls("answerCallbackQuery")
 	if len(answers) != 1 || answers[0].Params.Get("text") != "" {
@@ -73,8 +76,8 @@ func TestMenuCallback(t *testing.T) {
 func TestUnknownCallbackShowsMenu(t *testing.T) {
 	b, srv, buf := newTestHandler(t)
 	b.ProcessUpdate(t.Context(), tgtest.Callback(42, "removed_route:7"))
-	if n := len(srv.Calls("sendMessage")); n != 1 {
-		t.Fatalf("sendMessage calls = %d", n)
+	if n := len(srv.Calls("editMessageText")); n != 1 {
+		t.Fatalf("editMessageText calls = %d", n)
 	}
 	if n := len(srv.Calls("answerCallbackQuery")); n != 1 {
 		t.Fatalf("answerCallbackQuery calls = %d", n)
@@ -107,11 +110,14 @@ func TestNameFallbackToID(t *testing.T) {
 func TestNewRequiresDeps(t *testing.T) {
 	logger, _ := tgtest.Logger()
 	cfg := &config.Config{Telegram: config.TelegramConfig{Token: tgtest.Token}}
-	if _, err := New(logger, cfg, Deps{InFlight: &sync.WaitGroup{}}); err == nil {
+	if _, err := New(logger, cfg, Deps{InFlight: &sync.WaitGroup{}, Remnawave: tgtest.NewRemnawave(time.Now)}); err == nil {
 		t.Fatal("nil FSM должен давать ошибку")
 	}
-	if _, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory()}); err == nil {
+	if _, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), Remnawave: tgtest.NewRemnawave(time.Now)}); err == nil {
 		t.Fatal("nil InFlight должен давать ошибку")
+	}
+	if _, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}}); err == nil {
+		t.Fatal("nil Remnawave должен давать ошибку")
 	}
 }
 
