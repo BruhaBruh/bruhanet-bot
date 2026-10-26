@@ -1,0 +1,65 @@
+version: '2'
+
+run:
+  timeout: 5m
+  build-tags:
+    - integration
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - errorlint
+    - exhaustive
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - prealloc
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+    errcheck:
+      check-type-assertions: true
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+  exclusions:
+    generated: lax
+    paths:
+      - api/gen
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+          - errcheck
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/bruhabruh/bruhanet
+  exclusions:
+    generated: lax
+    paths:
+      - api/gen
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  test:
+    desc: Unit-тесты всех модулей
+    cmds:
+      - for: { var: MODULES }
+        cmd: go -C {{.ITEM}} test ./...
+
+  cover:
+    desc: Тесты с покрытием (coverage.out в каждом модуле)
+    cmds:
+      - for: { var: MODULES }
+        cmd: go -C {{.ITEM}} test -cover -coverprofile=coverage.out ./...
+
+  cover:html:
+    desc: 'HTML-отчёт покрытия модуля (пример: task cover:html MODULE=services/booking)'
+    requires:
+      vars: [MODULE]
+    cmds:
+      - go -C {{.MODULE}} test -count=1 -coverprofile=coverage.out ./...
+      - go -C {{.MODULE}} tool cover -html=coverage.out -o coverage.html
+
+  lint:
+    desc: golangci-lint по всем модулям
+    cmds:
+      - for: { var: MODULES }
+        task: golangci
+        vars: { MODULE: '{{.ITEM}}', ARGS: 'run ./...' }
+
+  lint:fix:
+    desc: golangci-lint с автоисправлением
+    cmds:
+      - for: { var: MODULES }
+        task: golangci
+        vars: { MODULE: '{{.ITEM}}', ARGS: 'run --fix ./...' }
+
+  fmt:
+    desc: Отформатировать код (gofumpt + goimports) во всех модулях
+    cmds:
+      - for: { var: MODULES }
+        task: golangci
+        vars: { MODULE: '{{.ITEM}}', ARGS: 'fmt ./...' }
+
+  golangci:
+    internal: true
+    dir: '{{.MODULE}}'
+    requires:
+      vars: [MODULE, ARGS]
+    cmds:
+      - golangci-lint {{.ARGS}}
+
+  ci:
+    desc: Локальный прогон того же, что делает CI
+    cmds:
+      - task: lint
+      - task: test

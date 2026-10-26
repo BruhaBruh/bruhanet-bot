@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  JQ_LOGS: |
+    select(length > 0)
+    | (fromjson? // null) as $j
+    | if ($j | type) == "object" then $j
+      else {
+        time: (now | strflocaltime("%Y-%m-%dT%H:%M:%S%z")),
+        level: "INFO",
+        type: "console",
+        message: .
+      } end
+
+tasks:
+  run:
+    desc: 'Запустить локально (пример: task run SVC=booking)'
+    requires:
+      vars: [SVC]
+    cmds:
+      - task: env
+      - go -C {{.SVC}} run ./cmd
+
+  dev:
+    desc: 'Запустить с hot-reload через air (пример: task dev SVC=booking)'
+    requires:
+      vars: [SVC]
+    dir: '{{.SVC}}'
+    silent: true
+    cmds:
+      - task: env
+      - air -c {{.ROOT_DIR}}/.air.toml 2>&1 | jq -R --unbuffered -C '{{.JQ_LOGS}}'

@@ -1,0 +1,12 @@
+name: bruhanet
+
+services:
+  redis:
+    image: redis:8.10
+    healthcheck:
+      test: [CMD-SHELL, redis-cli ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - 127.0.0.1:6379:6379

@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+.env
+bin
+**/coverage.out
+**/coverage.html
+loadtest
+deploy/k8s
+
+Dockerfile.dev

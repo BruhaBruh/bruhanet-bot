@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  setup:
+    desc: Первичная настройка (.env + dev-инструменты)
+    cmds:
+      - task: env
+      - task: tools
+
+  env:
+    desc: Создать .env из .env.example, если его ещё нет
+    status:
+      - test -f .env
+    cmds:
+      - cp .env.example .env
+
+  tools:
+    desc: Установить все dev-инструменты
+    cmds:
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}

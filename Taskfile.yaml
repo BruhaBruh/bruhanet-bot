@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+dotenv: ['.env']
+
+vars:
+  MODULE_PREFIX: github.com/bruhabruh/bruhanet
+  COMPOSE: docker compose -f docker-compose.yaml
+
+  SERVICES: bot notification
+  MODULES: pkg {{range (splitList " " .SERVICES)}}{{.}} {{end}}
+
+  GOLANGCI_LINT_VERSION: v2.15.0
+
+includes:
+  setup:
+    taskfile: ./taskfiles/setup.yaml
+    flatten: true
+  workspace:
+    taskfile: ./taskfiles/workspace.yaml
+    flatten: true
+  ci:
+    taskfile: ./taskfiles/ci.yaml
+    flatten: true
+  development:
+    taskfile: ./taskfiles/development.yaml
+    flatten: true
+  docker:
+    taskfile: ./taskfiles/docker.yaml
+    flatten: true
+
+tasks:
+  default:
+    desc: Показать список задач
+    silent: true
+    cmds:
+      - task --list

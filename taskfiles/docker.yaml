@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  up:
+    desc: 'Запустить инфраструктуру'
+    cmds:
+      - docker compose up -d --wait
+
+  down:
+    desc: Остановить инфраструктуру
+    cmds:
+      - docker compose down
+
+  down:clean:
+    desc: Остановить инфраструктуру и УДАЛИТЬ все данные (volumes)
+    prompt: Все данные будут удалены. Продолжить?
+    cmds:
+      - docker compose down -v
+
+  restart:
+    desc: Перезапустить инфраструктуру
+    cmds:
+      - task: down
+      - task: up
+
+  ps:
+    desc: Статус контейнеров
+    cmds:
+      - docker compose ps
+
+  logs:
+    desc: 'Логи (пример: task logs -- redis)'
+    cmds:
+      - docker compose logs -f {{.CLI_ARGS}}
+
+  redis:cli:
+    desc: redis-cli
+    interactive: true
+    cmds:
+      - docker compose exec redis redis-cli

@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  work:list:
+    desc: Показать модули, входящие в workspace
+    cmds:
+      - go list -m
+
+  work:sync:
+    desc: go work sync (выровнять версии зависимостей между модулями)
+    cmds:
+      - go work sync
+
+  new:
+    desc: 'Создать модуль (пример: task new NAME=reports)'
+    requires:
+      vars: [NAME]
+    cmds:
+      - mkdir -p {{.NAME}}
+      - go -C {{.NAME}} mod init {{.MODULE_PREFIX}}/{{.NAME}}
+      - go -C {{.NAME}} mod edit -require={{.MODULE_PREFIX}}/pkg@v0.0.0 -replace={{.MODULE_PREFIX}}/pkg=../pkg
+      - go work use ./{{.NAME}}
+      - echo "Готово. Не забудьте добавить {{.NAME}} в MODULES (Taskfile.yml)"
+
+  tidy:
+    desc: go mod tidy во всех модулях
+    cmds:
+      - for: { var: MODULES }
+        cmd: go -C {{.ITEM}} mod tidy
