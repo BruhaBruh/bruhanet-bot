@@ -40,5 +40,8 @@ Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruh
 - Логи: `slog`, контекстный логгер через `stlog.With/L(ctx)`; поля snake_case.
 - Линтер строгий (`.golangci.yml`: gosec, errorlint, exhaustive, gocritic…), формат gofumpt + goimports с local-prefix `github.com/bruhabruh/bruhanet`.
 - Тексты юзеру на русском, MarkdownV2 (`models.ParseModeMarkdown`) — всё динамическое через `bot.EscapeMarkdown`. Плюрализация «месяц/месяца/месяцев».
+- Имена файлов — нижний регистр через `_` (`in_memory.go`).
+- `MatchFunc` go-telegram выполняется синхронно до всех middleware: только проверки полей, без I/O и паник.
+- Дизайн каркаса хендлеров: `docs/superpowers/specs/2026-10-26-bot-handler-infra-design.md`.
 - Callback data в старом боте — короткие коды `"0".."5"` + `:<arg>` (лимит Telegram 64 байта).
 - Грабли старого кода, не повторять: обращение к `payment.*` до проверки `err` (nil-паника), повторное нажатие Подтвердить/Отклонить, игнор ошибок `UpdateUser` при выдаче 1 дня, admin-хендлеры без проверки `AdminID`.
