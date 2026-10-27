@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
@@ -78,6 +80,7 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		h.showError(ctx, b, u)
 		return
 	}
+	observability.Payments.WithLabelValues("photo", strconv.Itoa(p.Month)).Inc()
 	h.grantTrial(ctx, b, u, p)
 	// кнопки — только после выдачи дня: быстрый клик админа не перезапишет grantTrial
 	_, err = b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{

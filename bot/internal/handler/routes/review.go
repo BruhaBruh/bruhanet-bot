@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
@@ -78,12 +80,16 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 	}
 
 	removeKeyboard(ctx, b, msg.Chat.ID, msg.ID)
+	months := strconv.Itoa(p.Month)
 	if approve {
+		observability.Payments.WithLabelValues("confirmed", months).Inc()
+		observability.PaymentsConfirmedRubles.WithLabelValues(months).Add(float64(p.Price))
 		react(ctx, b, msg.Chat.ID, msg.ID, "👍")
 		send(ctx, b, p.TelegramID, h.mainKeyboard(ctx, p.TelegramID),
 			"*Администратор подтвердил ваш платеж*", "", "Ваша подписка была изменена")
 		return
 	}
+	observability.Payments.WithLabelValues("declined", months).Inc()
 	react(ctx, b, msg.Chat.ID, msg.ID, "👎")
 	send(ctx, b, p.TelegramID, h.mainKeyboard(ctx, p.TelegramID),
 		"*Администратор отклонил ваш платеж*", "", "Ваша подписка была изменена на изначальную")

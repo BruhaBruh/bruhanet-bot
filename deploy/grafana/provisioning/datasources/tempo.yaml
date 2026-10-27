@@ -1,0 +1,18 @@
+apiVersion: 1
+
+# Двойной знак доллара — литерал: Grafana подставляет env во все provisioning-файлы.
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      # трейс → логи бота с тем же trace_id
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        customQuery: true
+        query: '{service="bot"} | json | trace_id="$${__span.traceId}"'

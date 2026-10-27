@@ -14,8 +14,17 @@ services:
     environment:
       REDIS_ADDR: redis:6379
       LOG_JSON: "true"
+      OBSERVABILITY_ADDR: ":8081"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
     restart: unless-stopped
     stop_grace_period: 35s
+    # liveness /healthz: падение Telegram/Remnawave бота unhealthy не делает
+    healthcheck:
+      test: ["CMD", "/app/bot", "healthcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
     depends_on:
       redis:
         condition: service_healthy
@@ -57,6 +66,29 @@ services:
     depends_on:
       - loki
 
+  # логи prometheus/tempo в Loki не собираем — без labels.logging
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    logging: *logging
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ./prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+
+  tempo:
+    image: grafana/tempo:2.10.10
+    logging: *logging
+    restart: unless-stopped
+    command: [-config.file=/etc/tempo/tempo.yaml]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      # /var/tempo в образе принадлежит uid 10001 — новый том наследует владельца
+      - tempo-data:/var/tempo
+
   grafana:
     image: grafana/grafana:13.2.4
     logging: *logging
@@ -84,9 +116,13 @@ services:
       start_interval: 5s
     depends_on:
       - loki
+      - prometheus
+      - tempo
 
 volumes:
   redis-data:
   loki-data:
   alloy-data:
   grafana-data:
+  prometheus-data:
+  tempo-data:

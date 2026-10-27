@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/router"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/routes"
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 
@@ -32,6 +34,11 @@ func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option)
 	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Now: deps.Now})
 
 	options := append([]bot.Option{
+		// pollTimeout и Timeout клиента — как у go-telegram по умолчанию (1 минута)
+		bot.WithHTTPClient(time.Minute, &http.Client{
+			Timeout:   time.Minute,
+			Transport: observability.TelegramTransport(http.DefaultTransport),
+		}),
 		bot.WithDefaultHandler(r.HandleDefault),
 		bot.WithErrorsHandler(func(err error) {
 			logger.Error("telegram error", "error", err)
@@ -42,6 +49,7 @@ func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option)
 			middleware.Recovery,
 			middleware.RequestID,
 			middleware.TelegramID,
+			middleware.Observe,
 			middleware.Logger,
 			middleware.AutoAnswer(),
 			middleware.Recovery,

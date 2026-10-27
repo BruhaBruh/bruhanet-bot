@@ -112,7 +112,7 @@ jobs:
           # shellcheck disable=SC2029 # WORK_DIR намеренно раскрывается на раннере, %q экранирует для remote shell
           tar -C deploy --exclude=.env -cz . \
             | ssh vps "mkdir -p $(printf %q "$WORK_DIR") && tar -C $(printf %q "$WORK_DIR") -xz --no-same-owner --no-overwrite-dir"
-      # без --wait: у бота нет healthcheck — ниже проверяем, что он не в рестарт-лупе
+      # без --wait: оно ждало бы и долгий start_period Grafana; здоровье бота проверяем ниже
       # sha-<7> — тот же тег, что type=sha в metadata-action: деплоим ровно собранный образ
       - name: Pull and restart
         run: |
@@ -123,19 +123,23 @@ jobs:
           docker compose --env-file .env pull
           docker compose --env-file .env up -d --remove-orphans
           EOF
-      # running и стартовал >=15 с назад: при рестарт-лупе StartedAt всё время свежий
-      - name: Check bot is running
+      # docker healthcheck по liveness /healthz: ждём healthy до 90 с, иначе логи и fail
+      - name: Check bot is healthy
         run: |
-          sleep 30
-          ssh vps bash -s -- "$WORK_DIR" <<'EOF'
+          ssh vps bash -s -- "$WORK_DIR" 90 <<'EOF'
           set -euo pipefail
           cd "$1"
-          s=$(docker inspect -f '{{.State.Status}}|{{.State.StartedAt}}' "$(docker compose --env-file .env ps -aq bot)")
-          echo "bot: $s"
-          if [ "${s%%|*}" != running ] || [ $(( $(date +%s) - $(date -d "${s#*|}" +%s) )) -lt 15 ]; then
-            docker compose --env-file .env logs --tail 50 bot
-            exit 1
-          fi
+          id=$(docker compose --env-file .env ps -aq bot) || id=
+          deadline=$(( $(date +%s) + $2 ))
+          while :; do
+            s=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null) || s=missing
+            echo "bot: $s"
+            [ "$s" = healthy ] && exit 0
+            [ "$(date +%s)" -ge "$deadline" ] && break
+            sleep 5
+          done
+          docker compose --env-file .env logs --tail 50 bot
+          exit 1
           EOF
       # только висячие слои: на VPS ещё Remnawave, prune -a снёс бы чужое
       - name: Clean dangling images

@@ -5,7 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
@@ -253,4 +256,21 @@ func TestBroadcastLogsFinished(t *testing.T) {
 	if l["sent"] != float64(2) || l["failed"] != float64(0) || l["interrupted"] != false || l["complete"] != true {
 		t.Fatalf("entry = %v", l)
 	}
+}
+
+func TestBroadcastMetrics(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(42, now)
+	e.rw.AddUser(43, now)
+	startBroadcast(t, e)
+	e.srv.FailChat(43, 403, "Forbidden")
+	bc := testutil.ToFloat64(observability.Broadcasts)
+	sent := testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("sent"))
+	failed := testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("failed"))
+
+	e.process(t, tgtest.Callback(adminID, "bc_send"))
+
+	wantDelta(t, "broadcasts", bc, testutil.ToFloat64(observability.Broadcasts), 1)
+	wantDelta(t, "sent", sent, testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("sent")), 1)
+	wantDelta(t, "failed", failed, testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("failed")), 1)
 }

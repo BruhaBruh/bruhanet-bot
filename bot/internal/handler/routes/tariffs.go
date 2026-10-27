@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
@@ -105,6 +107,7 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 		h.showError(ctx, b, u)
 		return
 	}
+	observability.Payments.WithLabelValues("started", strconv.Itoa(month)).Inc()
 
 	show(ctx, b, u, nil,
 		fmt.Sprintf("*Оплата тарифа на %d %s за %d ₽*", month, pluralMonths(month), price),

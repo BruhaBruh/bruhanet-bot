@@ -1,5 +1,6 @@
 apiVersion: 1
 
+# Двойной знак доллара — литерал: Grafana подставляет env во все provisioning-файлы.
 datasources:
   - name: Loki
     type: loki
@@ -8,3 +9,12 @@ datasources:
     url: http://loki:3100
     isDefault: true
     editable: false
+    jsonData:
+      # лог → трейс: trace_id из JSON-строки бота
+      derivedFields:
+        - name: trace_id
+          matcherType: regex
+          matcherRegex: '"trace_id":"(\w+)"'
+          url: '$${__value.raw}'
+          datasourceUid: tempo
+          urlDisplayLabel: Трейс

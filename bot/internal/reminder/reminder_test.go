@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
@@ -208,5 +210,18 @@ func TestReminderLogsSent(t *testing.T) {
 	got := tgtest.FindLog(t, buf, "reminder sent")
 	if got["telegram_id"] != float64(1002) || got["kind"] != "week" {
 		t.Fatalf("entry = %v", got)
+	}
+}
+
+func TestReminderMetric(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(userID, now.Add(3*24*time.Hour))
+	c := observability.RemindersSent.WithLabelValues("week")
+	before := testutil.ToFloat64(c)
+
+	e.r.Run(t.Context())
+
+	if got := testutil.ToFloat64(c) - before; got != 1 {
+		t.Fatalf("delta = %v, want 1", got)
 	}
 }

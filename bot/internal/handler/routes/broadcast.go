@@ -11,6 +11,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 	"github.com/bruhabruh/bruhanet/pkg/remnawave"
@@ -140,6 +141,9 @@ loop:
 		}
 		sent++
 	}
+	observability.Broadcasts.Inc()
+	observability.BroadcastMessages.WithLabelValues("sent").Add(float64(sent))
+	observability.BroadcastMessages.WithLabelValues("failed").Add(float64(failed))
 	stlog.Info(ctx, "broadcast finished", "sent", sent, "failed", failed, "interrupted", interrupted, "complete", complete)
 	rows := []string{"Разослано: *" + strconv.Itoa(sent) + "*, не доставлено: *" + strconv.Itoa(failed) + "*"}
 	if interrupted {

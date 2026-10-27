@@ -26,7 +26,7 @@ func New(opts ...Option) *slog.Logger {
 		handler = slog.NewTextHandler(options.Writer, options.HandlerOptions)
 	}
 
-	logger := slog.New(handler)
+	logger := slog.New(traceHandler{handler})
 	if options.Default {
 		slog.SetDefault(logger)
 	}

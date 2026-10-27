@@ -12,6 +12,7 @@ import (
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/pkg/remnawave"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
@@ -95,6 +96,7 @@ func (r *Reminder) remind(ctx context.Context, u api.UserItemInfo, id int64, kin
 	err = r.n.Remind(ctx, id, kind, u.ExpireAt, u.SubscriptionUrl)
 	switch {
 	case err == nil:
+		observability.RemindersSent.WithLabelValues(string(kind)).Inc()
 		stlog.Info(ctx, "reminder sent")
 	case errors.Is(err, ErrUndeliverable):
 		stlog.Warn(ctx, "failed to send reminder, not retrying", "error", err)

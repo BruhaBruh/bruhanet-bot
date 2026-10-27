@@ -7,12 +7,21 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/app"
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
+	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	executor "github.com/bruhabruh/bruhanet/pkg/app"
 	"github.com/bruhabruh/bruhanet/pkg/cfg"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
 
 func main() {
+	// Docker HEALTHCHECK: до загрузки конфига, только env.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		addr := os.Getenv("OBSERVABILITY_ADDR")
+		if addr == "" {
+			addr = ":8081"
+		}
+		os.Exit(observability.Healthcheck(addr))
+	}
 	// JSON с level=ERROR ещё до конфига: ошибки загрузки должны дойти до алерта.
 	stlog.New()
 	config, err := cfg.Load[config.Config]()

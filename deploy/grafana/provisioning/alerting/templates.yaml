@@ -3,6 +3,7 @@ apiVersion: 1
 # Telegram MarkdownV2: статичный текст экранирован (\_ \- \.), значения — в `code`,
 # внутри которого экранируются только \ и `.
 # Без знака доллара: Grafana подставляет env во все provisioning-файлы.
+# DatasourceError/NoData: datasource_uid prometheus → «Prometheus недоступен», иначе Loki.
 # Лимит Telegram 4096 символов: не больше 5 алертов на сообщение (при сработавших прошедшие —
 # только счётчиком), error/panic обрезаны до 300 символов в LogQL.
 templates:
@@ -15,8 +16,17 @@ templates:
 
       {{ define "bruhanet.alert" -}}
       {{ if or (eq .Labels.alertname "DatasourceError") (eq .Labels.alertname "DatasourceNoData") -}}
-      ⚠️ *Loki недоступен*{{ template "bruhanet.status" . }}
+      ⚠️ *{{ if eq .Labels.datasource_uid "prometheus" }}Prometheus{{ else }}Loki{{ end }} недоступен*{{ template "bruhanet.status" . }}
       rule: {{ template "md_code" (or .Labels.rulename "-") }}
+      {{- else if eq .Labels.alertname "bot-not-ready" -}}
+      🟠 *Бот не ready*{{ template "bruhanet.status" . }}
+      dependency: {{ template "md_code" (or .Labels.dependency "-") }}
+      {{- else if eq .Labels.alertname "bot-down" -}}
+      💀 *Бот пропал* — метрики не скрейпятся 5 минут{{ template "bruhanet.status" . }}
+      {{- else if eq .Labels.alertname "bot-slow" -}}
+      🐢 *Медленные ответы*{{ template "bruhanet.status" . }}
+      {{- with .Values }}{{ with index . "A" }}
+      p95 за 10 минут: {{ template "md_code" (printf "%.2f с" .) }}{{ end }}{{ end }}
       {{- else -}}
       {{ if eq .Labels.alert_kind "panic" }}💥 *Паника*{{ else }}🚨 *Ошибки бота*{{ end }}{{ template "bruhanet.status" . }}
       msg: {{ template "md_code" (or .Labels.msg "-") }}

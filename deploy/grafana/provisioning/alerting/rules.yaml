@@ -74,3 +74,103 @@ groups:
           alert_kind: panic
         annotations:
           summary: Паника в боте
+
+  # Метрики (Prometheus). execErrState Error → DatasourceError «Prometheus недоступен».
+  - orgId: 1
+    name: bot-metrics
+    folder: BruhaNet
+    interval: 1m
+    rules:
+      # Серия на каждую упавшую зависимость, пока max(bot_ready) < 1.
+      # Бот не скрейпится → серий нет → OK: это ловит bot-down.
+      - uid: bot-not-ready
+        title: bot-not-ready
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                max by (dependency) (bot_dependency_up < 1)
+                and on() (max(bot_ready) < 1)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          alert_kind: metrics
+        annotations:
+          summary: Бот не ready
+
+      # 1 — target bot down или пропал из Prometheus; всегда отдаёт значение,
+      # поэтому NoData — только проблема самого Prometheus.
+      - uid: bot-down
+        title: bot-down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                (max(up{job="bot"}) == bool 0) or absent(up{job="bot"})
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        labels:
+          alert_kind: metrics
+        annotations:
+          summary: Бот пропал
+
+      # p95 апдейта за 10m > 2 с при ≥ 20 апдейтах, без рассылки (message:broadcast, callback:bc_send).
+      # Нет трафика или всё быстро → серий нет → OK.
+      - uid: bot-slow
+        title: bot-slow
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                histogram_quantile(0.95, sum by (le) (rate(
+                bot_update_duration_seconds_bucket{route!~"message:broadcast|callback:bc_send"}[10m]))) > 2
+                and on() sum(increase(
+                bot_update_duration_seconds_count{route!~"message:broadcast|callback:bc_send"}[10m])) >= 20
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          alert_kind: metrics
+        annotations:
+          summary: Медленные ответы
