@@ -23,6 +23,10 @@ ask() { # ask <prompt> [-s] -> ответ в $REPLY
   [[ ${2:-} == -s ]] && silent=(-s)
   read -r "${silent[@]}" -u 3 -p "$1" REPLY || die "ввод закончился (EOF)"
   [[ ${2:-} == -s ]] && echo >&2
+  # мусор от вставки в терминал: \r и маркеры bracketed paste (ESC[200~ … ESC[201~)
+  REPLY="${REPLY//$'\r'/}"
+  REPLY="${REPLY//$'\e[200~'/}"
+  REPLY="${REPLY//$'\e[201~'/}"
   return 0
 }
 
