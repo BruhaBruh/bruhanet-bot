@@ -32,7 +32,8 @@ Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruh
 `task` — список. Основное: `task setup`, `task up` (Redis в docker), `task dev SVC=bot` (air + jq), `task run SVC=bot`, `task test`, `task lint`, `task fmt`, `task tidy`.
 Образ бота: `task docker:build` (TAG=local). Прод-стек: `task deploy:config|up|down|pull|ps`, `task deploy:logs -- <service>` (нужен `deploy/.env`, `BOT_IMAGE_TAG=local task deploy:up` для локального образа).
 Установка/обновление на VPS: `curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | bash` (`install.sh` в корне: качает `deploy/`, спрашивает `.env` по `.env.example`, `pull` + `up -d`; существующий `.env` не трогает; env: `BRUHANET_DIR|REF|TARBALL|INPUT|SKIP_UP`).
-Новый модуль добавлять в `SERVICES` в `Taskfile.yaml`.
+CI/CD — `.github/workflows/ci.yaml`: lint + test (pkg, bot) + build образа на PR и push в `main`; на push в `main` — push в ghcr (`latest`, `sha-<short>`) и деплой по ssh (секреты environment `production`: `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`, `SSH_HOST`, `SSH_USER`, `WORK_DIR` — абсолютный путь): копирует `deploy/` без `.env`, `pull` + `up -d` с `BOT_IMAGE_TAG=sha-<short>`, проверяет, что bot `running` ≥15 с через 30 с, `docker image prune -f` (не `-a` — на VPS ещё Remnawave). Grafana по умолчанию на `127.0.0.1:3030` (3000 занят панелью Remnawave).
+Новый модуль добавлять в `SERVICES` в `Taskfile.yaml` и в matrix в `ci.yaml`.
 Redis-реализация FSM тестируется на miniredis, docker для `task test` не нужен. Хендлеры тестируются через `tgtest` (`bot.WithSkipGetMe` + `WithServerURL` + `WithNotAsyncHandlers`, апдейты через `ProcessUpdate`).
 
 ## Конвенции и подводные камни

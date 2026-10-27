@@ -133,7 +133,7 @@ dc=(docker compose -f docker-compose.yaml --env-file .env)
 port="$(sed -n 's/^GRAFANA_PORT=["'"'"']\{0,1\}\([^"'"'"']*\).*/\1/p' .env)"
 cat <<MSG
 
-Готово. Grafana: http://127.0.0.1:${port:-3000}
+Готово. Grafana: http://127.0.0.1:${port:-3030}
 Обновить:  curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | BRUHANET_DIR=$dir bash
 Логи:      cd $dir && docker compose -f docker-compose.yaml --env-file .env logs -f bot
 MSG

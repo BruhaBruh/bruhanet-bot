@@ -1,0 +1,144 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  REGISTRY: ghcr.io
+  # ghcr.io/bruhabruh/bruhanet-bot
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  lint:
+    name: Lint (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [pkg, bot]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
+          working-directory: ${{ matrix.module }}
+
+  test:
+    name: Test (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [pkg, bot]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+      - run: go -C ${{ matrix.module }} test -race ./...
+
+  build:
+    name: Build image
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to ${{ env.REGISTRY }}
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+      - name: Build (push only on main)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      WORK_DIR: ${{ secrets.WORK_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ssh key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host vps\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/id_deploy\n  StrictHostKeyChecking yes\n' \
+            "$SSH_HOST" "$SSH_USER" > ~/.ssh/config
+      # deploy/ без .env (его в репе нет, --exclude — страховка): .env на сервере не трогается
+      - name: Copy deploy configs
+        run: |
+          # shellcheck disable=SC2029 # WORK_DIR намеренно раскрывается на раннере, %q экранирует для remote shell
+          tar -C deploy --exclude=.env -cz . \
+            | ssh vps "mkdir -p $(printf %q "$WORK_DIR") && tar -C $(printf %q "$WORK_DIR") -xz --no-same-owner --no-overwrite-dir"
+      # без --wait: у бота нет healthcheck — ниже проверяем, что он не в рестарт-лупе
+      # sha-<7> — тот же тег, что type=sha в metadata-action: деплоим ровно собранный образ
+      - name: Pull and restart
+        run: |
+          ssh vps bash -s -- "$WORK_DIR" "sha-${GITHUB_SHA::7}" <<'EOF'
+          set -euo pipefail
+          cd "$1"
+          export BOT_IMAGE_TAG="$2"
+          docker compose --env-file .env pull
+          docker compose --env-file .env up -d --remove-orphans
+          EOF
+      # running и стартовал >=15 с назад: при рестарт-лупе StartedAt всё время свежий
+      - name: Check bot is running
+        run: |
+          sleep 30
+          ssh vps bash -s -- "$WORK_DIR" <<'EOF'
+          set -euo pipefail
+          cd "$1"
+          s=$(docker inspect -f '{{.State.Status}}|{{.State.StartedAt}}' "$(docker compose --env-file .env ps -aq bot)")
+          echo "bot: $s"
+          if [ "${s%%|*}" != running ] || [ $(( $(date +%s) - $(date -d "${s#*|}" +%s) )) -lt 15 ]; then
+            docker compose --env-file .env logs --tail 50 bot
+            exit 1
+          fi
+          EOF
+      # только висячие слои: на VPS ещё Remnawave, prune -a снёс бы чужое
+      - name: Clean dangling images
+        if: always()
+        continue-on-error: true
+        run: ssh vps "docker image prune -f"
