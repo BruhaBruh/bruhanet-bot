@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  DEPLOY_COMPOSE: docker compose -f deploy/docker-compose.yaml --env-file deploy/.env
+
+tasks:
+  deploy:config:
+    desc: Проверить прод-compose
+    cmds:
+      - '{{.DEPLOY_COMPOSE}} config --quiet'
+
+  deploy:up:
+    desc: Поднять прод-стек
+    cmds:
+      - '{{.DEPLOY_COMPOSE}} up -d'
+
+  deploy:down:
+    desc: Остановить прод-стек (данные сохраняются)
+    cmds:
+      - '{{.DEPLOY_COMPOSE}} down'
+
+  deploy:pull:
+    desc: Скачать свежие образы прод-стека
+    cmds:
+      - '{{.DEPLOY_COMPOSE}} pull'
+
+  deploy:logs:
+    desc: 'Логи прод-стека (пример: task deploy:logs -- bot)'
+    cmds:
+      - '{{.DEPLOY_COMPOSE}} logs -f {{.CLI_ARGS}}'
+
+  deploy:ps:
+    desc: Статус контейнеров прод-стека
+    cmds:
+      - '{{.DEPLOY_COMPOSE}} ps'

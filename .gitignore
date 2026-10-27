@@ -12,3 +12,5 @@ coverage.html
 tmp/
 
 docs/
+
+deploy/.env

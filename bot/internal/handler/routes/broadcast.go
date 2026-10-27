@@ -140,6 +140,7 @@ loop:
 		}
 		sent++
 	}
+	stlog.Info(ctx, "broadcast finished", "sent", sent, "failed", failed, "interrupted", interrupted, "complete", complete)
 	rows := []string{"Разослано: *" + strconv.Itoa(sent) + "*, не доставлено: *" + strconv.Itoa(failed) + "*"}
 	if interrupted {
 		rows = append(rows, "Прервано, не отправлено: *"+strconv.Itoa(len(ids)-sent-failed)+"*")

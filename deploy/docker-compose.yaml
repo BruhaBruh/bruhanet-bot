@@ -1,0 +1,91 @@
+name: bruhanet-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  bot:
+    image: ghcr.io/bruhabruh/bruhanet-bot:${BOT_IMAGE_TAG:-latest}
+    logging: *logging
+    env_file: .env
+    environment:
+      REDIS_ADDR: redis:6379
+      LOG_JSON: "true"
+    restart: unless-stopped
+    stop_grace_period: 35s
+    depends_on:
+      redis:
+        condition: service_healthy
+    labels:
+      logging: alloy
+
+  redis:
+    image: redis:8.10
+    logging: *logging
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [CMD-SHELL, redis-cli ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  loki:
+    image: grafana/loki:3.7.9
+    logging: *logging
+    restart: unless-stopped
+    command: [-config.file=/etc/loki/loki.yaml]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    # ponytail: образ loki без shell — healthcheck невозможен, зависимые ждут только старта
+
+  alloy:
+    image: grafana/alloy:v1.21.2
+    logging: *logging
+    restart: unless-stopped
+    command: [run, --storage.path=/var/lib/alloy/data, /etc/alloy/config.alloy]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    logging: *logging
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:${GRAFANA_PORT:-3000}:3000
+    environment:
+      # применяется только при первой инициализации тома grafana-data
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      ALERT_TELEGRAM_TOKEN: ${ALERT_TELEGRAM_TOKEN:?set ALERT_TELEGRAM_TOKEN}
+      ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:?set ALERT_TELEGRAM_CHAT_ID}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:3000/api/health | grep -q ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      # первый старт: миграции на свежем томе занимают до ~4 минут
+      start_period: 300s
+      start_interval: 5s
+    depends_on:
+      - loki
+
+volumes:
+  redis-data:
+  loki-data:
+  alloy-data:
+  grafana-data:

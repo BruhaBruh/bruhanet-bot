@@ -240,3 +240,17 @@ func TestBroadcastStaleCancelKeepsPayment(t *testing.T) {
 		t.Fatalf("answer = %q", text)
 	}
 }
+
+func TestBroadcastLogsFinished(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(42, now)
+	e.rw.AddUser(43, now)
+	e.process(t, tgtest.Message(adminID, "/a"))
+	e.process(t, tgtest.Message(adminID, "Привет"))
+	e.process(t, tgtest.Callback(adminID, "bc_send"))
+
+	l := tgtest.FindLog(t, e.log, "broadcast finished")
+	if l["sent"] != float64(2) || l["failed"] != float64(0) || l["interrupted"] != false || l["complete"] != true {
+		t.Fatalf("entry = %v", l)
+	}
+}

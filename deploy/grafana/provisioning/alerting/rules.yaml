@@ -1,0 +1,76 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: bot-errors
+    folder: BruhaNet
+    interval: 1m
+    rules:
+      - uid: bot-errors
+        title: bot-errors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              # telegram error — шум сети, паники — у bot-panics.
+              # trunc — лимит Telegram 4096 символов на сообщение.
+              expr: >-
+                sum by (msg, route, telegram_id, request_id, error) (count_over_time(
+                {service="bot", level="ERROR"} | json
+                | msg != "telegram error" | msg != "panic recovered"
+                | label_format error="{{ trunc 300 .error }}" [5m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          alert_kind: errors
+        annotations:
+          summary: Ошибка бота
+
+  - orgId: 1
+    name: bot-panics
+    folder: BruhaNet
+    interval: 10s
+    rules:
+      - uid: bot-panics
+        title: bot-panics
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                sum by (msg, route, telegram_id, request_id, error, panic) (count_over_time(
+                {service="bot", level="ERROR"} | json
+                | msg = "panic recovered"
+                | label_format error="{{ trunc 300 .error }}", panic="{{ trunc 300 .panic }}" [1m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          alert_kind: panic
+        annotations:
+          summary: Паника в боте

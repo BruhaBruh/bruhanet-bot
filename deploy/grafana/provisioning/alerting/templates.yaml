@@ -1,0 +1,49 @@
+apiVersion: 1
+
+# Telegram MarkdownV2: статичный текст экранирован (\_ \- \.), значения — в `code`,
+# внутри которого экранируются только \ и `.
+# Без знака доллара: Grafana подставляет env во все provisioning-файлы.
+# Лимит Telegram 4096 символов: не больше 5 алертов на сообщение (при сработавших прошедшие —
+# только счётчиком), error/panic обрезаны до 300 символов в LogQL.
+templates:
+  - orgId: 1
+    name: bruhanet
+    template: |
+      {{ define "md_code" }}`{{ reReplaceAll "`" "\\`" (reReplaceAll "\\\\" "\\\\" (reReplaceAll "\\s*\n\\s*" " " .)) }}`{{ end }}
+
+      {{ define "bruhanet.status" }}{{ if eq .Status "firing" }} — 🔥 _сработал_{{ else }} — ✅ _прошёл_{{ end }}{{ end }}
+
+      {{ define "bruhanet.alert" -}}
+      {{ if or (eq .Labels.alertname "DatasourceError") (eq .Labels.alertname "DatasourceNoData") -}}
+      ⚠️ *Loki недоступен*{{ template "bruhanet.status" . }}
+      rule: {{ template "md_code" (or .Labels.rulename "-") }}
+      {{- else -}}
+      {{ if eq .Labels.alert_kind "panic" }}💥 *Паника*{{ else }}🚨 *Ошибки бота*{{ end }}{{ template "bruhanet.status" . }}
+      msg: {{ template "md_code" (or .Labels.msg "-") }}
+      route: {{ template "md_code" (or .Labels.route "-") }}
+      telegram\_id: {{ template "md_code" (or .Labels.telegram_id "-") }}
+      request\_id: {{ template "md_code" (or .Labels.request_id "-") }}
+      {{- with .Labels.panic }}
+      panic: {{ template "md_code" . }}{{ end }}
+      {{- if or .Labels.error (ne .Labels.alert_kind "panic") }}
+      error: {{ template "md_code" (or .Labels.error "-") }}{{ end }}
+      {{- if ne .Labels.alert_kind "panic" }}{{ with .Values }}{{ with index . "A" }}
+      count: {{ template "md_code" (printf "%v" .) }}{{ end }}{{ end }}{{ end }}
+      {{- end }}
+      {{- end }}
+
+      {{ define "bruhanet.list" -}}
+      {{ if gt (len .) 5 }}{{ range slice . 0 5 }}{{ template "bruhanet.alert" . }}
+
+      {{ end }}…и ещё {{ len (slice . 5) }}
+
+      {{ else }}{{ range . }}{{ template "bruhanet.alert" . }}
+
+      {{ end }}{{ end }}
+      {{- end }}
+
+      {{ define "bruhanet.message" -}}
+      {{ template "bruhanet.list" .Alerts.Firing }}
+      {{- if .Alerts.Firing }}{{ with .Alerts.Resolved }}✅ _прошли: {{ len . }}_{{ end }}
+      {{- else }}{{ template "bruhanet.list" .Alerts.Resolved }}{{ end }}
+      {{- end }}

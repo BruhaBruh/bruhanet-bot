@@ -1,0 +1,22 @@
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: telegram-alerts
+    group_by: [grafana_folder, alertname]
+    routes:
+      # Паника — сразу, каждая отдельным сообщением.
+      - receiver: telegram-panics
+        object_matchers:
+          - [alert_kind, "=", panic]
+        group_by: ["..."]
+        group_wait: 0s
+        group_interval: 10s
+        repeat_interval: 4h
+      # Ошибки — пачкой, повтор не чаще раза в 30 минут.
+      - receiver: telegram-alerts
+        object_matchers:
+          - [alert_kind, "=", errors]
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 30m

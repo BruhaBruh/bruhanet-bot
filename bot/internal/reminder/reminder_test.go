@@ -13,6 +13,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
+	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
 
 var now = time.Date(2026, time.January, 10, 12, 0, 0, 0, time.UTC)
@@ -196,4 +197,16 @@ func TestStopsOnPanelError(t *testing.T) {
 		t.Fatalf("calls = %d, want 1", len(e.n.calls))
 	}
 	tgtest.FindLog(t, buf, "failed to list remnawave users")
+}
+
+func TestReminderLogsSent(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(1002, now.Add(3*24*time.Hour))
+	l, buf := tgtest.Logger()
+	e.r.Run(stlog.Wrap(t.Context(), l))
+
+	got := tgtest.FindLog(t, buf, "reminder sent")
+	if got["telegram_id"] != float64(1002) || got["kind"] != "week" {
+		t.Fatalf("entry = %v", got)
+	}
 }

@@ -40,3 +40,11 @@ tasks:
     interactive: true
     cmds:
       - docker compose exec redis redis-cli
+
+  docker:build:
+    desc: 'Собрать образ бота (task docker:build TAG=x)'
+    vars:
+      IMAGE: ghcr.io/bruhabruh/bruhanet-bot
+      TAG: local
+    cmds:
+      - docker build -t {{.IMAGE}}:{{.TAG}} .

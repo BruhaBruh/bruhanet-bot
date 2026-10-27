@@ -59,7 +59,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	}
 
 	rem := reminder.New(rw, handler.NewNotifier(b), rdb, nil)
-	cl := cron.PrintfLogger(slog.NewLogLogger(logger.Handler(), slog.LevelError))
+	cl := cronLogger(logger)
 	c := cron.New(
 		cron.WithLocation(loc),
 		cron.WithChain(cron.Recover(cl), cron.SkipIfStillRunning(cl)),

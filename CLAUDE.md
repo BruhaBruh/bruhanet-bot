@@ -25,10 +25,13 @@ Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruh
 
 - `pkg/` — общее: `app` (CompositeApp + `Run` с graceful shutdown), `lifecycle` (Start/Stop), `cfg` (env → struct + validator), `stlog` (slog + логгер в context), `remnawave` (обёртка `remnawave-api-go/v3`), `tgupdate` (user/chat/type апдейта), `fsm` (стейт + data юзера, `in_memory`/`redis`, CAS — единственное хранилище), `keyboard` (разметка inline-клавиатур, стили-константы), `callback` (имя роута + целый аргумент в callback data, без хранилища).
 - `bot/` — `cmd/main.go` → `internal/app` (wiring), `internal/config` (по файлу на секцию), `internal/handler` (`New` — сборка бота; `handler/router` — роутер; `handler/routes` — все роуты с их хендлерами и клавиатурами, файл на роут; `handler/middleware` — цепочка middleware), `internal/model`, `internal/reminder`, `internal/tgtest` (фейковый Telegram API для тестов).
+- `deploy/` — прод-стек (`docker-compose.yaml`: bot, redis, loki, alloy, grafana; конфиги `loki/`, `alloy/`, `grafana/`; `.env` не в git, шаблон `.env.example`).
 
 ## Команды
 
 `task` — список. Основное: `task setup`, `task up` (Redis в docker), `task dev SVC=bot` (air + jq), `task run SVC=bot`, `task test`, `task lint`, `task fmt`, `task tidy`.
+Образ бота: `task docker:build` (TAG=local). Прод-стек: `task deploy:config|up|down|pull|ps`, `task deploy:logs -- <service>` (нужен `deploy/.env`, `BOT_IMAGE_TAG=local task deploy:up` для локального образа).
+Установка/обновление на VPS: `curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | bash` (`install.sh` в корне: качает `deploy/`, спрашивает `.env` по `.env.example`, `pull` + `up -d`; существующий `.env` не трогает; env: `BRUHANET_DIR|REF|TARBALL|INPUT|SKIP_UP`).
 Новый модуль добавлять в `SERVICES` в `Taskfile.yaml`.
 Redis-реализация FSM тестируется на miniredis, docker для `task test` не нужен. Хендлеры тестируются через `tgtest` (`bot.WithSkipGetMe` + `WithServerURL` + `WithNotAsyncHandlers`, апдейты через `ProcessUpdate`).
 

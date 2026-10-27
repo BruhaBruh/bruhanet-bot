@@ -13,6 +13,8 @@ import (
 )
 
 func main() {
+	// JSON с level=ERROR ещё до конфига: ошибки загрузки должны дойти до алерта.
+	stlog.New()
 	config, err := cfg.Load[config.Config]()
 	if err != nil {
 		slog.Error("failed to load config", "error", err)

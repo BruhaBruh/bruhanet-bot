@@ -95,6 +95,7 @@ func (r *Reminder) remind(ctx context.Context, u api.UserItemInfo, id int64, kin
 	err = r.n.Remind(ctx, id, kind, u.ExpireAt, u.SubscriptionUrl)
 	switch {
 	case err == nil:
+		stlog.Info(ctx, "reminder sent")
 	case errors.Is(err, ErrUndeliverable):
 		stlog.Warn(ctx, "failed to send reminder, not retrying", "error", err)
 	default:

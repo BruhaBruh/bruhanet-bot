@@ -29,6 +29,9 @@ includes:
   docker:
     taskfile: ./taskfiles/docker.yaml
     flatten: true
+  deploy:
+    taskfile: ./taskfiles/deploy.yaml
+    flatten: true
 
 tasks:
   default:
