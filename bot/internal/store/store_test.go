@@ -1,11 +1,14 @@
 package store
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -32,7 +35,10 @@ func testStore(t *testing.T) *Store {
 		t.Fatalf("create schema: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.Exec(t.Context(), `DROP SCHEMA `+schema+` CASCADE`)
+		// t.Context() к этому моменту уже отменён.
+		if _, err := admin.Exec(context.WithoutCancel(t.Context()), `DROP SCHEMA `+schema+` CASCADE`); err != nil {
+			t.Errorf("drop schema: %v", err)
+		}
 		admin.Close()
 	})
 
@@ -56,8 +62,32 @@ func TestMigrateIdempotent(t *testing.T) {
 		t.Fatalf("second Migrate: %v", err)
 	}
 	var n int
-	_ = s.pool.QueryRow(t.Context(), `SELECT count(*) FROM payments`).Scan(&n)
+	if err := s.pool.QueryRow(t.Context(), `SELECT count(*) FROM payments`).Scan(&n); err != nil {
+		t.Fatalf("count payments: %v", err)
+	}
 	if n != 0 {
 		t.Fatalf("payments = %d", n)
+	}
+}
+
+func TestOnePendingPerUser(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	if _, err := s.pool.Exec(ctx, `INSERT INTO users (telegram_id, username) VALUES (1, 'u')`); err != nil {
+		t.Fatal(err)
+	}
+	const ins = `INSERT INTO payments (telegram_id, username, months, price, status, prev_expire_at)
+		VALUES (1, 'u', 1, 150, $1, now())`
+
+	if _, err := s.pool.Exec(ctx, ins, "cancelled"); err != nil {
+		t.Fatalf("cancelled: %v", err)
+	}
+	if _, err := s.pool.Exec(ctx, ins, "pending"); err != nil {
+		t.Fatalf("first pending: %v", err)
+	}
+	_, err := s.pool.Exec(ctx, ins, "pending")
+	var pg *pgconn.PgError
+	if !errors.As(err, &pg) || pg.Code != "23505" {
+		t.Fatalf("second pending: want unique violation, got %v", err)
 	}
 }
