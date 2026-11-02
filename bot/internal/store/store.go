@@ -47,18 +47,38 @@ func open(ctx context.Context, url string, opts ...func(*pgxpool.Config)) (*Stor
 	return &Store{pool: pool}, nil
 }
 
-// Migrate накатывает встроенные goose-миграции.
-func (s *Store) Migrate(ctx context.Context) error {
+func (s *Store) provider() (*goose.Provider, error) {
 	sub, err := fs.Sub(migrations, "migrations")
 	if err != nil {
-		return errors.Join(ErrMigrate, err)
+		return nil, err
 	}
-	p, err := goose.NewProvider(goose.DialectPostgres, stdlib.OpenDBFromPool(s.pool), sub)
+	return goose.NewProvider(goose.DialectPostgres, stdlib.OpenDBFromPool(s.pool), sub)
+}
+
+// Migrate накатывает встроенные goose-миграции.
+func (s *Store) Migrate(ctx context.Context) error {
+	p, err := s.provider()
 	if err != nil {
 		return errors.Join(ErrMigrate, err)
 	}
 	if _, err = p.Up(ctx); err != nil {
 		return errors.Join(ErrMigrate, err)
+	}
+	return nil
+}
+
+// CheckSchema возвращает ErrSchemaOutdated, если есть непримененные миграции.
+func (s *Store) CheckSchema(ctx context.Context) error {
+	p, err := s.provider()
+	if err != nil {
+		return errors.Join(ErrMigrate, err)
+	}
+	pending, err := p.HasPending(ctx)
+	if err != nil {
+		return errors.Join(ErrMigrate, err)
+	}
+	if pending {
+		return ErrSchemaOutdated
 	}
 	return nil
 }

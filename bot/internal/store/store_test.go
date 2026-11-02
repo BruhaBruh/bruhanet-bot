@@ -12,8 +12,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// testStore открывает Store в отдельной схеме t_<rand>; без TEST_DATABASE_URL тест пропускается.
+// testStore открывает Store в отдельной схеме t_<rand> и накатывает миграции.
 func testStore(t *testing.T) *Store {
+	t.Helper()
+	s := testStoreRaw(t)
+	if err := s.Migrate(t.Context()); err != nil {
+		t.Fatalf("first Migrate: %v", err)
+	}
+	return s
+}
+
+// testStoreRaw — то же без Migrate; без TEST_DATABASE_URL тест пропускается.
+func testStoreRaw(t *testing.T) *Store {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -49,11 +59,20 @@ func testStore(t *testing.T) *Store {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(s.Close)
-
-	if err = s.Migrate(t.Context()); err != nil {
-		t.Fatalf("first Migrate: %v", err)
-	}
 	return s
+}
+
+func TestCheckSchema(t *testing.T) {
+	s := testStoreRaw(t)
+	if err := s.CheckSchema(t.Context()); !errors.Is(err, ErrSchemaOutdated) {
+		t.Fatalf("fresh schema: want ErrSchemaOutdated, got %v", err)
+	}
+	if err := s.Migrate(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CheckSchema(t.Context()); err != nil {
+		t.Fatalf("migrated schema: %v", err)
+	}
 }
 
 func TestMigrateIdempotent(t *testing.T) {

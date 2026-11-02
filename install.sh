@@ -16,9 +16,11 @@ done
 docker compose version </dev/null >/dev/null 2>&1 || die "нужен docker compose v2 (плагин 'docker compose')"
 
 # stdin занят скриптом при `curl | bash`, поэтому ответы — из отдельного дескриптора
-exec 3<"${BRUHANET_INPUT:-/dev/tty}" || die "нет терминала для ввода; задай BRUHANET_INPUT=<файл>"
+have_input=1
+{ exec 3<"${BRUHANET_INPUT:-/dev/tty}"; } 2>/dev/null || have_input=0
 
 ask() { # ask <prompt> [-s] -> ответ в $REPLY
+  ((have_input)) || die "нет терминала для ввода; задай BRUHANET_INPUT=<файл>"
   local silent=()
   [[ ${2:-} == -s ]] && silent=(-s)
   read -r "${silent[@]}" -u 3 -p "$1" REPLY || die "ввод закончился (EOF)"
@@ -28,6 +30,59 @@ ask() { # ask <prompt> [-s] -> ответ в $REPLY
   REPLY="${REPLY//$'\e[200~'/}"
   REPLY="${REPLY//$'\e[201~'/}"
   return 0
+}
+
+gen_password() {
+  if command -v openssl >/dev/null; then
+    openssl rand -hex 24
+  else
+    head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n'
+  fi
+}
+
+# default_of <строка KEY=VALUE из .env.example> -> значение без кавычек
+default_of() {
+  local d="${1#*=}"
+  d="${d#[\"\']}"
+  d="${d%[\"\']}"
+  printf '%s' "$d"
+}
+
+# prompt_key <key> <default> -> значение в $val (спрашивает, пока не получит годное)
+prompt_key() {
+  local key="$1" def="$2" required=0 secret=0
+  [[ $key == BOT_IMAGE_TAG ]] && def=latest
+  [[ $key == POSTGRES_PASSWORD ]] && def="$(gen_password)"
+  [[ " ${REQUIRED[*]} " == *" $key "* ]] && required=1
+  [[ $key =~ TOKEN|PASSWORD|COOKIE|SECRET ]] && secret=1
+  while :; do
+    if [[ $key == POSTGRES_PASSWORD ]]; then
+      ask "$key (Enter — сгенерировать): " -s
+      val="${REPLY:-$def}"
+    elif ((secret)); then
+      ask "$key: " -s
+      val="$REPLY"
+    elif ((required)); then
+      ask "$key: "
+      val="$REPLY"
+    else
+      ask "$key [$def]: "
+      val="${REPLY:-$def}"
+    fi
+    if [[ $val == *"'"* ]]; then
+      echo "  одинарная кавычка в значении не поддерживается." >&2
+      continue
+    fi
+    if [[ $key == POSTGRES_PASSWORD && ! $val =~ ^[A-Za-z0-9]+$ ]]; then
+      echo "  POSTGRES_PASSWORD: только латиница и цифры (значение идёт в URL)." >&2
+      continue
+    fi
+    if [[ -z $val ]] && ((required)); then
+      echo "  $key обязателен." >&2
+      continue
+    fi
+    break
+  done
 }
 
 tmp="$(mktemp -d)"
@@ -61,11 +116,49 @@ tar -xzf "$tgz" --strip-components=2 --wildcards --no-wildcards-match-slash '*/d
 mapfile -t example <.env.example
 
 if [[ -f .env ]]; then
-  echo ".env уже есть — не трогаю (режим обновления конфигов)."
+  echo ".env уже есть — существующие значения не трогаю (режим обновления конфигов)."
+  missing=()
+  declare -A mdef=()
   for line in "${example[@]}"; do
-    [[ $line =~ ^([A-Z][A-Z0-9_]*)= ]] || continue
-    grep -q "^${BASH_REMATCH[1]}=" .env || echo "  в .env нет ${BASH_REMATCH[1]} (см. .env.example)"
+    [[ $line =~ ^([A-Z_][A-Z0-9_]*)= ]] || continue
+    k="${BASH_REMATCH[1]}"
+    grep -q "^${k}=" .env && continue
+    missing+=("$k")
+    mdef[$k]="$(default_of "$line")"
   done
+  if ((${#missing[@]} > 0)); then
+    if ((!have_input)); then
+      # без ввода: ключи с дефолтом берём как есть, остальные — ошибка со списком
+      nodef=()
+      for k in "${missing[@]}"; do
+        [[ -n ${mdef[$k]} || $k == POSTGRES_PASSWORD ]] || nodef+=("$k")
+      done
+      ((${#nodef[@]} == 0)) || die "в .env нет ключей без значения по умолчанию: ${nodef[*]} — запусти с терминала или BRUHANET_INPUT=<файл>"
+    fi
+    echo "В .env не хватает ключей из .env.example: ${missing[*]}"
+    cp .env .env.bak
+    envnew="$dir/.env.new"
+    cp -p .env "$envnew"
+    for k in "${missing[@]}"; do
+      if ((have_input)); then
+        prompt_key "$k" "${mdef[$k]}"
+      elif [[ $k == POSTGRES_PASSWORD ]]; then
+        val="$(gen_password)"
+      else
+        val="${mdef[$k]}"
+      fi
+      # дописываем с новой строки, даже если .env не оканчивается переводом строки
+      [[ -z $(tail -c1 "$envnew") ]] || echo >>"$envnew"
+      printf "%s='%s'\n" "$k" "$val" >>"$envnew"
+    done
+    mv "$envnew" .env
+    envnew=""
+    if ! err="$(docker compose -f docker-compose.yaml --env-file .env config -q </dev/null 2>&1)"; then
+      mv .env.bak .env
+      die "получился невалидный .env, откатил: $err"
+    fi
+    rm -f .env.bak
+  fi
 else
   echo "Настраиваю .env (Enter — значение по умолчанию):"
   envnew="$dir/.env.new"
@@ -80,37 +173,7 @@ else
     fi
     [[ $line == *=* ]] || continue
     key="${line%%=*}"
-    def="${line#*=}"
-    def="${def#[\"\']}"
-    def="${def%[\"\']}"
-    [[ $key == BOT_IMAGE_TAG ]] && def=latest
-
-    required=0
-    [[ " ${REQUIRED[*]} " == *" $key "* ]] && required=1
-    secret=0
-    [[ $key =~ TOKEN|PASSWORD|COOKIE|SECRET ]] && secret=1
-
-    while :; do
-      if ((secret)); then
-        ask "$key: " -s
-        val="$REPLY"
-      elif ((required)); then
-        ask "$key: "
-        val="$REPLY"
-      else
-        ask "$key [$def]: "
-        val="${REPLY:-$def}"
-      fi
-      if [[ $val == *"'"* ]]; then
-        echo "  одинарная кавычка в значении не поддерживается." >&2
-        continue
-      fi
-      if [[ -z $val ]] && ((required)); then
-        echo "  $key обязателен." >&2
-        continue
-      fi
-      break
-    done
+    prompt_key "$key" "$(default_of "$line")"
     printf "%s='%s'\n" "$key" "$val" >>"$envnew"
     n=$((n + 1))
   done

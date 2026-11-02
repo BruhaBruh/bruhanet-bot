@@ -15,12 +15,19 @@ vars:
       } end
 
 tasks:
+  migrate:
+    desc: Накатить миграции Postgres (task up)
+    cmds:
+      - task: env
+      - go -C bot run ./cmd migrate
+
   run:
     desc: 'Запустить локально (пример: task run SVC=booking)'
     requires:
       vars: [SVC]
     cmds:
       - task: env
+      - task: migrate
       - go -C {{.SVC}} run ./cmd
 
   dev:
@@ -31,4 +38,5 @@ tasks:
     silent: true
     cmds:
       - task: env
+      - task: migrate
       - air -c {{.ROOT_DIR}}/.air.toml 2>&1 | jq -R --unbuffered -C '{{.JQ_LOGS}}'

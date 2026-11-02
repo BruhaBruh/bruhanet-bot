@@ -130,6 +130,21 @@ jobs:
           # shellcheck disable=SC2029 # WORK_DIR намеренно раскрывается на раннере, %q экранирует для remote shell
           tar -C deploy --exclude=.env -cz . \
             | ssh vps "mkdir -p $(printf %q "$WORK_DIR") && tar -C $(printf %q "$WORK_DIR") -xz --no-same-owner --no-overwrite-dir"
+      # все ключи из deploy/.env.example должны быть в .env на VPS (иначе compose/бот упадут уже после pull)
+      - name: Check .env keys
+        run: |
+          ssh vps bash -s -- "$WORK_DIR" <<'EOF'
+          set -euo pipefail
+          cd "$1"
+          missing=$(grep -oE '^[A-Z_][A-Z0-9_]*=' .env.example | sort -u | while IFS== read -r k; do
+            grep -q "^${k}=" .env || echo "$k"
+          done)
+          if [ -n "$missing" ]; then
+            echo "В .env на VPS нет ключей из .env.example (добавь вручную или запусти install.sh):"
+            echo "$missing"
+            exit 1
+          fi
+          EOF
       # без --wait: оно ждало бы и долгий start_period Grafana; здоровье бота проверяем ниже
       # sha-<7> — тот же тег, что type=sha в metadata-action: деплоим ровно собранный образ
       - name: Pull and restart
@@ -156,6 +171,7 @@ jobs:
             [ "$(date +%s)" -ge "$deadline" ] && break
             sleep 5
           done
+          docker compose --env-file .env logs --tail 50 migrate
           docker compose --env-file .env logs --tail 50 bot
           exit 1
           EOF

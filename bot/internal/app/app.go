@@ -45,9 +45,12 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = st.Migrate(context.Background()); err != nil {
+	if err = st.CheckSchema(context.Background()); err != nil {
 		st.Close()
 		return nil, err
+	}
+	if err = warnLegacyPayments(stlog.Wrap(context.Background(), logger), rdb); err != nil {
+		logger.Warn("failed to scan legacy fsm payments", "error", err)
 	}
 
 	rw, err := remnawave.New(

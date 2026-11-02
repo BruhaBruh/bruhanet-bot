@@ -6,6 +6,8 @@ x-logging: &logging
     max-size: "10m"
     max-file: "3"
 
+x-database-url: &database_url postgres://bruhanet:${POSTGRES_PASSWORD}@postgres:5432/bruhanet?sslmode=disable
+
 services:
   bot:
     image: ghcr.io/bruhabruh/bruhanet-bot:${BOT_IMAGE_TAG:-latest}
@@ -13,6 +15,7 @@ services:
     env_file: .env
     environment:
       REDIS_ADDR: redis:6379
+      DATABASE_URL: *database_url
       LOG_JSON: "true"
       OBSERVABILITY_ADDR: ":8081"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
@@ -28,8 +31,43 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     labels:
       logging: alloy
+
+  # one-shot: миграции встроены в образ бота; бот стартует только после успешного завершения
+  migrate:
+    image: ghcr.io/bruhabruh/bruhanet-bot:${BOT_IMAGE_TAG:-latest}
+    logging: *logging
+    env_file: .env
+    environment:
+      DATABASE_URL: *database_url
+    command: ["/app/bot", "migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      logging: alloy
+
+  postgres:
+    image: postgres:18
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bruhanet
+      POSTGRES_DB: bruhanet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U bruhanet]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   redis:
     image: redis:8.10
@@ -120,6 +158,7 @@ services:
       - tempo
 
 volumes:
+  postgres-data:
   redis-data:
   loki-data:
   alloy-data:
