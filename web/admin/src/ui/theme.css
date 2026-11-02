@@ -1,7 +1,7 @@
 /* Look follows TelegramUI (MIT, see LICENSE-TelegramUI). */
 :root {
   --tg-bg: #fff; --tg-secondary-bg: #efeff4; --tg-text: #000; --tg-hint: #8e8e93;
-  --tg-accent: #2481cc; --tg-hint-text: #696970; --tg-link: #1a6aaf; --tg-button: #1f74b8; --tg-button-text: #fff;
+  --tg-accent: #2481cc; --tg-hint-text: #696970; --tg-link: #155a96; --tg-button: #1f74b8; --tg-button-text: #fff;
   --tg-sep: #c8c7cc80; --tg-fill: #2481cc1f; --tg-danger: #e53935;
   --tg-font: -apple-system, "SF Pro Text", Roboto, "Segoe UI", system-ui, sans-serif;
   color-scheme: light;
@@ -56,14 +56,14 @@ a.tg-cell { cursor: pointer; }
 /* Button */
 .tg-btn { display: inline-flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;
   border: 0; border-radius: 12px; font: inherit; font-weight: 500; cursor: pointer; text-decoration: none;
-  min-width: 80px; max-width: 100%; white-space: nowrap; transition: opacity .15s ease-out; }
+  min-width: 80px; max-width: 100%; white-space: nowrap; transition: box-shadow .15s ease-out; }
 .tg-btn-s { height: 36px; padding: 8px 12px; border-radius: 20px; min-width: 34px; }
 .tg-btn-m { height: 42px; padding: 8px 14px; }
 .tg-btn-l { height: 50px; padding: 10px 20px; }
 .tg-btn-filled { background: var(--tg-button); color: var(--tg-button-text); }
 .tg-btn-bezeled { background: var(--tg-fill); color: var(--tg-link); }
 .tg-btn-plain { background: transparent; color: var(--tg-link); }
-@media (hover: hover) and (pointer: fine) { .tg-btn:hover:not(:disabled) { opacity: .85; } }
+@media (hover: hover) and (pointer: fine) { .tg-btn:hover:not(:disabled) { box-shadow: inset 0 0 0 100px #0000000d; } }
 .tg-btn:disabled { opacity: .5; cursor: default; }
 .tg-btn-content { overflow: hidden; text-overflow: ellipsis; }
 .tg-btn-loading .tg-btn-content { opacity: 0; }
