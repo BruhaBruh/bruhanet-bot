@@ -218,7 +218,7 @@ func TestReminderLogsSent(t *testing.T) {
 	l, buf := tgtest.Logger()
 	e.r.Run(stlog.Wrap(t.Context(), l))
 
-	got := tgtest.FindLog(t, buf, "reminder sent")
+	got := tgtest.FindLog(t, buf, "reminder queued")
 	if got["telegram_id"] != float64(1002) || got["kind"] != "week" {
 		t.Fatalf("entry = %v", got)
 	}

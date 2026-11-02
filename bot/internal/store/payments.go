@@ -74,6 +74,10 @@ func (s *Store) PendingPayment(ctx context.Context, telegramID int64) (model.Pay
 		`SELECT `+paymentCols+` FROM payments WHERE telegram_id = $1 AND status = 'pending'`, telegramID))
 }
 
+func (s *Store) PaymentByID(ctx context.Context, id int64) (model.Payment, error) {
+	return scanPayment(s.pool.QueryRow(ctx, `SELECT `+paymentCols+` FROM payments WHERE id = $1`, id))
+}
+
 // SubmitPayment фиксирует отправку чека; повторный вызов даёт ErrNotPending.
 func (s *Store) SubmitPayment(ctx context.Context, id int64, adminMessageID int, at time.Time) error {
 	tag, err := s.pool.Exec(ctx,

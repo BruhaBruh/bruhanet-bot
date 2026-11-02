@@ -90,8 +90,8 @@ func TestPhotoAdvanceFailureStillInReview(t *testing.T) {
 	if st := e.state(t, userID); st != "in_review" {
 		t.Fatalf("state = %q", st)
 	}
-	if p := e.pending(t, userID); p.AdvanceGranted || p.SubmittedAt == nil {
-		t.Fatalf("payment = %+v", p)
+	if p := e.pending(t, userID); !p.AdvanceGranted || p.SubmittedAt == nil {
+		t.Fatalf("payment = %+v", p) // флаг ставится до панели: перебор лучше недобора
 	}
 	text := e.last(t, "sendMessage").Params.Get("text")
 	if !strings.Contains(text, "на проверку") || strings.Contains(text, "1 день") {
@@ -99,6 +99,44 @@ func TestPhotoAdvanceFailureStillInReview(t *testing.T) {
 	}
 	if l := tgtest.FindLog(t, e.log, "failed to grant advance day"); l["level"] != "ERROR" {
 		t.Fatalf("line = %v", l)
+	}
+}
+
+func TestPhotoMarkAdvanceFailureSkipsGrant(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(userID, now)
+	awaitPhoto(t, e, now)
+	e.pay.FailMarkAdvance(true)
+	e.process(t, tgtest.Photo(userID))
+	if n := len(e.rw.Updates()); n != 0 {
+		t.Fatalf("UpdateUser calls = %d", n)
+	}
+	if st := e.state(t, userID); st != "in_review" {
+		t.Fatalf("state = %q", st)
+	}
+	text := e.last(t, "sendMessage").Params.Get("text")
+	if !strings.Contains(text, "на проверку") || strings.Contains(text, "1 день") {
+		t.Fatalf("user message = %s", text)
+	}
+	tgtest.FindLog(t, e.log, "failed to mark advance")
+}
+
+func TestPhotoAwaitStateAlreadySubmittedRetriesReview(t *testing.T) {
+	e := newEnv(t)
+	p := awaitPhoto(t, e, now)
+	if err := e.pay.SubmitPayment(t.Context(), p.ID, 77, now); err != nil {
+		t.Fatal(err)
+	}
+	e.process(t, tgtest.Photo(userID))
+	cp := e.last(t, "copyMessage").Params
+	if !strings.Contains(cp.Get("reply_parameters"), `"message_id":77`) {
+		t.Fatalf("copyMessage = %v", cp)
+	}
+	if n := e.count("sendMessage"); n != 0 {
+		t.Fatalf("sendMessage calls = %d", n)
+	}
+	if st := e.state(t, userID); st != "in_review" {
+		t.Fatalf("state = %q", st)
 	}
 }
 

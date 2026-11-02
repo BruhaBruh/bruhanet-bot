@@ -20,6 +20,7 @@ type Payments struct {
 	outbox         []model.OutboxMessage
 	failResolve    bool
 	failSubmitOnce bool
+	failAdvance    bool
 }
 
 func NewPayments() *Payments {
@@ -38,6 +39,13 @@ func (p *Payments) FailSubmitNotPendingOnce() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.failSubmitOnce = true
+}
+
+// FailMarkAdvance: MarkAdvance возвращает ошибку, пока не снят (false).
+func (p *Payments) FailMarkAdvance(fail bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.failAdvance = fail
 }
 
 func (p *Payments) All() []model.Payment {
@@ -101,6 +109,16 @@ func (p *Payments) PendingPayment(_ context.Context, telegramID int64) (model.Pa
 	return p.payments[i], nil
 }
 
+func (p *Payments) PaymentByID(_ context.Context, id int64) (model.Payment, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	x, err := p.byID(id)
+	if err != nil {
+		return model.Payment{}, err
+	}
+	return *x, nil
+}
+
 func (p *Payments) SubmitPayment(_ context.Context, id int64, adminMessageID int, at time.Time) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -119,6 +137,9 @@ func (p *Payments) SubmitPayment(_ context.Context, id int64, adminMessageID int
 func (p *Payments) MarkAdvance(_ context.Context, id int64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.failAdvance {
+		return errCommit
+	}
 	x, err := p.byID(id)
 	if err != nil {
 		return err

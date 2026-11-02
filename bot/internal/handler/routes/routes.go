@@ -39,6 +39,7 @@ type Remnawave interface {
 type Payments interface {
 	CreatePayment(ctx context.Context, p model.Payment, rollback func(old model.Payment) error) (model.Payment, *model.Payment, error)
 	PendingPayment(ctx context.Context, telegramID int64) (model.Payment, error)
+	PaymentByID(ctx context.Context, id int64) (model.Payment, error)
 	SubmitPayment(ctx context.Context, id int64, adminMessageID int, at time.Time) error
 	MarkAdvance(ctx context.Context, id int64) error
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)

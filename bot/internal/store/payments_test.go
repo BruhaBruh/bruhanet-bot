@@ -102,6 +102,12 @@ func TestSubmitPaymentOnce(t *testing.T) {
 	if err = s.MarkAdvance(ctx, p.ID); err != nil {
 		t.Fatal(err)
 	}
+	if byID, err := s.PaymentByID(ctx, p.ID); err != nil || byID.TelegramID != 1 || !byID.AdvanceGranted {
+		t.Fatalf("PaymentByID = %+v err=%v", byID, err)
+	}
+	if _, err = s.PaymentByID(ctx, p.ID+100); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
 }
 
 func okApply(model.Payment) (model.OutboxMessage, error) {

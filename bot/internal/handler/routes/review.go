@@ -44,27 +44,36 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 		status = model.PaymentConfirmed
 	}
 	at := h.now()
-	p, err := h.pay.ResolvePayment(ctx, id, status, at, func(p model.Payment) (model.OutboxMessage, error) {
-		expireAt := p.PrevExpireAt
-		rows := []string{"*Администратор отклонил ваш платеж*", "", "Ваша подписка была изменена на изначальную"}
-		if approve {
-			if at.After(expireAt) {
-				expireAt = at
+	// клавиатура (HTTP в панель) — вне транзакции ResolvePayment; юзер в панели к review уже есть
+	var kb *models.InlineKeyboardMarkup
+	cur, err := h.pay.PaymentByID(ctx, id)
+	if err == nil {
+		kb = h.mainKeyboard(ctx, cur.TelegramID)
+	}
+	var p model.Payment
+	if err == nil {
+		p, err = h.pay.ResolvePayment(ctx, id, status, at, func(p model.Payment) (model.OutboxMessage, error) {
+			expireAt := p.PrevExpireAt
+			rows := []string{"*Администратор отклонил ваш платеж*", "", "Ваша подписка была изменена на изначальную"}
+			if approve {
+				if at.After(expireAt) {
+					expireAt = at
+				}
+				expireAt = expireAt.Add(time.Duration(p.Month) * monthDuration)
+				rows = []string{"*Администратор подтвердил ваш платеж*", "", "Ваша подписка была изменена"}
 			}
-			expireAt = expireAt.Add(time.Duration(p.Month) * monthDuration)
-			rows = []string{"*Администратор подтвердил ваш платеж*", "", "Ваша подписка была изменена"}
-		}
-		if _, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, expireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
-			return model.OutboxMessage{}, err
-		}
-		return model.OutboxMessage{
-			EventType: "payment_result",
-			ChatID:    p.TelegramID,
-			Text:      buildMessage(rows...),
-			ParseMode: string(models.ParseModeMarkdown),
-			Keyboard:  h.mainKeyboard(ctx, p.TelegramID),
-		}, nil
-	})
+			if _, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, expireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
+				return model.OutboxMessage{}, err
+			}
+			return model.OutboxMessage{
+				EventType: "payment_result",
+				ChatID:    p.TelegramID,
+				Text:      buildMessage(rows...),
+				ParseMode: string(models.ParseModeMarkdown),
+				Keyboard:  kb,
+			}, nil
+		})
+	}
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		middleware.Answer(ctx, b, u, "Платёж устарел")

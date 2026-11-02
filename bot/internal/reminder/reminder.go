@@ -107,5 +107,5 @@ func (r *Reminder) remind(ctx context.Context, u api.UserItemInfo, id int64, kin
 		return
 	}
 	observability.RemindersSent.WithLabelValues(string(kind)).Inc()
-	stlog.Info(ctx, "reminder sent")
+	stlog.Info(ctx, "reminder queued")
 }

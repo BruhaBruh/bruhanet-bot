@@ -33,7 +33,7 @@ var (
 		Name: "bot_payments_confirmed_rubles_total", Help: "Confirmed payments amount in rubles.",
 	}, []string{"months"})
 	RemindersSent = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "bot_reminders_sent_total", Help: "Expiry reminders sent.",
+		Name: "bot_reminders_sent_total", Help: "Expiry reminders queued.",
 	}, []string{"kind"})
 	Broadcasts = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "bot_broadcasts_total", Help: "Admin broadcasts started.",

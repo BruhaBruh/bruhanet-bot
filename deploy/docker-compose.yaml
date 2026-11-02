@@ -73,6 +73,7 @@ services:
     image: postgres:18-alpine
     logging: *logging
     restart: unless-stopped
+    init: true
     environment:
       PGHOST: postgres
       PGUSER: bruhanet
@@ -83,7 +84,7 @@ services:
       TZ: Europe/Moscow
       BACKUP_AT: "04:00"
     # ponytail: curl ставится на старте, при недоступном зеркале Alpine контейнер рестартует; упрётся — собрать свой образ
-    command: ["sh", "-c", "apk add --no-cache curl >/dev/null && exec /backup.sh"]
+    command: ["sh", "-c", "apk add --no-cache curl >/dev/null && exec sh /backup.sh"]
     volumes:
       - ./backup/backup.sh:/backup.sh:ro
     depends_on:

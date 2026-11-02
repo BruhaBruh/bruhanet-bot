@@ -101,6 +101,7 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 			observability.OutboxMessages.WithLabelValues(it.EventType, "dropped").Inc()
 			return w.remove(ctx, it, false)
 		}
+		// ponytail: head-of-line — один чат с 5xx держит очередь ~5 мин до дропа; упрёмся — слать по чатам независимо.
 		stlog.Warn(ctx, "outbox send failed", "event_type", it.EventType, "attempt", n, "error", err)
 		observability.OutboxMessages.WithLabelValues(it.EventType, "retry").Inc()
 		sleep(ctx, w.backoff(n))

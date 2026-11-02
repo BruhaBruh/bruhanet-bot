@@ -45,6 +45,14 @@ func (h *handlers) photo(ctx context.Context, b *bot.Bot, u *models.Update) {
 		h.forwardPhoto(ctx, b, u, p.AdminMessageID)
 		return
 	}
+	if st == stateAwaitPhoto && p.SubmittedAt != nil {
+		// платёж уже отправлен, но Put(in_review) не прошёл — чиним стейт, лишний раз админа не спамим
+		h.forwardPhoto(ctx, b, u, p.AdminMessageID)
+		if err := fsm.Put(ctx, f, stateInReview, nil); err != nil {
+			stlog.Error(ctx, "failed to set review state", "error", err)
+		}
+		return
+	}
 	if st == stateAwaitPhoto {
 		h.submitPhoto(ctx, b, u, f, p)
 	}
@@ -86,6 +94,8 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		return
 	}
 
+	// ponytail: гонка «купить» vs «фото» может выдать день на только что отменённый платёж;
+	// следующий confirm/decline вернёт prev_expire_at, MarkAdvance всё равно его посчитает.
 	if err := h.pay.SubmitPayment(ctx, p.ID, msg.ID, h.now()); err != nil {
 		if errors.Is(err, store.ErrNotPending) {
 			stlog.Warn(ctx, "payment photo lost the race", "error", err)
@@ -124,14 +134,17 @@ func (h *handlers) grantAdvance(ctx context.Context, b *bot.Bot, u *models.Updat
 		from = now
 	}
 	chatID := u.Message.Chat.ID
+	// флаг раньше панели: если панель упадёт, перебор счётчика лучше, чем бесплатный день без учёта
+	if err := h.pay.MarkAdvance(ctx, p.ID); err != nil {
+		stlog.Error(ctx, "failed to mark advance", "error", err)
+		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), "*Вы успешно отправили фото на проверку*")
+		return
+	}
 	_, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, from.Add(advanceDuration), h.cfg.Remnawave.InternalSquadId)
 	if err != nil {
 		stlog.Error(ctx, "failed to grant advance day", "error", err)
 		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), "*Вы успешно отправили фото на проверку*")
 		return
-	}
-	if err := h.pay.MarkAdvance(ctx, p.ID); err != nil {
-		stlog.Error(ctx, "failed to mark advance", "error", err)
 	}
 	send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID),
 		"*Вы успешно отправили фото на проверку*",
