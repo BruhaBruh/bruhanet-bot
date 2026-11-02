@@ -40,6 +40,7 @@ a.tg-cell { cursor: pointer; }
 .tg-chev { color: var(--tg-hint-text); flex: none; margin-left: -6px; }
 .tg-cell.tg-active { background: var(--tg-button); color: var(--tg-button-text); border-radius: 10px; }
 .tg-cell.tg-active .tg-sub, .tg-cell.tg-active .tg-chev { color: var(--tg-button-text); }
+@media (hover: hover) and (pointer: fine) { a.tg-cell.tg-active:hover { background: var(--tg-button); } }
 .tg-cell.tg-active:focus-visible { outline-color: var(--tg-button-text); }
 .tg-cell.tg-active::before, .tg-cell.tg-active + .tg-cell::before { display: none; }
 

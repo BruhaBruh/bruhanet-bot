@@ -37,6 +37,9 @@ describe('ui kit', () => {
     expect(css).toMatch(/\.tg-cell-body\s*\{[^}]*min-width:\s*0/)
     expect(w.find('.tg-cell-body').exists()).toBe(true)
   })
+  it('active cell keeps the filled background on hover', () => {
+    expect(css).toMatch(/a\.tg-cell\.tg-active:hover\s*\{[^}]*background:\s*var\(--tg-button\)/)
+  })
   it('TgInput/TgSelect: aria-label reaches the native control', () => {
     expect(mount(TgInput, { props: { modelValue: '' }, attrs: { 'aria-label': 'Поиск' } }).find('input').attributes('aria-label')).toBe('Поиск')
     expect(mount(TgInput, { props: { modelValue: '', placeholder: 'ID' } }).find('input').attributes('aria-label')).toBe('ID')
