@@ -32,7 +32,7 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	link := strings.TrimRight(h.cfg.Admin.BaseURL, "/") + "/auth?token=" + raw
 	// Ссылка только в кнопке и без превью: краулер превью Telegram сам открыл бы /auth и сжёг одноразовый токен.
-	text := buildMessage("Вход в админку", "Ссылка одноразовая, действует 5 минут")
+	text := buildMessage("*Вход в админку*", "", "Ссылка одноразовая, действует 5 минут")
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:             h.cfg.Telegram.AdminID,
 		Text:               text,
@@ -41,11 +41,12 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 	})
 	if errors.Is(err, bot.ErrorBadRequest) {
-		// Telegram не принимает, например, localhost в URL-кнопке (dev): шлём ссылку текстом, тоже без превью.
+		// Telegram не принимает, например, localhost в URL-кнопке (dev) и не делает такую ссылку кликабельной:
+		// шлём её моноширинным блоком (копируется тапом), тоже без превью.
 		stlog.Warn(ctx, "login button rejected, sending plain link", "error", err)
 		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:             h.cfg.Telegram.AdminID,
-			Text:               text + "\n" + bot.EscapeMarkdown(link),
+			Text:               buildMessage(text, "", "`"+escapeCode(link)+"`", "", "Нажми на ссылку, чтобы скопировать, и открой в браузере"),
 			ParseMode:          models.ParseModeMarkdown,
 			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 		})
@@ -54,4 +55,9 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 		stlog.Warn(ctx, "failed to send login link", "error", err)
 		send(ctx, b, h.cfg.Telegram.AdminID, nil, errorText)
 	}
+}
+
+// escapeCode экранирует текст для `code`-сущности MarkdownV2: там спецсимволы только ` и \.
+func escapeCode(s string) string {
+	return strings.NewReplacer(`\`, `\\`, "`", "\\`").Replace(s)
 }
