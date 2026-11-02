@@ -21,13 +21,27 @@ type fakeSource struct {
 	raw   map[string][]byte
 	err   error
 	calls int
+	// block != nil — TextOverrides сигналит в started и висит до закрытия block или отмены ctx
+	block   chan struct{}
+	started chan struct{}
 }
 
-func (f *fakeSource) TextOverrides(context.Context) (map[string]string, error) {
+func (f *fakeSource) TextOverrides(ctx context.Context) (map[string]string, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls++
-	return f.texts, f.err
+	block, started, texts, err := f.block, f.started, f.texts, f.err
+	f.mu.Unlock()
+	if block != nil {
+		if started != nil {
+			started <- struct{}{}
+		}
+		select {
+		case <-block:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return texts, err
 }
 
 func (f *fakeSource) SettingsRaw(context.Context) (map[string][]byte, error) {
@@ -147,5 +161,74 @@ func TestBrokenSettingKeySkipped(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "broken settings") {
 		t.Fatalf("нет warn: %s", buf.String())
+	}
+}
+
+// Зависшая БД: Text не ждёт дольше таймаута обновления и отдаёт значение по умолчанию.
+func TestHungSourceTimesOut(t *testing.T) {
+	p, _, ctx, buf := setup(&fakeSource{block: make(chan struct{})})
+	content.SetRefreshTimeout(p, 50*time.Millisecond)
+	start := time.Now()
+	if got := p.Button(ctx, "button.pay"); got != "Оплатить" {
+		t.Fatalf("button = %q", got)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("Text ждал %v", d)
+	}
+	if !strings.Contains(buf.String(), "deadline exceeded") {
+		t.Fatalf("нет warn: %s", buf.String())
+	}
+}
+
+// Пока одна горутина обновляет кеш, остальные сразу получают прежний снимок.
+func TestConcurrentReadersDoNotWaitForRefresh(t *testing.T) {
+	src := &fakeSource{texts: map[string]string{"button.pay": "Платить"}}
+	p, c, ctx, _ := setup(src)
+	p.Button(ctx, "button.pay")
+
+	release, started := make(chan struct{}), make(chan struct{}, 1)
+	src.set(func(f *fakeSource) {
+		f.block, f.started = release, started
+		f.texts = map[string]string{"button.pay": "Оплата"}
+	})
+	c.t = c.t.Add(time.Minute)
+	done := make(chan string)
+	go func() { done <- p.Button(ctx, "button.pay") }()
+	<-started
+
+	got := make(chan string)
+	go func() { got <- p.Button(ctx, "button.pay") }()
+	select {
+	case v := <-got:
+		if v != "Платить" {
+			t.Fatalf("во время обновления = %q", v)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("читатель ждёт обновления")
+	}
+	close(release)
+	if v := <-done; v != "Оплата" {
+		t.Fatalf("обновивший = %q", v)
+	}
+	if v := p.Button(ctx, "button.pay"); v != "Оплата" {
+		t.Fatalf("после обновления = %q", v)
+	}
+}
+
+// Предупреждение о невалидном переопределении — один раз, пока тело не изменится.
+func TestInvalidOverrideWarnsOnce(t *testing.T) {
+	src := &fakeSource{texts: map[string]string{"menu.greeting": "<b>битая"}}
+	p, c, ctx, buf := setup(src)
+	for range 3 {
+		p.Text(ctx, "menu.greeting", nil)
+		c.t = c.t.Add(time.Minute)
+	}
+	if n := strings.Count(buf.String(), "invalid text override"); n != 1 {
+		t.Fatalf("warn %d раз, want 1", n)
+	}
+	src.set(func(f *fakeSource) { f.texts = map[string]string{"menu.greeting": "<i>битая"} })
+	p.Text(ctx, "menu.greeting", nil)
+	if n := strings.Count(buf.String(), "invalid text override"); n != 2 {
+		t.Fatalf("warn после правки %d раз, want 2", n)
 	}
 }

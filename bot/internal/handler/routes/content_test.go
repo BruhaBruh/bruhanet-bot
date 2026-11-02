@@ -51,6 +51,11 @@ func TestTariffsFromSettings(t *testing.T) {
 		t.Fatalf("confirm = %s", text)
 	}
 
+	e.process(t, tgtest.Callback(userID, "buy:1")) // подделанная покупка удалённого тарифа
+	if ps := e.pay.All(); len(ps) != 0 {
+		t.Fatalf("платёж по удалённому тарифу: %+v", ps)
+	}
+
 	e.process(t, tgtest.Callback(userID, "buy:3"))
 	text := e.last(t, "editMessageText").Params.Get("text")
 	if !strings.Contains(text, "с одним из комментариев:\n- <code>a&lt;b</code>\nи отправьте") {
