@@ -62,6 +62,11 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		)
 	}
 
+	if err = observability.RegisterBackupGauge(st.LastBackupAt); err != nil {
+		st.Close()
+		return nil, errors.Join(errors.New("failed to register backup gauge"), err)
+	}
+
 	rdb.AddHook(observability.RedisHook())
 	if err = warnLegacyPayments(stlog.Wrap(context.Background(), logger), rdb); err != nil {
 		logger.Warn("failed to scan legacy fsm payments", "error", err)

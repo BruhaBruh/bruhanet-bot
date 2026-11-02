@@ -142,3 +142,31 @@ func TestInitBusinessSeries(t *testing.T) {
 		t.Fatalf("broadcast series=%d", n)
 	}
 }
+
+func TestBackupGauge(t *testing.T) {
+	ts := time.Unix(1_700_000_000, 0)
+	ret := func(context.Context) (time.Time, error) { return ts, nil }
+	if err := observability.RegisterBackupGauge(func(ctx context.Context) (time.Time, error) { return ret(ctx) }); err != nil {
+		t.Fatal(err)
+	}
+	mfs, err := observability.Registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := -1.0
+	for _, mf := range mfs {
+		if mf.GetName() == "bot_backup_last_success_timestamp_seconds" {
+			got = mf.GetMetric()[0].GetGauge().GetValue()
+		}
+	}
+	if got != 1_700_000_000 {
+		t.Fatalf("got %v", got)
+	}
+	ret = func(context.Context) (time.Time, error) { return time.Time{}, errors.New("x") }
+	mfs, _ = observability.Registry.Gather()
+	for _, mf := range mfs {
+		if mf.GetName() == "bot_backup_last_success_timestamp_seconds" && mf.GetMetric()[0].GetGauge().GetValue() != 0 {
+			t.Fatal("want 0 on error")
+		}
+	}
+}

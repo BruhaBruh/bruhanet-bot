@@ -30,9 +30,9 @@ curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install
 
 Платежи и очередь уведомлений (outbox) лежат в Postgres (сервис `postgres`, том `postgres-data`). Пароль — `POSTGRES_PASSWORD` в `.env` (только латиница и цифры: значение идёт в URL; `install.sh` сгенерирует сам). Схему накатывает one-shot сервис `migrate` (`bot migrate`), бот стартует только после него. `install.sh` на существующем `.env` допишет недостающие ключи из `.env.example`, остальное не тронет.
 
-Бэкап — раз в сутки файлом админу в Telegram (сервис бэкапа добавляется отдельным коммитом этапа 1).
+Бэкап — сервис `backup` (`deploy/backup/backup.sh`): каждый день в 04:00 МСК делает `pg_dump -Fc` и шлёт файл админу (`TELEGRAM_ADMIN_ID`) в Telegram, затем пишет строку в таблицу `backups`. Лимит Telegram — 50 МБ; при ошибке на любом шаге админу придёт «⚠️ Бэкап не сделан: <шаг>: …». Ручной прогон: `docker compose exec backup /backup.sh --once`. Если бэкапа нет больше 26 часов, сработает алерт `backup-stale` (метрика `bot_backup_last_success_timestamp_seconds`); `outbox-stuck` — очередь уведомлений не пустеет 15 минут.
 
-Восстановление в чистый стек (формат — дамп `pg_dump -Fc`, уточнить по сервису бэкапа):
+Восстановление в чистый стек (скачай `bruhanet-YYYY-MM-DD.dump` из чата с ботом в `/opt/bruhanet/bruhanet.dump`):
 
 ```bash
 cd /opt/bruhanet

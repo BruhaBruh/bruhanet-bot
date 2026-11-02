@@ -2,7 +2,9 @@
 package observability
 
 import (
+	"context"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -81,4 +83,19 @@ func InitBusinessSeries(months []int) {
 	for _, r := range []string{"sent", "failed"} {
 		BroadcastMessages.WithLabelValues(r)
 	}
+}
+
+// RegisterBackupGauge публикует unix-время последнего бэкапа; 0 — бэкапов нет или БД не ответила за 2 с.
+func RegisterBackupGauge(last func(ctx context.Context) (time.Time, error)) error {
+	return Registry.Register(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "bot_backup_last_success_timestamp_seconds", Help: "Unix time of the last successful backup, 0 if none.",
+	}, func() float64 {
+		ctx, cancel := context.WithTimeout(WithProbe(context.Background()), 2*time.Second)
+		defer cancel()
+		t, err := last(ctx)
+		if err != nil {
+			return 0
+		}
+		return float64(t.Unix())
+	}))
 }

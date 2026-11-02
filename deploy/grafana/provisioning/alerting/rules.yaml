@@ -174,3 +174,60 @@ groups:
           alert_kind: metrics
         annotations:
           summary: Медленные ответы
+
+      # Бэкап раз в сутки (04:00) + запас; 0 (бэкапов не было) тоже срабатывает.
+      - uid: backup-stale
+        title: backup-stale
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                time() - bot_backup_last_success_timestamp_seconds
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [93600] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          alert_kind: metrics
+        annotations:
+          summary: Бэкап старше 26 часов
+
+      # Очередь уведомлений не пустеет 15 минут подряд.
+      - uid: outbox-stuck
+        title: outbox-stuck
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: bot_outbox_pending
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        labels:
+          alert_kind: metrics
+        annotations:
+          summary: Очередь уведомлений застряла

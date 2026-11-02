@@ -27,6 +27,14 @@ templates:
       🐢 *Медленные ответы*{{ template "bruhanet.status" . }}
       {{- with .Values }}{{ with index . "A" }}
       p95 за 10 минут: {{ template "md_code" (printf "%.2f с" .) }}{{ end }}{{ end }}
+      {{- else if eq .Labels.alertname "backup-stale" -}}
+      💾 *Бэкап не делался больше 26 часов*{{ template "bruhanet.status" . }}
+      {{- with .Values }}{{ with index . "A" }}
+      возраст: {{ template "md_code" (printf "%.0f с" .) }}{{ end }}{{ end }}
+      {{- else if eq .Labels.alertname "outbox-stuck" -}}
+      📭 *Очередь уведомлений застряла*{{ template "bruhanet.status" . }}
+      {{- with .Values }}{{ with index . "A" }}
+      в очереди: {{ template "md_code" (printf "%v" .) }}{{ end }}{{ end }}
       {{- else -}}
       {{ if eq .Labels.alert_kind "panic" }}💥 *Паника*{{ else }}🚨 *Ошибки бота*{{ end }}{{ template "bruhanet.status" . }}
       msg: {{ template "md_code" (or .Labels.msg "-") }}
