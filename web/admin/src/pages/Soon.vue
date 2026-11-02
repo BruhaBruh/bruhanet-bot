@@ -1,3 +1,7 @@
+<script setup lang="ts">
+import { TgPlaceholder } from '../ui'
+</script>
+
 <template>
-  <h2>Скоро</h2>
+  <TgPlaceholder emoji="🚧" title="Скоро" />
 </template>

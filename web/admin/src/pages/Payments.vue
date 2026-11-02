@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { get } from '../api'
 import { formatRub, mskDate, statusLabels } from '../format'
 import type { Payment } from '../types'
+import { TgButton, TgCell, TgInput, TgSection, TgSelect } from '../ui'
 import PaymentsTable from './PaymentsTable.vue'
 
 const pageSize = 50
@@ -15,6 +16,7 @@ const items = ref<Payment[]>([])
 const total = ref(0)
 const revenue = ref(0)
 const error = ref(false)
+const statusOptions = [{ value: '', label: 'все статусы' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]
 const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 
 async function load() {
@@ -44,28 +46,30 @@ onMounted(load)
 </script>
 
 <template>
-  <h2>Платежи</h2>
-  <div class="filters">
-    <select v-model="status" @change="apply">
-      <option value="">все статусы</option>
-      <option v-for="(label, k) in statusLabels" :key="k" :value="k">{{ label }}</option>
-    </select>
-    <label>с <input v-model="from" type="date" @change="apply" /></label>
-    <label>по <input v-model="to" type="date" @change="apply" /></label>
-  </div>
-  <p v-if="error" class="err">Не удалось загрузить</p>
-  <p>Выручка (по дате подтверждения за период): <b>{{ formatRub(revenue) }}</b> · всего платежей: {{ total }}</p>
-  <PaymentsTable :items="items" show-user />
+  <TgSection header="Фильтры">
+    <div class="filters">
+      <TgSelect v-model="status" :options="statusOptions" aria-label="Статус" @change="apply" />
+      <TgInput v-model="from" type="date" aria-label="С даты" @change="apply" />
+      <TgInput v-model="to" type="date" aria-label="По дату" @change="apply" />
+    </div>
+  </TgSection>
+  <p v-if="error" class="err" role="alert">Не удалось загрузить</p>
+  <TgSection header="Выручка (по дате подтверждения за период)">
+    <TgCell title="Выручка" :after="formatRub(revenue)" :after-sub="`всего платежей: ${total}`" />
+  </TgSection>
+  <PaymentsTable header="Платежи" :items="items" show-user />
   <p class="hint">Список отфильтрован по дате создания платежа.</p>
   <div class="pager">
-    <button :disabled="page <= 1" @click="go(page - 1)">←</button>
+    <TgButton mode="bezeled" :disabled="page <= 1" aria-label="Назад" @click="go(page - 1)">←</TgButton>
     <span>{{ page }} / {{ pages }}</span>
-    <button :disabled="page >= pages" @click="go(page + 1)">→</button>
+    <TgButton mode="bezeled" :disabled="page >= pages" aria-label="Вперёд" @click="go(page + 1)">→</TgButton>
   </div>
 </template>
 
 <style scoped>
-.filters { display: flex; gap: 12px; margin: 8px 0 16px; align-items: center; }
-.hint { color: #888; font-size: 12px; }
-.pager { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+.filters { display: flex; flex-direction: column; gap: 1px; background: var(--tg-sep); }
+.filters :deep(.tg-field) { border-radius: 0; }
+.hint { color: var(--tg-hint-text); font-size: 13px; margin: 0 16px; }
+.pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 12px; }
+.err { color: var(--tg-danger); }
 </style>

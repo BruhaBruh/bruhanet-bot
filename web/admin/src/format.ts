@@ -30,3 +30,19 @@ export function mskDate(now: Date, days = 0): string {
   const d = new Date(now.getTime() + days * 864e5)
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(d)
 }
+
+// русская плюрализация: plural(1, ['оплата','оплаты','оплат']) → «оплата»
+export function plural(n: number, forms: [string, string, string]): string {
+  const a = Math.abs(n) % 100
+  const b = a % 10
+  if (a > 10 && a < 20) return forms[2]
+  if (b === 1) return forms[0]
+  if (b >= 2 && b <= 4) return forms[1]
+  return forms[2]
+}
+
+// «сентябрь 2026» (МСК)
+export function formatMonthYear(iso: string): string {
+  const p = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', month: 'long', year: 'numeric' }).formatToParts(new Date(iso))
+  return `${p.find((x) => x.type === 'month')?.value} ${p.find((x) => x.type === 'year')?.value}`
+}

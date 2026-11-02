@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { get } from '../api'
 import { formatDate, formatRub } from '../format'
 import type { UserDetail } from '../types'
+import { TgAvatar, TgButton, TgCell, TgSection } from '../ui'
 import PaymentsTable from './PaymentsTable.vue'
 
 const route = useRoute()
@@ -20,24 +21,38 @@ onMounted(async () => {
 </script>
 
 <template>
-  <router-link to="/users">← Юзеры</router-link>
-  <p v-if="error" class="err">{{ error }}</p>
+  <TgButton mode="plain" size="s" class="back" @click="$router.push('/users')">← Юзеры</TgButton>
+  <p v-if="error" class="err" role="alert">{{ error }}</p>
   <template v-if="d">
-    <h2>{{ d.user.username ? '@' + d.user.username : d.user.telegramId }} <small class="muted">{{ d.user.telegramId }}</small></h2>
-    <p>
-      Подписка до:
-      <b v-if="d.panel.error">панель недоступна</b>
-      <b v-else>{{ d.panel.expireAt ? formatDate(d.panel.expireAt) : '—' }}</b>
-      <span v-if="d.panel.status" class="muted"> ({{ d.panel.status }})</span>
-    </p>
-    <ul>
-      <li>С нами с: {{ formatDate(d.user.createdAt) }}</li>
-      <li>Подтверждённых оплат: {{ d.stats.confirmed }} на {{ formatRub(d.stats.confirmedSum) }}</li>
-      <li>Неподтверждённых авансов: {{ d.stats.unpaidAdvances }}</li>
-      <li>Первая оплата: {{ d.stats.firstConfirmedAt ? formatDate(d.stats.firstConfirmedAt) : '—' }}</li>
-      <li>Последняя оплата: {{ d.stats.lastConfirmedAt ? formatDate(d.stats.lastConfirmedAt) : '—' }}</li>
-    </ul>
-    <h3>Платежи</h3>
-    <PaymentsTable :items="d.payments" />
+    <div class="head">
+      <TgAvatar :text="d.user.username || String(d.user.telegramId)" :size="48" />
+      <div class="who">
+        <h2>{{ d.user.username ? '@' + d.user.username : d.user.telegramId }}</h2>
+        <div class="id">{{ d.user.telegramId }}</div>
+      </div>
+    </div>
+    <TgSection header="Подписка">
+      <TgCell
+        title="Подписка до"
+        :after="d.panel.error ? 'панель недоступна' : d.panel.expireAt ? formatDate(d.panel.expireAt) : '—'"
+        :after-sub="!d.panel.error && d.panel.status ? d.panel.status : undefined"
+      />
+    </TgSection>
+    <TgSection header="Статистика">
+      <TgCell title="С нами с" :after="formatDate(d.user.createdAt)" />
+      <TgCell title="Подтверждённых оплат" :after="`${d.stats.confirmed} на ${formatRub(d.stats.confirmedSum)}`" />
+      <TgCell title="Неподтверждённых авансов" :after="String(d.stats.unpaidAdvances)" />
+      <TgCell title="Первая оплата" :after="d.stats.firstConfirmedAt ? formatDate(d.stats.firstConfirmedAt) : '—'" />
+      <TgCell title="Последняя оплата" :after="d.stats.lastConfirmedAt ? formatDate(d.stats.lastConfirmedAt) : '—'" />
+    </TgSection>
+    <PaymentsTable header="Платежи" :items="d.payments" />
   </template>
 </template>
+
+<style scoped>
+.back { margin-bottom: 8px; padding-left: 0; justify-content: flex-start; }
+.head { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+h2 { margin: 0; font-size: 20px; }
+.id { color: var(--tg-hint-text); font-size: 13px; }
+.err { color: var(--tg-danger); }
+</style>

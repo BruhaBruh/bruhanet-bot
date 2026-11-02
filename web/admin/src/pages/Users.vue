@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { get } from '../api'
-import { formatDate, formatRub } from '../format'
+import { formatMonthYear, formatRub, plural } from '../format'
 import type { UserSummary } from '../types'
+import { TgAvatar, TgCell, TgInput, TgPlaceholder, TgSection } from '../ui'
 
 const q = ref('')
 const items = ref<UserSummary[]>([])
@@ -31,26 +32,26 @@ onMounted(load)
 </script>
 
 <template>
-  <h2>Юзеры</h2>
-  <input v-model="q" placeholder="ID или @username" />
-  <p v-if="error" class="err">Не удалось загрузить</p>
-  <table>
-    <thead>
-      <tr><th>ID</th><th>@username</th><th>Оплат</th><th>Сумма</th><th>С нами с</th></tr>
-    </thead>
-    <tbody>
-      <tr v-for="u in items" :key="u.telegramId">
-        <td><router-link :to="`/users/${u.telegramId}`">{{ u.telegramId }}</router-link></td>
-        <td>{{ u.username ? '@' + u.username : '—' }}</td>
-        <td>{{ u.confirmed }}</td>
-        <td>{{ formatRub(u.confirmedSum) }}</td>
-        <td>{{ formatDate(u.createdAt) }}</td>
-      </tr>
-      <tr v-if="!items.length"><td colspan="5" class="muted">Никого нет</td></tr>
-    </tbody>
-  </table>
+  <TgInput v-model="q" icon="search" placeholder="ID или @username" class="search" />
+  <p v-if="error" class="err" role="alert">Не удалось загрузить</p>
+  <TgPlaceholder v-if="!items.length && !error" emoji="🔍" title="Никого нет" />
+  <TgSection v-else :header="`Найдено: ${items.length}`">
+    <TgCell
+      v-for="u in items"
+      :key="u.telegramId"
+      :to="`/users/${u.telegramId}`"
+      :title="u.username ? '@' + u.username : String(u.telegramId)"
+      :subtitle="`${u.telegramId} · с ${formatMonthYear(u.createdAt)}`"
+      :after="formatRub(u.confirmedSum)"
+      :after-sub="`${u.confirmed} ${plural(u.confirmed, ['оплата', 'оплаты', 'оплат'])}`"
+      chevron
+    >
+      <template #before><TgAvatar :text="u.username || String(u.telegramId)" /></template>
+    </TgCell>
+  </TgSection>
 </template>
 
 <style scoped>
-input { margin: 8px 0 16px; width: 280px; }
+.search { margin-bottom: 20px; }
+.err { color: var(--tg-danger); }
 </style>
