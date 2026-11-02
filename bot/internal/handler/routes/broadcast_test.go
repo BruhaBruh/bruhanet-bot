@@ -7,7 +7,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
@@ -228,16 +227,13 @@ func TestBroadcastPreviewCopyFails(t *testing.T) {
 
 func TestBroadcastStaleCancelKeepsPayment(t *testing.T) {
 	e := newEnv(t)
-	if err := fsm.Put(t.Context(), fsm.For(e.fsm, adminID), "await_photo", model.Payment{Month: 6}); err != nil {
+	if err := fsm.Put(t.Context(), fsm.For(e.fsm, adminID), "await_photo", nil); err != nil {
 		t.Fatal(err)
 	}
 	e.process(t, tgtest.Callback(adminID, "bc_cancel"))
 
 	if st := e.state(t, adminID); st != "await_photo" {
 		t.Fatalf("state = %q", st)
-	}
-	if p := e.payment(t, adminID); p.Month != 6 {
-		t.Fatalf("payment = %+v", p)
 	}
 	if text := e.last(t, "answerCallbackQuery").Params.Get("text"); text != "Рассылка уже отправлена или отменена" {
 		t.Fatalf("answer = %q", text)

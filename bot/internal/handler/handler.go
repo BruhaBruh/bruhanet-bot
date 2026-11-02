@@ -22,16 +22,17 @@ type Deps struct {
 	// InFlight считает выполняющиеся хендлеры; app дожидается его при остановке.
 	InFlight  *sync.WaitGroup
 	Remnawave routes.Remnawave
+	Payments  routes.Payments
 	// Now — источник времени; nil = time.Now (подменяется в тестах).
 	Now func() time.Time
 }
 
 func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option) (*bot.Bot, error) {
-	if deps.FSM == nil || deps.InFlight == nil || deps.Remnawave == nil {
-		return nil, errors.New("handler: deps.FSM, deps.InFlight and deps.Remnawave are required")
+	if deps.FSM == nil || deps.InFlight == nil || deps.Remnawave == nil || deps.Payments == nil {
+		return nil, errors.New("handler: deps.FSM, deps.InFlight, deps.Remnawave and deps.Payments are required")
 	}
 	r := router.New()
-	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Now: deps.Now})
+	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Payments: deps.Payments, Now: deps.Now})
 
 	options := append([]bot.Option{
 		// pollTimeout и Timeout клиента — как у go-telegram по умолчанию (1 минута)

@@ -29,6 +29,7 @@ type env struct {
 	srv *tgtest.Server
 	rw  *tgtest.Remnawave
 	fsm fsm.Storage
+	pay *tgtest.Payments
 	log *bytes.Buffer
 }
 
@@ -44,6 +45,7 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 		srv: tgtest.NewServer(t),
 		rw:  tgtest.NewRemnawave(func() time.Time { return now }),
 		fsm: store,
+		pay: tgtest.NewPayments(),
 		log: buf,
 	}
 	cfg := &config.Config{
@@ -60,6 +62,7 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 		FSM:       store,
 		InFlight:  &sync.WaitGroup{},
 		Remnawave: e.rw,
+		Payments:  e.pay,
 		Now:       func() time.Time { return now },
 	}, e.srv.Options()...)
 	if err != nil {
@@ -83,11 +86,12 @@ func (e *env) state(t *testing.T, id int64) fsm.State {
 	return st
 }
 
-func (e *env) payment(t *testing.T, id int64) model.Payment {
+// pending — текущий pending-платёж юзера.
+func (e *env) pending(t *testing.T, id int64) model.Payment {
 	t.Helper()
-	p, err := fsm.Data[model.Payment](t.Context(), fsm.For(e.fsm, id))
+	p, err := e.pay.PendingPayment(t.Context(), id)
 	if err != nil {
-		t.Fatalf("Data: %v", err)
+		t.Fatalf("PendingPayment: %v", err)
 	}
 	return p
 }

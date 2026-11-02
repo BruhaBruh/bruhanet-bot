@@ -11,6 +11,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/router"
+	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
@@ -21,6 +22,7 @@ const (
 	routePay  = "pay"
 )
 
+// Аргумент админ-кнопок — id платежа.
 var (
 	confirmRoute = callback.New[int64]("adm_ok")
 	declineRoute = callback.New[int64]("adm_no")
@@ -33,10 +35,22 @@ type Remnawave interface {
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
 }
 
+// Payments — хранилище платежей (store.Store); ошибки — store.ErrNotFound / store.ErrNotPending.
+type Payments interface {
+	CreatePayment(ctx context.Context, p model.Payment, rollback func(old model.Payment) error) (model.Payment, *model.Payment, error)
+	PendingPayment(ctx context.Context, telegramID int64) (model.Payment, error)
+	SubmitPayment(ctx context.Context, id int64, adminMessageID int, at time.Time) error
+	MarkAdvance(ctx context.Context, id int64) error
+	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
+	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
+		apply func(model.Payment) (model.OutboxMessage, error)) (model.Payment, error)
+}
+
 type Deps struct {
 	Config    *config.Config
 	FSM       fsm.Storage
 	Remnawave Remnawave
+	Payments  Payments
 	// Now — источник времени; nil = time.Now.
 	Now func() time.Time
 }
@@ -44,6 +58,7 @@ type Deps struct {
 type handlers struct {
 	cfg *config.Config
 	rw  Remnawave
+	pay Payments
 	fsm fsm.Storage
 	now func() time.Time
 }
@@ -54,7 +69,7 @@ func Register(r *router.Router, d Deps) {
 	if now == nil {
 		now = time.Now
 	}
-	h := &handlers{cfg: d.Config, fsm: d.FSM, rw: d.Remnawave, now: now}
+	h := &handlers{cfg: d.Config, fsm: d.FSM, rw: d.Remnawave, pay: d.Payments, now: now}
 	r.Callback(routeMenu, h.start)
 	r.Callback(routeInfo, h.info)
 	r.Callback(routePay, h.tariffs)

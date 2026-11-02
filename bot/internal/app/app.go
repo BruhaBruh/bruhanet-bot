@@ -68,7 +68,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 
 	var inflight sync.WaitGroup
 
-	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight, Remnawave: rwObs})
+	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight, Remnawave: rwObs, Payments: st})
 	if err != nil {
 		return nil, errors.Join(
 			errors.New("failed to create telegram bot"),

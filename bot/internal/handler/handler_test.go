@@ -28,7 +28,7 @@ func newTestHandler(t *testing.T) (*bot.Bot, *tgtest.Server, *bytes.Buffer) {
 	}
 	rw := tgtest.NewRemnawave(time.Now)
 	rw.AddUser(42, time.Now().Add(24*time.Hour))
-	b, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}, Remnawave: rw}, srv.Options()...)
+	b, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}, Remnawave: rw, Payments: tgtest.NewPayments()}, srv.Options()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -113,14 +113,21 @@ func TestNameFallbackToID(t *testing.T) {
 func TestNewRequiresDeps(t *testing.T) {
 	logger, _ := tgtest.Logger()
 	cfg := &config.Config{Telegram: config.TelegramConfig{Token: tgtest.Token}}
-	if _, err := New(logger, cfg, Deps{InFlight: &sync.WaitGroup{}, Remnawave: tgtest.NewRemnawave(time.Now)}); err == nil {
-		t.Fatal("nil FSM должен давать ошибку")
+	full := Deps{
+		FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{},
+		Remnawave: tgtest.NewRemnawave(time.Now), Payments: tgtest.NewPayments(),
 	}
-	if _, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), Remnawave: tgtest.NewRemnawave(time.Now)}); err == nil {
-		t.Fatal("nil InFlight должен давать ошибку")
-	}
-	if _, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}}); err == nil {
-		t.Fatal("nil Remnawave должен давать ошибку")
+	for name, drop := range map[string]func(*Deps){
+		"FSM":       func(d *Deps) { d.FSM = nil },
+		"InFlight":  func(d *Deps) { d.InFlight = nil },
+		"Remnawave": func(d *Deps) { d.Remnawave = nil },
+		"Payments":  func(d *Deps) { d.Payments = nil },
+	} {
+		d := full
+		drop(&d)
+		if _, err := New(logger, cfg, d); err == nil {
+			t.Fatalf("nil %s должен давать ошибку", name)
+		}
 	}
 }
 

@@ -12,20 +12,18 @@ const (
 )
 
 type Payment struct {
-	ID                   int64     `json:"-"`
-	TelegramID           int64     `json:"telegramId"`
-	Username             string    `json:"username"`
-	Month                int       `json:"month"`
-	Price                int       `json:"price"`
-	SubscriptionExpireAt time.Time `json:"subscriptionExpireAt"`
-	AdminMessageID       int       `json:"adminMessageId,omitempty"`
-
-	Status         PaymentStatus `json:"-"`
-	PrevExpireAt   time.Time     `json:"-"`
-	AdvanceGranted bool          `json:"-"`
-	CreatedAt      time.Time     `json:"-"`
-	SubmittedAt    *time.Time    `json:"-"`
-	ResolvedAt     *time.Time    `json:"-"`
+	ID             int64
+	TelegramID     int64
+	Username       string
+	Month          int
+	Price          int
+	Status         PaymentStatus
+	PrevExpireAt   time.Time
+	AdvanceGranted bool
+	AdminMessageID int
+	CreatedAt      time.Time
+	SubmittedAt    *time.Time
+	ResolvedAt     *time.Time
 }
 
 type UserStats struct {

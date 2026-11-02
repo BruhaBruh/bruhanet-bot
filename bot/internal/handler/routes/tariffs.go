@@ -2,13 +2,11 @@ package routes
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"strconv"
 
-	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
@@ -84,26 +82,30 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 		h.showError(ctx, b, u)
 		return
 	}
-	f := fsm.For(h.fsm, from.ID)
-	restored, err := h.cancelReview(ctx, b, f)
+	// Старый pending отменяется в той же транзакции; выданный по нему аванс откатываем в панели.
+	_, cancelled, err := h.pay.CreatePayment(ctx, model.Payment{
+		TelegramID:   from.ID,
+		Username:     username,
+		Month:        month,
+		Price:        price,
+		PrevExpireAt: user.ExpireAt,
+	}, func(old model.Payment) error {
+		if !old.AdvanceGranted {
+			return nil
+		}
+		_, err := h.rw.UpdateUser(ctx, old.TelegramID, old.Username, old.PrevExpireAt, h.cfg.Remnawave.InternalSquadId)
+		return err
+	})
 	if err != nil {
-		stlog.Error(ctx, "failed to cancel payment in review", "error", err)
+		stlog.Error(ctx, "failed to create payment", "error", err)
 		h.showError(ctx, b, u)
 		return
 	}
-	if restored != nil {
-		user = restored
+	if cancelled != nil {
+		h.closeAdminMessage(ctx, b, cancelled.AdminMessageID, "Отменён пользователем")
 	}
-
-	payment := model.Payment{
-		TelegramID:           from.ID,
-		Username:             username,
-		Month:                month,
-		Price:                price,
-		SubscriptionExpireAt: user.ExpireAt,
-	}
-	if err := fsm.Put(ctx, f, stateAwaitPhoto, payment); err != nil {
-		stlog.Error(ctx, "failed to save payment", "error", err)
+	if err := fsm.Put(ctx, fsm.For(h.fsm, from.ID), stateAwaitPhoto, nil); err != nil {
+		stlog.Error(ctx, "failed to set payment state", "error", err)
 		h.showError(ctx, b, u)
 		return
 	}
@@ -122,35 +124,4 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 		"\\- `Вернул долг`",
 		"и отправьте в чат фото платежа",
 	)
-}
-
-// cancelReview откатывает платёж на проверке: возвращает исходный срок и закрывает админ-сообщение.
-// Возвращает юзера с восстановленным сроком или nil, если откатывать нечего.
-func (h *handlers) cancelReview(ctx context.Context, b *bot.Bot, f *fsm.FSM) (*api.UserItemInfo, error) {
-	st, err := f.State(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if st != stateInReview {
-		return nil, nil
-	}
-	p, err := fsm.Data[model.Payment](ctx, f)
-	if err != nil {
-		return nil, err
-	}
-	if err := fsm.Transition(ctx, f, stateInReview, fsm.StateNone, nil); err != nil {
-		if errors.Is(err, fsm.ErrStateMismatch) {
-			return nil, nil // админ успел обработать платёж
-		}
-		return nil, err
-	}
-	user, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, p.SubscriptionExpireAt, h.cfg.Remnawave.InternalSquadId)
-	if err != nil {
-		if rerr := fsm.Transition(ctx, f, fsm.StateNone, stateInReview, p); rerr != nil {
-			stlog.Error(ctx, "failed to restore payment after cancel failure", "error", rerr)
-		}
-		return nil, err
-	}
-	h.closeAdminMessage(ctx, b, p.AdminMessageID, "Отменён пользователем")
-	return user, nil
 }

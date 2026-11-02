@@ -35,12 +35,12 @@ func TestPaymentMetricsFlow(t *testing.T) {
 	e.process(t, tgtest.Photo(userID))
 	wantDelta(t, "photo", photo, payments("photo"), 1)
 
-	adminMsg := e.payment(t, userID).AdminMessageID
-	e.process(t, adminPress("adm_ok:42", adminMsg))
+	id := e.pending(t, userID).ID
+	e.process(t, confirmPress(id))
 	wantDelta(t, "confirmed", confirmed, payments("confirmed"), 1)
 	wantDelta(t, "rubles", rub, rubles(), 800)
 
-	e.process(t, adminPress("adm_ok:42", adminMsg)) // повторный тап
+	e.process(t, confirmPress(id)) // повторный тап
 	wantDelta(t, "confirmed after double tap", confirmed, payments("confirmed"), 1)
 	wantDelta(t, "rubles after double tap", rub, rubles(), 800)
 	wantDelta(t, "declined", declined, payments("declined"), 0)
@@ -48,10 +48,10 @@ func TestPaymentMetricsFlow(t *testing.T) {
 
 func TestPaymentMetricsDecline(t *testing.T) {
 	e := newEnv(t)
-	inReview(t, e, now)
+	p := inReview(t, e, now)
 	declined, confirmed, rub := payments("declined"), payments("confirmed"), rubles()
 
-	e.process(t, adminPress("adm_no:42", adminMessageID))
+	e.process(t, declinePress(p.ID))
 
 	wantDelta(t, "declined", declined, payments("declined"), 1)
 	wantDelta(t, "confirmed", confirmed, payments("confirmed"), 0)

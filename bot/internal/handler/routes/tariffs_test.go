@@ -64,8 +64,8 @@ func TestBuyCreatesPendingPayment(t *testing.T) {
 	if st := e.state(t, userID); st != "await_photo" {
 		t.Fatalf("state = %q", st)
 	}
-	p := e.payment(t, userID)
-	if p.TelegramID != userID || p.Username != "42" || p.Month != 6 || p.Price != 800 || !p.SubscriptionExpireAt.Equal(now) {
+	p := e.pending(t, userID)
+	if p.TelegramID != userID || p.Username != "42" || p.Month != 6 || p.Price != 800 || !p.PrevExpireAt.Equal(now) {
 		t.Fatalf("payment = %+v", p)
 	}
 	text := e.last(t, "editMessageText").Params.Get("text")
@@ -81,8 +81,8 @@ func TestBuyExistingUserKeepsExpire(t *testing.T) {
 	expire := now.Add(10 * 24 * time.Hour)
 	e.rw.AddUser(userID, expire)
 	e.process(t, tgtest.Callback(userID, "buy:1"))
-	if p := e.payment(t, userID); !p.SubscriptionExpireAt.Equal(expire) {
-		t.Fatalf("SubscriptionExpireAt = %v, want %v", p.SubscriptionExpireAt, expire)
+	if p := e.pending(t, userID); !p.PrevExpireAt.Equal(expire) {
+		t.Fatalf("PrevExpireAt = %v, want %v", p.PrevExpireAt, expire)
 	}
 }
 
@@ -95,33 +95,56 @@ func TestBuyUnknownTariffDoesNothing(t *testing.T) {
 	if got := e.rw.ExpireAt(userID); !got.IsZero() {
 		t.Fatalf("юзер создан для невалидного тарифа: %v", got)
 	}
+	if n := len(e.pay.All()); n != 0 {
+		t.Fatalf("payments = %d", n)
+	}
 }
 
 func TestBuyCancelsPaymentInReview(t *testing.T) {
 	e := newEnv(t)
 	base := now.Add(24 * time.Hour)
-	e.rw.AddUser(userID, base.Add(24*time.Hour)) // уже выдан день проверки
-	old := model.Payment{TelegramID: userID, Username: "42", Month: 1, Price: 150, SubscriptionExpireAt: base, AdminMessageID: 77}
-	if err := fsm.Put(t.Context(), fsm.For(e.fsm, userID), "in_review", old); err != nil {
-		t.Fatalf("Put: %v", err)
-	}
+	old := inReview(t, e, base) // аванс выдан: в панели base+24h
 
-	e.process(t, tgtest.Callback(userID, "buy:6"))
+	e.process(t, tgtest.Callback(userID, "buy:1"))
 
 	if got := e.rw.ExpireAt(userID); !got.Equal(base) {
 		t.Fatalf("срок не откатился: %v, want %v", got, base)
 	}
-	p := e.payment(t, userID)
-	if e.state(t, userID) != "await_photo" || p.Month != 6 || !p.SubscriptionExpireAt.Equal(base) || p.AdminMessageID != 0 {
+	if s := e.status(t, old.ID); s != model.PaymentCancelled {
+		t.Fatalf("old status = %q", s)
+	}
+	p := e.pending(t, userID)
+	if e.state(t, userID) != "await_photo" || p.ID == old.ID || p.Month != 1 || !p.PrevExpireAt.Equal(base) || p.AdminMessageID != 0 {
 		t.Fatalf("payment = %+v", p)
 	}
 	edit := e.last(t, "editMessageReplyMarkup").Params
-	if edit.Get("chat_id") != "1" || edit.Get("message_id") != "77" {
+	if edit.Get("chat_id") != "1" || edit.Get("message_id") != "5" {
 		t.Fatalf("editMessageReplyMarkup = %v", edit)
 	}
 	reply := e.last(t, "sendMessage").Params
-	if reply.Get("chat_id") != "1" || reply.Get("text") != "Отменён пользователем" || !strings.Contains(reply.Get("reply_parameters"), `"message_id":77`) {
+	if reply.Get("chat_id") != "1" || reply.Get("text") != "Отменён пользователем" || !strings.Contains(reply.Get("reply_parameters"), `"message_id":5`) {
 		t.Fatalf("reply = %v", reply)
+	}
+}
+
+func TestBuyOverPendingWithoutAdvanceKeepsExpire(t *testing.T) {
+	e := newEnv(t)
+	e.process(t, tgtest.Callback(userID, "buy:6"))
+	first := e.pending(t, userID)
+
+	e.process(t, tgtest.Callback(userID, "buy:1"))
+
+	if n := len(e.rw.Updates()); n != 0 {
+		t.Fatalf("UpdateUser calls = %d", n)
+	}
+	if s := e.status(t, first.ID); s != model.PaymentCancelled {
+		t.Fatalf("old status = %q", s)
+	}
+	if p := e.pending(t, userID); p.Month != 1 {
+		t.Fatalf("payment = %+v", p)
+	}
+	if n := e.count("editMessageReplyMarkup") + e.count("sendMessage"); n != 0 {
+		t.Fatalf("админ-сообщение тронуто: %d", n)
 	}
 }
 
@@ -131,6 +154,9 @@ func TestBuyRemnawaveDown(t *testing.T) {
 	e.process(t, tgtest.Callback(userID, "buy:6"))
 	if st := e.state(t, userID); st != fsm.StateNone {
 		t.Fatalf("state = %q", st)
+	}
+	if n := len(e.pay.All()); n != 0 {
+		t.Fatalf("payments = %d", n)
 	}
 	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
 		t.Fatalf("text = %s", text)
@@ -142,21 +168,20 @@ func TestBuyRemnawaveDown(t *testing.T) {
 	}
 }
 
+// Review Focus 5: откат аванса старого платежа упал — ничего не меняется.
 func TestBuyCancelFailureKeepsReview(t *testing.T) {
 	e := newEnv(t)
-	base := now.Add(24 * time.Hour)
-	e.rw.AddUser(userID, base.Add(24*time.Hour))
-	old := model.Payment{TelegramID: userID, Username: "42", Month: 1, Price: 150, SubscriptionExpireAt: base, AdminMessageID: 77}
-	putPayment(t, e, "in_review", old)
+	old := inReview(t, e, now.Add(24*time.Hour))
 	e.rw.FailUpdateWith(errors.New("panel is down"))
 
-	e.process(t, tgtest.Callback(userID, "buy:6"))
+	e.process(t, tgtest.Callback(userID, "buy:1"))
 
 	if st := e.state(t, userID); st != "in_review" {
 		t.Fatalf("state = %q", st)
 	}
-	if p := e.payment(t, userID); p.Month != 1 || p.AdminMessageID != 77 {
-		t.Fatalf("payment = %+v", p)
+	all := e.pay.All()
+	if len(all) != 1 || all[0].ID != old.ID || all[0].Status != model.PaymentPending {
+		t.Fatalf("payments = %+v", all)
 	}
 	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
 		t.Fatalf("text = %s", text)
@@ -164,4 +189,5 @@ func TestBuyCancelFailureKeepsReview(t *testing.T) {
 	if n := e.count("editMessageReplyMarkup"); n != 0 {
 		t.Fatalf("админ-сообщение тронуто: %d", n)
 	}
+	tgtest.FindLog(t, e.log, "failed to create payment")
 }

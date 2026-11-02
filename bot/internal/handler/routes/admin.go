@@ -38,9 +38,9 @@ func removeKeyboard(ctx context.Context, b *bot.Bot, chatID int64, messageID int
 	}
 }
 
-func (h *handlers) reviewKeyboard(telegramID int64) *models.InlineKeyboardMarkup {
+func (h *handlers) reviewKeyboard(paymentID int64) *models.InlineKeyboardMarkup {
 	return keyboard.Inline(keyboard.Row(
-		keyboard.Callback("Подтвердить", confirmRoute.Data(telegramID)).Style(keyboard.StyleSuccess),
-		keyboard.Callback("Отклонить", declineRoute.Data(telegramID)).Style(keyboard.StyleDanger),
+		keyboard.Callback("Подтвердить", confirmRoute.Data(paymentID)).Style(keyboard.StyleSuccess),
+		keyboard.Callback("Отклонить", declineRoute.Data(paymentID)).Style(keyboard.StyleDanger),
 	))
 }
