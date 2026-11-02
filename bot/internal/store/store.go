@@ -67,9 +67,6 @@ func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 func (s *Store) Close() { s.pool.Close() }
 
-// ponytail: пока без вызовов, используется методами платежей следующих задач.
-//
-//nolint:unused
 func (s *Store) tx(ctx context.Context, fn func(pgx.Tx) error) error {
 	return pgx.BeginFunc(ctx, s.pool, fn)
 }
