@@ -9,6 +9,13 @@ tasks:
       - for: { var: MODULES }
         cmd: go -C {{.ITEM}} test ./...
 
+  test:db:
+    desc: SQL-тесты store на dev-Postgres (task up)
+    cmds:
+      - >-
+        TEST_DATABASE_URL={{.TEST_DATABASE_URL | default "postgres://bruhanet:bruhanet@localhost:5432/bruhanet?sslmode=disable"}}
+        go -C bot test -race ./internal/store/...
+
   cover:
     desc: Тесты с покрытием (coverage.out в каждом модуле)
     cmds:

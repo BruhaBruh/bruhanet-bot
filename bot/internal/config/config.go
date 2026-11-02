@@ -7,6 +7,7 @@ type Config struct {
 	Telegram      TelegramConfig
 	Remnawave     RemnawaveConfig
 	Redis         RedisConfig
+	Database      DatabaseConfig
 	Notification  NotificationConfig
 	Observability ObservabilityConfig
 }

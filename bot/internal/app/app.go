@@ -17,6 +17,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
+	"github.com/bruhabruh/bruhanet/bot/internal/store"
 	"github.com/bruhabruh/bruhanet/pkg/app"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/lifecycle"
@@ -34,6 +35,15 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		DB:       config.Redis.Database,
 		Password: config.Redis.Password,
 	})
+
+	st, err := store.Open(context.Background(), config.Database.URL)
+	if err != nil {
+		return nil, err
+	}
+	if err = st.Migrate(context.Background()); err != nil {
+		st.Close()
+		return nil, err
+	}
 
 	rw, err := remnawave.New(
 		config.Remnawave.PanelURL,
@@ -86,6 +96,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	// Проверки зависимостей: WithProbe выключает спаны и bot_external_* для проб (иначе 30с-проба плодит мусорные трейсы).
 	ready := observability.NewReadiness(map[string]observability.Check{
 		"redis":    func(ctx context.Context) error { return rdb.Ping(observability.WithProbe(ctx)).Err() },
+		"postgres": func(ctx context.Context) error { return st.Ping(observability.WithProbe(ctx)) },
 		"telegram": func(ctx context.Context) error { _, err := b.GetMe(observability.WithProbe(ctx)); return err },
 		"remnawave": func(ctx context.Context) error {
 			// 401/403/5xx/сеть — ошибка; «юзер не найден» — панель жива.
@@ -134,6 +145,14 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 			},
 			func(context.Context) error {
 				return rdb.Close()
+			},
+		)),
+		// перед bot: останавливается после него, когда хендлеры уже дренированы
+		app.WithComponent("postgres", lifecycle.New(
+			func(context.Context) error { return nil },
+			func(context.Context) error {
+				st.Close()
+				return nil
 			},
 		)),
 		app.WithComponent("bot", lifecycle.New(
