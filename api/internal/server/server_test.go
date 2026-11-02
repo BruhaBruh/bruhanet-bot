@@ -11,8 +11,11 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/Jolymmiles/remnawave-api-go/v3/api"
+
 	"github.com/bruhabruh/bruhanet/api/internal/server"
 	"github.com/bruhabruh/bruhanet/core/auth"
+	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/store"
 )
 
@@ -27,6 +30,13 @@ type fakeStore struct {
 	mu       sync.Mutex
 	tokens   map[string]time.Time // hash → expires_at; удалённый = использованный
 	sessions map[string]session
+
+	users    []model.UserSummary
+	payments []model.Payment // по возрастанию id
+	revenue  int
+	lastQ    string
+	lastF    model.PaymentFilter
+	lastRev  [2]time.Time
 }
 
 type session struct {
@@ -106,9 +116,15 @@ func (f *fakeStore) DeleteSession(_ context.Context, hash []byte) error {
 
 func newServer(t *testing.T, baseURL string) (http.Handler, *fakeStore) {
 	t.Helper()
+	return newServerPanel(t, baseURL, &fakePanel{})
+}
+
+func newServerPanel(t *testing.T, baseURL string, panel server.Panel) (http.Handler, *fakeStore) {
+	t.Helper()
 	st := newFakeStore()
 	h := server.New(server.Deps{
 		Store:   st,
+		Panel:   panel,
 		AdminID: adminID,
 		BaseURL: baseURL,
 		Now:     func() time.Time { return now },
@@ -215,3 +231,51 @@ func TestLogout(t *testing.T) {
 		t.Fatalf("me after logout: %d", w.Code)
 	}
 }
+
+func (f *fakeStore) SearchUsers(_ context.Context, q string, limit int) ([]model.UserSummary, error) {
+	f.lastQ = q
+	if len(f.users) > limit {
+		return f.users[:limit], nil
+	}
+	return f.users, nil
+}
+
+func (f *fakeStore) UserByID(_ context.Context, id int64) (model.UserSummary, error) {
+	for _, u := range f.users {
+		if u.TelegramID == id {
+			return u, nil
+		}
+	}
+	return model.UserSummary{}, store.ErrNotFound
+}
+
+func (f *fakeStore) PaymentsByUser(_ context.Context, id int64) ([]model.Payment, error) {
+	out := []model.Payment{}
+	for i := len(f.payments) - 1; i >= 0; i-- {
+		if f.payments[i].TelegramID == id {
+			out = append(out, f.payments[i])
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) UserStats(_ context.Context, id, _ int64) (model.UserStats, error) {
+	return model.UserStats{Confirmed: 1, ConfirmedSum: 150}, nil
+}
+
+func (f *fakeStore) ListPayments(_ context.Context, fl model.PaymentFilter) ([]model.Payment, int, error) {
+	f.lastF = fl
+	return f.payments, len(f.payments), nil
+}
+
+func (f *fakeStore) Revenue(_ context.Context, from, to time.Time) (int, error) {
+	f.lastRev = [2]time.Time{from, to}
+	return f.revenue, nil
+}
+
+type fakePanel struct {
+	user *api.UserItemInfo
+	err  error
+}
+
+func (p *fakePanel) GetUser(context.Context, int64) (*api.UserItemInfo, error) { return p.user, p.err }

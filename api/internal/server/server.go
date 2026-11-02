@@ -11,6 +11,8 @@ import (
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/bruhabruh/bruhanet/core/model"
 )
 
 // Store — методы core/store, которыми пользуется api.
@@ -19,6 +21,12 @@ type Store interface {
 	CreateSession(ctx context.Context, hash []byte, telegramID int64, expiresAt time.Time) error
 	SessionTelegramID(ctx context.Context, hash []byte, now time.Time) (int64, error)
 	DeleteSession(ctx context.Context, hash []byte) error
+	SearchUsers(ctx context.Context, q string, limit int) ([]model.UserSummary, error)
+	UserByID(ctx context.Context, id int64) (model.UserSummary, error)
+	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
+	PaymentsByUser(ctx context.Context, id int64) ([]model.Payment, error)
+	ListPayments(ctx context.Context, f model.PaymentFilter) ([]model.Payment, int, error)
+	Revenue(ctx context.Context, from, to time.Time) (int, error)
 }
 
 // Panel — Remnawave (pkg/remnawave).
@@ -52,6 +60,9 @@ func New(d Deps) http.Handler {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /api/me", s.me)
 	apiMux.HandleFunc("POST /api/logout", s.logout)
+	apiMux.HandleFunc("GET /api/users", s.users)
+	apiMux.HandleFunc("GET /api/users/{id}", s.userCard)
+	apiMux.HandleFunc("GET /api/payments", s.payments)
 	apiMux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
