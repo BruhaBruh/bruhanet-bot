@@ -15,7 +15,7 @@ func TestInfoActiveUser(t *testing.T) {
 	e.process(t, tgtest.Callback(userID, "info"))
 	p := e.last(t, "editMessageText").Params
 	text := p.Get("text")
-	for _, want := range []string{"Активна", "0 Б из ∞", `10 февраля 2026 г\. в 15:00, MSK`, "42"} {
+	for _, want := range []string{"Активна", "0 Б из ∞", "10 февраля 2026 г. в 15:00, MSK", "42"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("text без %q: %s", want, text)
 		}

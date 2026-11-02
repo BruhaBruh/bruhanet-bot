@@ -2,6 +2,7 @@ package routes
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -57,6 +58,7 @@ func pluralPeople(n int) string {
 	return "человек"
 }
 
-func tariffTitle(month, price int) string {
-	return fmt.Sprintf("%d %s за %d ₽", month, pluralMonths(month), price)
+// tariffVars — переменные months («3 месяца») и price для текстов о тарифе.
+func tariffVars(month, price int) map[string]string {
+	return map[string]string{"months": fmt.Sprintf("%d %s", month, pluralMonths(month)), "price": strconv.Itoa(price)}
 }

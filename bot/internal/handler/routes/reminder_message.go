@@ -1,29 +1,23 @@
 package routes
 
 import (
+	"context"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 )
 
-// ReminderMessage — текст и клавиатура напоминания; kind "day" — за сутки, иначе — за неделю.
-func ReminderMessage(kind string, expireAt time.Time, subURL string) (string, *models.InlineKeyboardMarkup) {
-	text := "Ваша подписка скоро закончится"
+// ReminderMessage — текст (HTML) и клавиатура напоминания; kind "day" — за сутки, иначе — за неделю.
+func ReminderMessage(ctx context.Context, c *content.Provider, kind string, expireAt time.Time, subURL string) (string, *models.InlineKeyboardMarkup) {
+	key := "reminder.week"
 	if kind == "day" {
-		text = "Ваша подписка закончится в течение суток"
+		key = "reminder.day"
 	}
-	return buildMessage(
-			"*Уведомление об окончании подписки*",
-			"",
-			text,
-			"",
-			"*Дата окончания подписки*",
-			bot.EscapeMarkdown(formatTime(expireAt)),
-		), keyboard.Inline(keyboard.Row(
-			keyboard.Callback("Продлить", routePay).Style(keyboard.StyleSuccess),
-			keyboard.Copy("Подписка", subURL).Style(keyboard.StylePrimary),
-		))
+	return c.Text(ctx, key, map[string]string{"expireAt": formatTime(expireAt)}), keyboard.Inline(keyboard.Row(
+		keyboard.Callback(c.Button(ctx, "button.renew"), routePay).Style(keyboard.StyleSuccess),
+		keyboard.Copy(c.Button(ctx, "button.subscription"), subURL).Style(keyboard.StylePrimary),
+	))
 }

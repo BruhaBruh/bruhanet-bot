@@ -17,11 +17,13 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/routes"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
+	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/app"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
@@ -29,6 +31,8 @@ import (
 	"github.com/bruhabruh/bruhanet/pkg/remnawave"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
+
+const contentTTL = 10 * time.Second
 
 func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	fatal := make(chan error, 1)
@@ -81,7 +85,9 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 
 	var inflight sync.WaitGroup
 
-	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight, Remnawave: rwObs, Payments: st})
+	// env PAYMENT_*/SUPPORT_URL — значения по умолчанию, правки из админки доходят за contentTTL
+	cnt := content.New(st, settings.Defaults(config.Payment.Prices, config.Payment.Phone, config.Payment.Bank, config.Support.URL), contentTTL, nil)
+	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight, Remnawave: rwObs, Payments: st, Content: cnt})
 	if err != nil {
 		return nil, errors.Join(
 			errors.New("failed to create telegram bot"),
@@ -110,8 +116,8 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		return nil, errors.Join(errors.New("failed to register outbox gauge"), err)
 	}
 
-	rem := reminder.New(rwObs, st, func(k reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
-		return routes.ReminderMessage(string(k), exp, sub)
+	rem := reminder.New(rwObs, st, func(ctx context.Context, k reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
+		return routes.ReminderMessage(ctx, cnt, string(k), exp, sub)
 	}, rdb, nil)
 	cl := cronLogger(logger)
 	c := cron.New(

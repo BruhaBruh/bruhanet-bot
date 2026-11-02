@@ -135,9 +135,14 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 			c = &counts{}
 		}
 		// ponytail: счётчики в памяти, после рестарта посреди рассылки итог неполный; поле-счётчик в БД, если станет важно.
+		// строки до перехода на HTML лежат с MarkdownV2 — текст под их parse_mode
+		format := "Разослано: <b>%d</b>, не доставлено: <b>%d</b>"
+		if it.ParseMode == string(models.ParseModeMarkdown) {
+			format = "Разослано: *%d*, не доставлено: *%d*"
+		}
 		_, err := w.b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: it.ChatID, ParseMode: models.ParseMode(it.ParseMode),
-			Text: fmt.Sprintf("Разослано: *%d*, не доставлено: *%d*", c.sent, c.failed),
+			Text: fmt.Sprintf(format, c.sent, c.failed),
 		})
 		return err
 	case it.MessageID != 0:

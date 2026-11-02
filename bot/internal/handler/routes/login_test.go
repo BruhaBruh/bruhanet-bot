@@ -17,7 +17,7 @@ func TestLoginAdmin(t *testing.T) {
 		t.Fatalf("tokens = %+v", toks)
 	}
 	p := e.last(t, "sendMessage").Params
-	if want := "*Вход в админку*\n\nСсылка одноразовая, действует 5 минут"; p.Get("chat_id") != "1" || p.Get("text") != want {
+	if want := "<b>Вход в админку</b>\n\nСсылка одноразовая, действует 5 минут"; p.Get("chat_id") != "1" || p.Get("text") != want {
 		t.Fatalf("params = %v", p)
 	}
 	if kb := p.Get("reply_markup"); !strings.Contains(kb, `"url":"http://localhost:5173/auth?token=`) {
@@ -55,8 +55,8 @@ func TestLoginURLRejectedFallsBackToText(t *testing.T) {
 	// ссылка на localhost не кликабельна в Telegram: моноширинный блок копируется тапом
 	text := p.Get("text")
 	if p.Get("reply_markup") != "" ||
-		!strings.HasPrefix(text, "*Вход в админку*\n\nСсылка одноразовая, действует 5 минут\n\n`http://localhost:5173/auth?token=") ||
-		!strings.HasSuffix(text, "`\n\nНажми на ссылку, чтобы скопировать, и открой в браузере") {
+		!strings.HasPrefix(text, "<b>Вход в админку</b>\n\nСсылка одноразовая, действует 5 минут\n\n<code>http://localhost:5173/auth?token=") ||
+		!strings.HasSuffix(text, "</code>\n\nНажми на ссылку, чтобы скопировать, и открой в браузере") {
 		t.Fatalf("fallback text = %q", text)
 	}
 	if lp := p.Get("link_preview_options"); !strings.Contains(lp, `"is_disabled":true`) {

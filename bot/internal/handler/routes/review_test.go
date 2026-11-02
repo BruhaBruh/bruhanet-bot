@@ -127,8 +127,8 @@ func TestConfirmQueuesNotice(t *testing.T) {
 		press func(int64) *models.Update
 		text  string
 	}{
-		{"confirm", confirmPress, "*Администратор подтвердил ваш платеж*\n\nВаша подписка была изменена"},
-		{"decline", declinePress, "*Администратор отклонил ваш платеж*\n\nВаша подписка была изменена на изначальную"},
+		{"confirm", confirmPress, "<b>Администратор подтвердил ваш платеж</b>\n\nВаша подписка была изменена"},
+		{"decline", declinePress, "<b>Администратор отклонил ваш платеж</b>\n\nВаша подписка была изменена на изначальную"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -147,7 +147,7 @@ func TestConfirmQueuesNotice(t *testing.T) {
 			}
 			m := out[0]
 			if m.EventType != "payment_result" || m.ChatID != userID || m.Text != tc.text ||
-				m.ParseMode != string(models.ParseModeMarkdown) || m.Keyboard == nil {
+				m.ParseMode != string(models.ParseModeHTML) || m.Keyboard == nil {
 				t.Fatalf("outbox message = %+v", m)
 			}
 		})

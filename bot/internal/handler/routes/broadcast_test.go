@@ -40,7 +40,7 @@ func TestBroadcastFlow(t *testing.T) {
 	if p.Get("chat_id") != "1" || p.Get("from_chat_id") != "1" || p.Get("message_id") != "10" {
 		t.Fatalf("preview copy = %v", p)
 	}
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "*2*") {
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "<b>2</b>") {
 		t.Fatalf("text = %s", text)
 	}
 
@@ -51,7 +51,7 @@ func TestBroadcastFlow(t *testing.T) {
 	if st := e.state(t, adminID); st != "" {
 		t.Fatalf("state = %q", st)
 	}
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Рассылка поставлена в очередь: *2*") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Рассылка поставлена в очередь: <b>2</b>") {
 		t.Fatalf("text = %s", text)
 	}
 }
@@ -175,7 +175,7 @@ func TestBroadcastDedupesTelegramIDs(t *testing.T) {
 
 	e.process(t, tgtest.Message(adminID, "/a"))
 	e.process(t, tgtest.Message(adminID, "Привет"))
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "*1*") {
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "<b>1</b>") {
 		t.Fatalf("preview = %s", text)
 	}
 	e.process(t, tgtest.Callback(adminID, "bc_send"))

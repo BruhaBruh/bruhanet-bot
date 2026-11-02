@@ -50,17 +50,20 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 	if err == nil {
 		kb = h.mainKeyboard(ctx, cur.TelegramID)
 	}
+	// текст — до транзакции: рендер может сходить в БД за текстами
+	text := h.c.Text(ctx, "payment.declined", nil)
+	if approve {
+		text = h.c.Text(ctx, "payment.confirmed", nil)
+	}
 	var p model.Payment
 	if err == nil {
 		p, err = h.pay.ResolvePayment(ctx, id, status, at, func(p model.Payment) (model.OutboxMessage, error) {
 			expireAt := p.PrevExpireAt
-			rows := []string{"*Администратор отклонил ваш платеж*", "", "Ваша подписка была изменена на изначальную"}
 			if approve {
 				if at.After(expireAt) {
 					expireAt = at
 				}
 				expireAt = expireAt.Add(time.Duration(p.Month) * monthDuration)
-				rows = []string{"*Администратор подтвердил ваш платеж*", "", "Ваша подписка была изменена"}
 			}
 			if _, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, expireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
 				return model.OutboxMessage{}, err
@@ -68,8 +71,8 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 			return model.OutboxMessage{
 				EventType: "payment_result",
 				ChatID:    p.TelegramID,
-				Text:      buildMessage(rows...),
-				ParseMode: string(models.ParseModeMarkdown),
+				Text:      text,
+				ParseMode: string(models.ParseModeHTML),
 				Keyboard:  kb,
 			}, nil
 		})

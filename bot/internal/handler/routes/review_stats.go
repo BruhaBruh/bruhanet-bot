@@ -2,17 +2,16 @@ package routes
 
 import (
 	"fmt"
+	"html"
 	"strconv"
-
-	"github.com/go-telegram/bot"
 
 	"github.com/bruhabruh/bruhanet/core/model"
 )
 
-// formatStats — блок статистики юзера в сообщении проверки; строки уже экранированы для MarkdownV2.
+// formatStats — блок статистики юзера в сообщении проверки; строки уже экранированы для HTML.
 func formatStats(s model.UserStats) []string {
 	if !s.HasHistory {
-		return []string{bot.EscapeMarkdown("🆕 первая оплата")}
+		return []string{"🆕 первая оплата"}
 	}
 	paid := fmt.Sprintf("📊 Оплат: %d на %s ₽", s.Confirmed, groupThousands(s.ConfirmedSum))
 	if s.Confirmed > 0 && s.LastConfirmedAt != nil {
@@ -27,7 +26,7 @@ func formatStats(s model.UserStats) []string {
 		rows = append(rows, "🕐 Клиент с "+s.FirstConfirmedAt.In(moscow).Format("01.2006"))
 	}
 	for i, r := range rows {
-		rows[i] = bot.EscapeMarkdown(r)
+		rows[i] = html.EscapeString(r)
 	}
 	return rows
 }

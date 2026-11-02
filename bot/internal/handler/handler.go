@@ -10,6 +10,7 @@ import (
 	"github.com/go-telegram/bot"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/router"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/routes"
@@ -23,16 +24,17 @@ type Deps struct {
 	InFlight  *sync.WaitGroup
 	Remnawave routes.Remnawave
 	Payments  routes.Payments
+	Content   *content.Provider
 	// Now — источник времени; nil = time.Now (подменяется в тестах).
 	Now func() time.Time
 }
 
 func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option) (*bot.Bot, error) {
-	if deps.FSM == nil || deps.InFlight == nil || deps.Remnawave == nil || deps.Payments == nil {
-		return nil, errors.New("handler: deps.FSM, deps.InFlight, deps.Remnawave and deps.Payments are required")
+	if deps.FSM == nil || deps.InFlight == nil || deps.Remnawave == nil || deps.Payments == nil || deps.Content == nil {
+		return nil, errors.New("handler: deps.FSM, deps.InFlight, deps.Remnawave, deps.Payments and deps.Content are required")
 	}
 	r := router.New()
-	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Payments: deps.Payments, Now: deps.Now})
+	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Payments: deps.Payments, Content: deps.Content, Now: deps.Now})
 
 	options := append([]bot.Option{
 		// pollTimeout и Timeout клиента — как у go-telegram по умолчанию (1 минута)

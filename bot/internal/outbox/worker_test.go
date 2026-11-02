@@ -80,6 +80,7 @@ func count(event, result string) float64 {
 	return testutil.ToFloat64(observability.OutboxMessages.WithLabelValues(event, result))
 }
 
+// Review Focus 5: строка, поставленная до перехода на HTML (MarkdownV2), уходит как есть.
 func TestWorkerSendsAndDeletes(t *testing.T) {
 	srv, q, w := setup(t)
 	before := count("reminder", "sent")
@@ -160,22 +161,30 @@ func TestWorkerGivesUp(t *testing.T) {
 	}
 }
 
+// Итог рассылки: новые строки — HTML, лежащие с прошлого деплоя (MarkdownV2) — в своей разметке.
 func TestWorkerBroadcastSummary(t *testing.T) {
-	srv, q, w := setup(t)
-	srv.FailChat(8, 403, "Forbidden")
-	q.add(
-		model.OutboxMessage{EventType: "broadcast", ChatID: 7, FromChatID: 1, MessageID: 2, Broadcast: "u"},
-		model.OutboxMessage{EventType: "broadcast", ChatID: 8, FromChatID: 1, MessageID: 2, Broadcast: "u"},
-		model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, ParseMode: "MarkdownV2", Broadcast: "u"},
-	)
-	drain(t, w, q)
-	calls := srv.Calls("sendMessage")
-	if len(calls) != 1 || calls[0].Params.Get("chat_id") != "1" ||
-		calls[0].Params.Get("text") != "Разослано: *1*, не доставлено: *1*" {
-		t.Fatalf("calls: %+v", calls)
-	}
-	if len(w.stats) != 0 {
-		t.Fatal("stats not cleaned")
+	for mode, want := range map[string]string{
+		"HTML":       "Разослано: <b>1</b>, не доставлено: <b>1</b>",
+		"MarkdownV2": "Разослано: *1*, не доставлено: *1*",
+	} {
+		t.Run(mode, func(t *testing.T) {
+			srv, q, w := setup(t)
+			srv.FailChat(8, 403, "Forbidden")
+			q.add(
+				model.OutboxMessage{EventType: "broadcast", ChatID: 7, FromChatID: 1, MessageID: 2, Broadcast: "u"},
+				model.OutboxMessage{EventType: "broadcast", ChatID: 8, FromChatID: 1, MessageID: 2, Broadcast: "u"},
+				model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, ParseMode: mode, Broadcast: "u"},
+			)
+			drain(t, w, q)
+			calls := srv.Calls("sendMessage")
+			if len(calls) != 1 || calls[0].Params.Get("chat_id") != "1" ||
+				calls[0].Params.Get("text") != want || calls[0].Params.Get("parse_mode") != mode {
+				t.Fatalf("calls: %+v", calls)
+			}
+			if len(w.stats) != 0 {
+				t.Fatal("stats not cleaned")
+			}
+		})
 	}
 }
 

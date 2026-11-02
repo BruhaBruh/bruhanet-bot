@@ -69,7 +69,7 @@ func TestBuyCreatesPendingPayment(t *testing.T) {
 		t.Fatalf("payment = %+v", p)
 	}
 	text := e.last(t, "editMessageText").Params.Get("text")
-	for _, want := range []string{"800 ₽", `\+7 \(800\) 555\-35\-35`, `Т\-Банк`, "`На кофе`", "фото платежа"} {
+	for _, want := range []string{"<b>800 ₽</b>", "<code>+7 (800) 555-35-35</code>", "<b>Т-Банк</b>", "- <code>На кофе</code>\n- <code>Перекус</code>", "фото платежа"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("реквизиты без %q: %s", want, text)
 		}

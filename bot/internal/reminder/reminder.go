@@ -35,8 +35,8 @@ type Enqueuer interface {
 	Enqueue(ctx context.Context, m model.OutboxMessage) error
 }
 
-// Render строит текст (MarkdownV2) и клавиатуру напоминания.
-type Render func(kind Kind, expireAt time.Time, subURL string) (string, *models.InlineKeyboardMarkup)
+// Render строит текст (HTML) и клавиатуру напоминания.
+type Render func(ctx context.Context, kind Kind, expireAt time.Time, subURL string) (string, *models.InlineKeyboardMarkup)
 
 type Users interface {
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
@@ -95,9 +95,9 @@ func (r *Reminder) remind(ctx context.Context, u api.UserItemInfo, id int64, kin
 	if !fresh {
 		return
 	}
-	text, kb := r.render(kind, u.ExpireAt, u.SubscriptionUrl)
+	text, kb := r.render(ctx, kind, u.ExpireAt, u.SubscriptionUrl)
 	err = r.q.Enqueue(ctx, model.OutboxMessage{
-		EventType: "reminder", ChatID: id, Text: text, ParseMode: string(models.ParseModeMarkdown), Keyboard: kb,
+		EventType: "reminder", ChatID: id, Text: text, ParseMode: string(models.ParseModeHTML), Keyboard: kb,
 	})
 	if err != nil {
 		if delErr := r.rdb.Del(context.WithoutCancel(ctx), key).Err(); delErr != nil {

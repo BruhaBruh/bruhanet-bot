@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/router"
 	"github.com/bruhabruh/bruhanet/core/model"
@@ -54,6 +55,8 @@ type Deps struct {
 	FSM       fsm.Storage
 	Remnawave Remnawave
 	Payments  Payments
+	// Content — тексты юзеру и настройки (тарифы, реквизиты, поддержка); cfg.Payment/cfg.Support тут не читаются.
+	Content *content.Provider
 	// Now — источник времени; nil = time.Now.
 	Now func() time.Time
 }
@@ -63,6 +66,7 @@ type handlers struct {
 	rw  Remnawave
 	pay Payments
 	fsm fsm.Storage
+	c   *content.Provider
 	now func() time.Time
 }
 
@@ -72,7 +76,7 @@ func Register(r *router.Router, d Deps) {
 	if now == nil {
 		now = time.Now
 	}
-	h := &handlers{cfg: d.Config, fsm: d.FSM, rw: d.Remnawave, pay: d.Payments, now: now}
+	h := &handlers{cfg: d.Config, fsm: d.FSM, rw: d.Remnawave, pay: d.Payments, c: d.Content, now: now}
 	r.Callback(routeMenu, h.start)
 	r.Callback(routeInfo, h.info)
 	r.Callback(routePay, h.tariffs)

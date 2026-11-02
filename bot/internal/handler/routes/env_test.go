@@ -11,10 +11,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	coreconfig "github.com/bruhabruh/bruhanet/core/config"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 
@@ -31,6 +33,7 @@ type env struct {
 	rw  *tgtest.Remnawave
 	fsm fsm.Storage
 	pay *tgtest.Payments
+	src *tgtest.Source
 	log *bytes.Buffer
 }
 
@@ -47,6 +50,7 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 		rw:  tgtest.NewRemnawave(func() time.Time { return now }),
 		fsm: store,
 		pay: tgtest.NewPayments(),
+		src: &tgtest.Source{},
 		log: buf,
 	}
 	cfg := &config.Config{
@@ -65,7 +69,10 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 		InFlight:  &sync.WaitGroup{},
 		Remnawave: e.rw,
 		Payments:  e.pay,
-		Now:       func() time.Time { return now },
+		// ttl 0 — каждое обращение перечитывает source, правка в тесте видна сразу
+		Content: content.New(e.src, settings.Defaults(cfg.Payment.Prices, cfg.Payment.Phone, cfg.Payment.Bank, cfg.Support.URL), 0,
+			func() time.Time { return now }),
+		Now: func() time.Time { return now },
 	}, e.srv.Options()...)
 	if err != nil {
 		t.Fatalf("handler.New: %v", err)

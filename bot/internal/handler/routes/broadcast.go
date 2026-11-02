@@ -92,7 +92,7 @@ func (h *handlers) broadcastMessage(ctx context.Context, b *bot.Bot, u *models.U
 	send(ctx, b, h.cfg.Telegram.AdminID, keyboard.Inline(keyboard.Row(
 		keyboard.Callback("Отправить", routeBroadcastSend).Style(keyboard.StyleSuccess),
 		broadcastCancelButton(),
-	)), "Так увидят *"+strconv.Itoa(len(ids))+"* "+pluralPeople(len(ids))+"\\. Отправить?")
+	)), "Так увидят <b>"+strconv.Itoa(len(ids))+"</b> "+pluralPeople(len(ids))+". Отправить?")
 }
 
 func copyMessage(ctx context.Context, b *bot.Bot, to int64, bc model.Broadcast) error {
@@ -128,7 +128,7 @@ func (h *handlers) broadcastSend(ctx context.Context, b *bot.Bot, u *models.Upda
 		ms = append(ms, model.OutboxMessage{EventType: "broadcast", ChatID: to, FromChatID: bc.ChatID, MessageID: bc.MessageID, Broadcast: id})
 	}
 	ms = append(ms, model.OutboxMessage{
-		EventType: "broadcast_summary", ChatID: h.cfg.Telegram.AdminID, ParseMode: string(models.ParseModeMarkdown), Broadcast: id,
+		EventType: "broadcast_summary", ChatID: h.cfg.Telegram.AdminID, ParseMode: string(models.ParseModeHTML), Broadcast: id,
 	})
 	if err = h.pay.EnqueueMany(ctx, ms); err != nil {
 		stlog.Error(ctx, "failed to enqueue broadcast", "error", err)
@@ -139,7 +139,7 @@ func (h *handlers) broadcastSend(ctx context.Context, b *bot.Bot, u *models.Upda
 	observability.Broadcasts.Inc()
 	stlog.Info(ctx, "broadcast queued", "recipients", len(ids), "broadcast", id)
 	middleware.Answer(ctx, b, u, "Рассылка запущена")
-	show(ctx, b, u, nil, "Рассылка поставлена в очередь: *"+strconv.Itoa(len(ids))+"* "+pluralPeople(len(ids)))
+	show(ctx, b, u, nil, "Рассылка поставлена в очередь: <b>"+strconv.Itoa(len(ids))+"</b> "+pluralPeople(len(ids)))
 }
 
 // broadcastRestore возвращает рассылку на подтверждение, чтобы админ мог нажать «Отправить» ещё раз.

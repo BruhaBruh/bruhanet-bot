@@ -2,10 +2,11 @@ package routes
 
 import (
 	"context"
-	"fmt"
+	"html"
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -25,50 +26,45 @@ var (
 )
 
 func (h *handlers) tariffs(ctx context.Context, b *bot.Bot, u *models.Update) {
-	show(ctx, b, u, h.tariffKeyboard(), "*Выбор тарифа*", "", "Выберите тариф")
+	show(ctx, b, u, h.tariffKeyboard(ctx), h.c.Text(ctx, "payment.tariffs", nil))
 }
 
-func (h *handlers) tariffKeyboard() *models.InlineKeyboardMarkup {
-	months := slices.Sorted(maps.Keys(h.cfg.Payment.Prices))
+func (h *handlers) tariffKeyboard(ctx context.Context) *models.InlineKeyboardMarkup {
+	prices := h.c.Settings(ctx).Prices
+	months := slices.Sorted(maps.Keys(prices))
 	buttons := make([]keyboard.Button, 0, len(months))
 	for _, m := range months {
-		buttons = append(buttons, keyboard.Callback(tariffTitle(m, h.cfg.Payment.Prices[m]), priceRoute.Data(m)))
+		buttons = append(buttons, keyboard.Callback(h.c.Text(ctx, "button.tariff", tariffVars(m, prices[m])), priceRoute.Data(m)))
 	}
 	rows := keyboard.Grid(2, buttons...)
-	rows = append(rows, keyboard.Row(keyboard.Callback("Назад", routeMenu)))
+	rows = append(rows, keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.back"), routeMenu)))
 	return keyboard.Inline(rows...)
 }
 
-// tariff разбирает месяц из callback и проверяет, что такой тариф есть: data подделывается клиентом.
-func (h *handlers) tariff(route callback.Route[int], u *models.Update) (month, price int, ok bool) {
+// tariff разбирает месяц из callback и проверяет, что такой тариф есть в текущих настройках: data подделывается клиентом.
+func (h *handlers) tariff(ctx context.Context, route callback.Route[int], u *models.Update) (month, price int, ok bool) {
 	month, err := route.Parse(u.CallbackQuery.Data)
 	if err != nil {
 		return 0, 0, false
 	}
-	price, ok = h.cfg.Payment.Prices[month]
+	price, ok = h.c.Settings(ctx).Prices[month]
 	return month, price, ok
 }
 
 func (h *handlers) price(ctx context.Context, b *bot.Bot, u *models.Update) {
-	month, price, ok := h.tariff(priceRoute, u)
+	month, price, ok := h.tariff(ctx, priceRoute, u)
 	if !ok {
 		h.tariffs(ctx, b, u)
 		return
 	}
 	show(ctx, b, u, keyboard.Inline(keyboard.Row(
-		keyboard.Callback("Да", buyRoute.Data(month)).Style(keyboard.StyleSuccess),
-		keyboard.Callback("Нет", routePay).Style(keyboard.StyleDanger),
-	)),
-		"*Выбор тарифа*",
-		"",
-		fmt.Sprintf("Вы выбрали тариф на *%d %s* за *%d ₽*", month, pluralMonths(month), price),
-		"",
-		"Верно?",
-	)
+		keyboard.Callback(h.c.Button(ctx, "button.yes"), buyRoute.Data(month)).Style(keyboard.StyleSuccess),
+		keyboard.Callback(h.c.Button(ctx, "button.no"), routePay).Style(keyboard.StyleDanger),
+	)), h.c.Text(ctx, "payment.confirm", tariffVars(month, price)))
 }
 
 func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
-	month, price, ok := h.tariff(buyRoute, u)
+	month, price, ok := h.tariff(ctx, buyRoute, u)
 	if !ok {
 		h.tariffs(ctx, b, u)
 		return
@@ -111,17 +107,19 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	observability.Payments.WithLabelValues("started", strconv.Itoa(month)).Inc()
 
-	show(ctx, b, u, nil,
-		fmt.Sprintf("*Оплата тарифа на %d %s за %d ₽*", month, pluralMonths(month), price),
-		"",
-		"*Для оплаты*",
-		fmt.Sprintf("Переведите *%d ₽*", price),
-		fmt.Sprintf("на номер `%s` в *%s*", bot.EscapeMarkdown(h.cfg.Payment.Phone), bot.EscapeMarkdown(h.cfg.Payment.Bank)),
-		"с одним из комментариев:",
-		"\\- `На кофе`",
-		"\\- `Перекус`",
-		"\\- `Одолжил`",
-		"\\- `Вернул долг`",
-		"и отправьте в чат фото платежа",
-	)
+	set := h.c.Settings(ctx)
+	vars := tariffVars(month, price)
+	vars["phone"] = set.Phone
+	vars["bank"] = set.Bank
+	vars["comments"] = commentsHTML(set.Comments)
+	show(ctx, b, u, nil, h.c.Text(ctx, "payment.requisites", vars))
+}
+
+// commentsHTML — Raw-переменная comments: строка «- <code>…</code>» на комментарий.
+func commentsHTML(comments []string) string {
+	rows := make([]string, len(comments))
+	for i, c := range comments {
+		rows[i] = "- <code>" + html.EscapeString(c) + "</code>"
+	}
+	return strings.Join(rows, "\n")
 }

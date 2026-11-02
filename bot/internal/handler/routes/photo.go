@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"slices"
 	"strconv"
 	"time"
@@ -77,12 +78,12 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		return
 	}
 	msg := send(ctx, b, admin, nil, slices.Concat([]string{
-		"*Покупка подписки BruhaNet*",
+		"<b>Покупка подписки BruhaNet</b>",
 		"",
 		fmt.Sprintf(
-			"Пользователь *%s* @%s \\(*%d*\\) купил подписку на *%d %s*",
-			bot.EscapeMarkdown(displayName(u)),
-			bot.EscapeMarkdown(p.Username),
+			"Пользователь <b>%s</b> @%s (<b>%d</b>) купил подписку на <b>%d %s</b>",
+			html.EscapeString(displayName(u)),
+			html.EscapeString(p.Username),
 			p.TelegramID,
 			p.Month,
 			pluralMonths(p.Month),
@@ -111,7 +112,7 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 	if stats.UnpaidAdvances < advanceLimit {
 		h.grantAdvance(ctx, b, u, p)
 	} else {
-		send(ctx, b, u.Message.Chat.ID, h.mainKeyboard(ctx, p.TelegramID), "*Вы успешно отправили фото на проверку*")
+		send(ctx, b, u.Message.Chat.ID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))
 	}
 	// кнопки — только после выдачи аванса: быстрый клик админа не перезапишет grantAdvance
 	_, err = b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{
@@ -137,20 +138,16 @@ func (h *handlers) grantAdvance(ctx context.Context, b *bot.Bot, u *models.Updat
 	// флаг раньше панели: если панель упадёт, перебор счётчика лучше, чем бесплатный день без учёта
 	if err := h.pay.MarkAdvance(ctx, p.ID); err != nil {
 		stlog.Error(ctx, "failed to mark advance", "error", err)
-		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), "*Вы успешно отправили фото на проверку*")
+		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))
 		return
 	}
 	_, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, from.Add(advanceDuration), h.cfg.Remnawave.InternalSquadId)
 	if err != nil {
 		stlog.Error(ctx, "failed to grant advance day", "error", err)
-		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), "*Вы успешно отправили фото на проверку*")
+		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))
 		return
 	}
-	send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID),
-		"*Вы успешно отправили фото на проверку*",
-		"",
-		"Вам выдан доступ на 1 день на время проверки",
-	)
+	send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent_advance", nil))
 }
 
 // forwardPhoto досылает админу лишнее фото платежа на проверке; юзеру не отвечаем.

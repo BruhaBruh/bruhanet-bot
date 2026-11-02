@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"errors"
+	"html"
 	"strings"
 	"time"
 
@@ -27,16 +28,16 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	if err != nil {
 		stlog.Error(ctx, "failed to create login token", "error", err)
-		send(ctx, b, h.cfg.Telegram.AdminID, nil, errorText)
+		send(ctx, b, h.cfg.Telegram.AdminID, nil, h.c.Text(ctx, "error.generic", nil))
 		return
 	}
 	link := strings.TrimRight(h.cfg.Admin.BaseURL, "/") + "/auth?token=" + raw
 	// Ссылка только в кнопке и без превью: краулер превью Telegram сам открыл бы /auth и сжёг одноразовый токен.
-	text := buildMessage("*Вход в админку*", "", "Ссылка одноразовая, действует 5 минут")
+	text := buildMessage("<b>Вход в админку</b>", "", "Ссылка одноразовая, действует 5 минут")
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:             h.cfg.Telegram.AdminID,
 		Text:               text,
-		ParseMode:          models.ParseModeMarkdown,
+		ParseMode:          models.ParseModeHTML,
 		ReplyMarkup:        keyboard.Inline(keyboard.Row(keyboard.URL("Открыть админку", link))),
 		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 	})
@@ -46,18 +47,13 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 		stlog.Warn(ctx, "login button rejected, sending plain link", "error", err)
 		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:             h.cfg.Telegram.AdminID,
-			Text:               buildMessage(text, "", "`"+escapeCode(link)+"`", "", "Нажми на ссылку, чтобы скопировать, и открой в браузере"),
-			ParseMode:          models.ParseModeMarkdown,
+			Text:               buildMessage(text, "", "<code>"+html.EscapeString(link)+"</code>", "", "Нажми на ссылку, чтобы скопировать, и открой в браузере"),
+			ParseMode:          models.ParseModeHTML,
 			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 		})
 	}
 	if err != nil {
 		stlog.Warn(ctx, "failed to send login link", "error", err)
-		send(ctx, b, h.cfg.Telegram.AdminID, nil, errorText)
+		send(ctx, b, h.cfg.Telegram.AdminID, nil, h.c.Text(ctx, "error.generic", nil))
 	}
-}
-
-// escapeCode экранирует текст для `code`-сущности MarkdownV2: там спецсимволы только ` и \.
-func escapeCode(s string) string {
-	return strings.NewReplacer(`\`, `\\`, "`", "\\`").Replace(s)
 }

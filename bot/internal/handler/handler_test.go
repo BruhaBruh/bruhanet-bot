@@ -11,8 +11,10 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	coreconfig "github.com/bruhabruh/bruhanet/core/config"
+	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 
@@ -26,7 +28,10 @@ func newTestHandler(t *testing.T) (*bot.Bot, *tgtest.Server, *bytes.Buffer) {
 	}
 	rw := tgtest.NewRemnawave(time.Now)
 	rw.AddUser(42, time.Now().Add(24*time.Hour))
-	b, err := New(logger, cfg, Deps{FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}, Remnawave: rw, Payments: tgtest.NewPayments()}, srv.Options()...)
+	b, err := New(logger, cfg, Deps{
+		FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}, Remnawave: rw, Payments: tgtest.NewPayments(),
+		Content: content.New(&tgtest.Source{}, settings.Defaults(map[int]int{1: 150}, "+7", "Банк", cfg.Support.URL), 0, nil),
+	}, srv.Options()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -42,7 +47,7 @@ func TestStartSendsMainMenu(t *testing.T) {
 		t.Fatalf("sendMessage calls = %d", len(sends))
 	}
 	p := sends[0].Params
-	if p.Get("chat_id") != "42" || !strings.Contains(p.Get("text"), "Test") || p.Get("parse_mode") != "MarkdownV2" {
+	if p.Get("chat_id") != "42" || !strings.Contains(p.Get("text"), "Test") || p.Get("parse_mode") != "HTML" {
 		t.Fatalf("params = %v", p)
 	}
 	for _, want := range []string{
@@ -91,9 +96,9 @@ func TestUnknownCallbackShowsMenu(t *testing.T) {
 func TestEscapesUserName(t *testing.T) {
 	b, srv, _ := newTestHandler(t)
 	u := tgtest.Message(42, "/start")
-	u.Message.From.FirstName = "a_b"
+	u.Message.From.FirstName = "a<b>&"
 	b.ProcessUpdate(t.Context(), u)
-	if text := srv.Calls("sendMessage")[0].Params.Get("text"); !strings.Contains(text, `a\_b`) {
+	if text := srv.Calls("sendMessage")[0].Params.Get("text"); !strings.Contains(text, "<b>a&lt;b&gt;&amp;</b>") {
 		t.Fatalf("имя не экранировано: %q", text)
 	}
 }
@@ -103,7 +108,7 @@ func TestNameFallbackToID(t *testing.T) {
 	u := tgtest.Message(42, "/start")
 	u.Message.From.FirstName = ""
 	b.ProcessUpdate(t.Context(), u)
-	if text := srv.Calls("sendMessage")[0].Params.Get("text"); !strings.Contains(text, `\#42`) {
+	if text := srv.Calls("sendMessage")[0].Params.Get("text"); !strings.Contains(text, "<b>#42</b>") {
 		t.Fatalf("ожидался fallback #42: %q", text)
 	}
 }
@@ -114,12 +119,14 @@ func TestNewRequiresDeps(t *testing.T) {
 	full := Deps{
 		FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{},
 		Remnawave: tgtest.NewRemnawave(time.Now), Payments: tgtest.NewPayments(),
+		Content: content.New(&tgtest.Source{}, settings.Settings{}, 0, nil),
 	}
 	for name, drop := range map[string]func(*Deps){
 		"FSM":       func(d *Deps) { d.FSM = nil },
 		"InFlight":  func(d *Deps) { d.InFlight = nil },
 		"Remnawave": func(d *Deps) { d.Remnawave = nil },
 		"Payments":  func(d *Deps) { d.Payments = nil },
+		"Content":   func(d *Deps) { d.Content = nil },
 	} {
 		d := full
 		drop(&d)

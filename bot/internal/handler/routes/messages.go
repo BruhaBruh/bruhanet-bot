@@ -13,13 +13,11 @@ import (
 	"github.com/bruhabruh/bruhanet/pkg/tgupdate"
 )
 
-const errorText = "К сожалению, произошла ошибка, обратитесь в поддержку"
-
 func buildMessage(rows ...string) string {
 	return strings.Join(rows, "\n")
 }
 
-// displayName никогда не возвращает пустую строку: пустой *bold* ломает MarkdownV2.
+// displayName никогда не возвращает пустую строку: пустой <b></b> выглядит как опечатка.
 func displayName(u *models.Update) string {
 	user := tgupdate.User(u)
 	switch {
@@ -45,7 +43,7 @@ func send(ctx context.Context, b *bot.Bot, chatID int64, kb *models.InlineKeyboa
 	params := &bot.SendMessageParams{
 		ChatID:    chatID,
 		Text:      buildMessage(rows...),
-		ParseMode: models.ParseModeMarkdown,
+		ParseMode: models.ParseModeHTML,
 	}
 	if kb != nil {
 		params.ReplyMarkup = kb
@@ -66,7 +64,7 @@ func show(ctx context.Context, b *bot.Bot, u *models.Update, kb *models.InlineKe
 			ChatID:    m.Chat.ID,
 			MessageID: m.ID,
 			Text:      buildMessage(rows...),
-			ParseMode: models.ParseModeMarkdown,
+			ParseMode: models.ParseModeHTML,
 		}
 		if kb != nil {
 			params.ReplyMarkup = kb
@@ -82,7 +80,7 @@ func show(ctx context.Context, b *bot.Bot, u *models.Update, kb *models.InlineKe
 
 func (h *handlers) showError(ctx context.Context, b *bot.Bot, u *models.Update) {
 	show(ctx, b, u, keyboard.Inline(
-		keyboard.Row(keyboard.Callback("Назад", routeMenu)),
-		keyboard.Row(keyboard.URL("Поддержка", h.cfg.Support.URL)),
-	), errorText)
+		keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.back"), routeMenu)),
+		keyboard.Row(keyboard.URL(h.c.Button(ctx, "button.support"), h.c.Settings(ctx).SupportURL)),
+	), h.c.Text(ctx, "error.generic", nil))
 }

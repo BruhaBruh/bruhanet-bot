@@ -40,7 +40,7 @@ type fakeEnq struct {
 	errs  map[int64]error
 }
 
-func render(kind reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
+func render(_ context.Context, kind reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
 	return fmt.Sprintf("%s|%d|%s", kind, exp.Unix(), sub), nil
 }
 
@@ -185,7 +185,7 @@ func TestReminderMessageFields(t *testing.T) {
 		t.Fatalf("msgs = %d", len(e.n.msgs))
 	}
 	m := e.n.msgs[0]
-	if m.EventType != "reminder" || m.ChatID != userID || m.ParseMode != string(models.ParseModeMarkdown) {
+	if m.EventType != "reminder" || m.ChatID != userID || m.ParseMode != string(models.ParseModeHTML) {
 		t.Fatalf("msg = %+v", m)
 	}
 }
