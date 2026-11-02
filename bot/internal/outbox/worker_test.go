@@ -11,9 +11,9 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
+	"github.com/bruhabruh/bruhanet/core/model"
 )
 
 type fakeQueue struct {

@@ -14,7 +14,7 @@ tasks:
     cmds:
       - >-
         TEST_DATABASE_URL={{.TEST_DATABASE_URL | default "postgres://bruhanet:bruhanet@localhost:5432/bruhanet?sslmode=disable"}}
-        go -C bot test -race ./internal/store/...
+        go -C core test -race ./store/...
 
   cover:
     desc: Тесты с покрытием (coverage.out в каждом модуле)

@@ -22,7 +22,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
-	"github.com/bruhabruh/bruhanet/bot/internal/store"
+	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/app"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/lifecycle"
@@ -41,7 +41,10 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		Password: config.Redis.Password,
 	})
 
-	st, err := store.Open(context.Background(), config.Database.URL)
+	st, err := store.Open(
+		observability.WithProbe(context.Background()), config.Database.URL,
+		store.WithTracer(observability.PostgresTracer()),
+	)
 	if err != nil {
 		return nil, err
 	}

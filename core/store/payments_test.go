@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/core/model"
 )
 
 func newPay(id int64, prev time.Time) model.Payment {

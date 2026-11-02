@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
+	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 

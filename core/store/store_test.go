@@ -52,9 +52,9 @@ func testStoreRaw(t *testing.T) *Store {
 		admin.Close()
 	})
 
-	s, err := open(t.Context(), url, func(c *pgxpool.Config) {
+	s, err := open(t.Context(), url, Option(func(c *pgxpool.Config) {
 		c.ConnConfig.RuntimeParams["search_path"] = schema
-	})
+	}))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

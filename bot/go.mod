@@ -5,11 +5,11 @@ go 1.27.0
 require (
 	github.com/Jolymmiles/remnawave-api-go/v3 v3.4.4
 	github.com/alicebob/miniredis/v2 v2.40.0
+	github.com/bruhabruh/bruhanet/core v0.0.0
 	github.com/bruhabruh/bruhanet/pkg v0.0.0
 	github.com/go-telegram/bot v1.27.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.12.0
-	github.com/pressly/goose/v3 v3.29.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
 	github.com/redis/go-redis/v9 v9.23.0
@@ -48,6 +48,7 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ogen-go/ogen v1.24.0 // indirect
+	github.com/pressly/goose/v3 v3.29.0 // indirect
 	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
@@ -76,3 +77,5 @@ require (
 )
 
 replace github.com/bruhabruh/bruhanet/pkg => ../pkg
+
+replace github.com/bruhabruh/bruhanet/core => ../core

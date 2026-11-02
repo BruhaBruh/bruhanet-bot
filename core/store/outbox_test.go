@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/core/model"
 )
 
 func TestOutboxFIFO(t *testing.T) {

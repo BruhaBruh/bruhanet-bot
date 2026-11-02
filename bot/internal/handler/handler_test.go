@@ -12,6 +12,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
+	coreconfig "github.com/bruhabruh/bruhanet/core/config"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 
@@ -20,7 +21,7 @@ func newTestHandler(t *testing.T) (*bot.Bot, *tgtest.Server, *bytes.Buffer) {
 	srv := tgtest.NewServer(t)
 	logger, buf := tgtest.Logger()
 	cfg := &config.Config{
-		Telegram: config.TelegramConfig{Token: tgtest.Token, AdminID: 1},
+		Telegram: coreconfig.TelegramConfig{Token: tgtest.Token, AdminID: 1},
 		Support:  config.SupportConfig{URL: "https://t.me/support"},
 	}
 	rw := tgtest.NewRemnawave(time.Now)
@@ -109,7 +110,7 @@ func TestNameFallbackToID(t *testing.T) {
 
 func TestNewRequiresDeps(t *testing.T) {
 	logger, _ := tgtest.Logger()
-	cfg := &config.Config{Telegram: config.TelegramConfig{Token: tgtest.Token}}
+	cfg := &config.Config{Telegram: coreconfig.TelegramConfig{Token: tgtest.Token}}
 	full := Deps{
 		FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{},
 		Remnawave: tgtest.NewRemnawave(time.Now), Payments: tgtest.NewPayments(),

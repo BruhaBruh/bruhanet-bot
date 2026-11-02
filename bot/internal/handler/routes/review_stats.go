@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-telegram/bot"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/core/model"
 )
 
 // formatStats — блок статистики юзера в сообщении проверки; строки уже экранированы для MarkdownV2.

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
-	"github.com/bruhabruh/bruhanet/bot/internal/store"
+	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/store"
 )
 
 var errCommit = errors.New("tgtest: commit failed")

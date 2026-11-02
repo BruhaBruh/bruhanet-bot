@@ -12,8 +12,9 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
+	coreconfig "github.com/bruhabruh/bruhanet/core/config"
+	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 
@@ -49,14 +50,14 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 		log: buf,
 	}
 	cfg := &config.Config{
-		Telegram: config.TelegramConfig{Token: tgtest.Token, AdminID: adminID},
+		Telegram: coreconfig.TelegramConfig{Token: tgtest.Token, AdminID: adminID},
 		Support:  config.SupportConfig{URL: "https://t.me/support"},
 		Payment: config.PaymentConfig{
 			Phone:  "+7 (800) 555-35-35",
 			Bank:   "Т-Банк",
 			Prices: map[int]int{1: 150, 6: 800, 12: 1600},
 		},
-		Remnawave: config.RemnawaveConfig{InternalSquadId: uuid.New()},
+		Remnawave: coreconfig.RemnawaveConfig{InternalSquadId: uuid.New()},
 	}
 	b, err := handler.New(logger, cfg, handler.Deps{
 		FSM:       store,

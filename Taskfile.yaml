@@ -9,7 +9,7 @@ vars:
   COMPOSE: docker compose -f docker-compose.yaml
 
   SERVICES: bot
-  MODULES: pkg {{range (splitList " " .SERVICES)}}{{.}} {{end}}
+  MODULES: pkg core {{range (splitList " " .SERVICES)}}{{.}} {{end}}
 
   GOLANGCI_LINT_VERSION: v2.15.0
 

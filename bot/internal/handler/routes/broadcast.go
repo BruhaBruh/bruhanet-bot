@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
+	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 	"github.com/bruhabruh/bruhanet/pkg/remnawave"

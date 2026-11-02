@@ -9,7 +9,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/app"
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
-	"github.com/bruhabruh/bruhanet/bot/internal/store"
+	"github.com/bruhabruh/bruhanet/core/store"
 	executor "github.com/bruhabruh/bruhanet/pkg/app"
 	"github.com/bruhabruh/bruhanet/pkg/cfg"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
@@ -71,7 +71,7 @@ func migrate() int {
 		return 1
 	}
 	ctx := context.Background()
-	st, err := store.Open(ctx, url)
+	st, err := store.Open(observability.WithProbe(ctx), url, store.WithTracer(observability.PostgresTracer()))
 	if err != nil {
 		slog.Error("failed to open postgres", "error", err)
 		return 1

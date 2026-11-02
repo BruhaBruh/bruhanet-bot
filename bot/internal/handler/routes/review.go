@@ -10,9 +10,9 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
-	"github.com/bruhabruh/bruhanet/bot/internal/store"
+	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"

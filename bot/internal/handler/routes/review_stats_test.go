@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/model"
+	"github.com/bruhabruh/bruhanet/core/model"
 )
 
 func TestFormatStats(t *testing.T) {

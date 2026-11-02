@@ -4,10 +4,12 @@ WORKDIR /src
 ENV CGO_ENABLED=0
 COPY go.work go.work.sum ./
 COPY pkg/go.* pkg/
+COPY core/go.* core/
 COPY bot/go.* bot/
 RUN --mount=type=cache,target=/go/pkg/mod \
     cd bot && go mod download
 COPY pkg/ pkg/
+COPY core/ core/
 COPY bot/ bot/
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

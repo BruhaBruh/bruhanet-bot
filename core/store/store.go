@@ -10,8 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-
-	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 )
 
 //go:embed migrations/*.sql
@@ -21,17 +19,24 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
-// Open подключается к Postgres с трассировкой запросов и проверяет соединение.
-func Open(ctx context.Context, url string) (*Store, error) {
-	return open(ctx, url)
+// Option настраивает пул до подключения.
+type Option func(*pgxpool.Config)
+
+// WithTracer включает трассировку запросов.
+func WithTracer(t pgx.QueryTracer) Option {
+	return func(c *pgxpool.Config) { c.ConnConfig.Tracer = t }
 }
 
-func open(ctx context.Context, url string, opts ...func(*pgxpool.Config)) (*Store, error) {
+// Open подключается к Postgres и проверяет соединение (Ping — переданным ctx).
+func Open(ctx context.Context, url string, opts ...Option) (*Store, error) {
+	return open(ctx, url, opts...)
+}
+
+func open(ctx context.Context, url string, opts ...Option) (*Store, error) {
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		return nil, errors.Join(ErrOpen, err)
 	}
-	cfg.ConnConfig.Tracer = observability.PostgresTracer()
 	for _, o := range opts {
 		o(cfg)
 	}
@@ -40,7 +45,7 @@ func open(ctx context.Context, url string, opts ...func(*pgxpool.Config)) (*Stor
 	if err != nil {
 		return nil, errors.Join(ErrOpen, err)
 	}
-	if err = pool.Ping(observability.WithProbe(ctx)); err != nil {
+	if err = pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, errors.Join(ErrOpen, err)
 	}
