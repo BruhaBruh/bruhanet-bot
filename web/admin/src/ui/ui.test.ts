@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { defineComponent, h, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { describe, expect, it } from 'vitest'
@@ -59,5 +60,25 @@ describe('ui kit', () => {
     const s = mount(TgSelect, { props: { modelValue: 'a', options: [] }, attrs: { class: 'y' } })
     expect(s.classes()).toContain('y')
     expect(s.find('select').classes()).not.toContain('y')
+  })
+  it('TgSelect/TgInput: @change sees the new v-model value', async () => {
+    const seen: string[] = []
+    const Host = defineComponent({
+      setup() {
+        const v = ref('a')
+        const t = ref('')
+        return () => [
+          h(TgSelect, { modelValue: v.value, options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], 'onUpdate:modelValue': (x: string) => (v.value = x), onChange: () => seen.push(v.value) }),
+          h(TgInput, { modelValue: t.value, 'onUpdate:modelValue': (x: string) => (t.value = x), onChange: () => seen.push(t.value) }),
+        ]
+      },
+    })
+    const w = mount(Host)
+    const sel = w.find('select')
+    ;(sel.element as HTMLSelectElement).value = 'b'
+    await sel.trigger('change')
+    const inp = w.find('input')
+    await inp.setValue('zz')
+    expect(seen).toEqual(['b', 'zz'])
   })
 })

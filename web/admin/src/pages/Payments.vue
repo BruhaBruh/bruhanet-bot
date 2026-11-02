@@ -48,9 +48,9 @@ onMounted(load)
 <template>
   <TgSection header="Фильтры">
     <div class="filters">
-      <TgSelect v-model="status" :options="statusOptions" aria-label="Статус" @change="apply" />
-      <TgInput v-model="from" type="date" aria-label="С даты" @change="apply" />
-      <TgInput v-model="to" type="date" aria-label="По дату" @change="apply" />
+      <TgSelect grouped v-model="status" :options="statusOptions" aria-label="Статус" @change="apply" />
+      <TgInput grouped v-model="from" type="date" aria-label="С даты" @change="apply" />
+      <TgInput grouped v-model="to" type="date" aria-label="По дату" @change="apply" />
     </div>
   </TgSection>
   <p v-if="error" class="err" role="alert">Не удалось загрузить</p>
@@ -68,8 +68,7 @@ onMounted(load)
 
 <style scoped>
 .filters { display: flex; flex-direction: column; gap: 1px; background: var(--tg-sep); }
-.filters :deep(.tg-field) { border-radius: 0; }
 .hint { color: var(--tg-hint-text); font-size: 13px; margin: 0 16px; }
 .pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 12px; }
-.err { color: var(--tg-danger); }
+.err { color: var(--tg-danger-text); }
 </style>

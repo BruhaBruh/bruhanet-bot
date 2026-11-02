@@ -2,7 +2,7 @@
 :root {
   --tg-bg: #fff; --tg-secondary-bg: #efeff4; --tg-text: #000; --tg-hint: #8e8e93;
   --tg-accent: #2481cc; --tg-hint-text: #696970; --tg-link: #155a96; --tg-button: #1f74b8; --tg-button-text: #fff;
-  --tg-sep: #c8c7cc80; --tg-fill: #2481cc1f; --tg-danger: #e53935;
+  --tg-sep: #c8c7cc80; --tg-fill: #2481cc1f; --tg-danger: #e53935; --tg-danger-text: #c62828;
   --tg-font: -apple-system, "SF Pro Text", Roboto, "Segoe UI", system-ui, sans-serif;
   color-scheme: light;
 }
@@ -10,7 +10,7 @@
   :root {
     --tg-bg: #212121; --tg-secondary-bg: #0f0f0f; --tg-text: #fff; --tg-hint: #aaa;
     --tg-accent: #8774e1; --tg-hint-text: #aaa; --tg-link: #a99cf3; --tg-button: #6b57d1; --tg-fill: #8774e133;
-    --tg-sep: #ffffff1a; color-scheme: dark;
+    --tg-sep: #ffffff1a; --tg-danger-text: #ff6b6b; color-scheme: dark;
   }
 }
 body { margin: 0; font: 16px/1.3 var(--tg-font); color: var(--tg-text); background: var(--tg-secondary-bg); }
@@ -74,6 +74,7 @@ a.tg-cell { cursor: pointer; }
   border-radius: 10px; padding: 0 12px; height: 42px; color: var(--tg-hint-text); }
 .tg-field input, .tg-field select { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--tg-text);
   font: inherit; height: 100%; padding: 0; }
+.tg-field-flat { border-radius: 0; }
 .tg-field:focus-within { outline: 2px solid var(--tg-accent); }
 .tg-field input::placeholder { color: var(--tg-hint-text); }
 .tg-field select { appearance: none; cursor: pointer; }

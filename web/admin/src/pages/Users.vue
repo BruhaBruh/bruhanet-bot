@@ -3,11 +3,12 @@ import { onMounted, ref, watch } from 'vue'
 import { get } from '../api'
 import { formatMonthYear, formatRub, plural } from '../format'
 import type { UserSummary } from '../types'
-import { TgAvatar, TgCell, TgInput, TgPlaceholder, TgSection } from '../ui'
+import { TgAvatar, TgCell, TgInput, TgPlaceholder, TgSection, TgSpinner } from '../ui'
 
 const q = ref('')
 const items = ref<UserSummary[]>([])
 const error = ref(false)
+const loaded = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
 let seq = 0
 
@@ -18,6 +19,7 @@ async function load() {
     if (n === seq) {
       items.value = r.items
       error.value = false
+      loaded.value = true
     }
   } catch {
     if (n === seq) error.value = true
@@ -34,8 +36,9 @@ onMounted(load)
 <template>
   <TgInput v-model="q" icon="search" placeholder="ID или @username" class="search" />
   <p v-if="error" class="err" role="alert">Не удалось загрузить</p>
-  <TgPlaceholder v-if="!items.length && !error" emoji="🔍" title="Никого нет" />
-  <TgSection v-else :header="`Найдено: ${items.length}`">
+  <div v-if="!loaded && !error" class="loading" role="status" aria-label="Загрузка"><TgSpinner /></div>
+  <TgPlaceholder v-else-if="!items.length && !error" emoji="🔍" title="Никого нет" />
+  <TgSection v-else-if="loaded" :header="`Найдено: ${items.length}`">
     <TgCell
       v-for="u in items"
       :key="u.telegramId"
@@ -53,5 +56,6 @@ onMounted(load)
 
 <style scoped>
 .search { margin-bottom: 20px; }
-.err { color: var(--tg-danger); }
+.loading { display: flex; justify-content: center; padding: 32px; color: var(--tg-hint-text); }
+.err { color: var(--tg-danger-text); }
 </style>

@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { get } from '../api'
 import { formatDate, formatRub } from '../format'
 import type { UserDetail } from '../types'
-import { TgAvatar, TgButton, TgCell, TgSection } from '../ui'
+import { TgAvatar, TgCell, TgSection } from '../ui'
 import PaymentsTable from './PaymentsTable.vue'
 
 const route = useRoute()
@@ -21,7 +21,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <TgButton mode="plain" size="s" class="back" @click="$router.push('/users')">← Юзеры</TgButton>
+  <router-link to="/users" class="back">← Юзеры</router-link>
   <p v-if="error" class="err" role="alert">{{ error }}</p>
   <template v-if="d">
     <div class="head">
@@ -50,9 +50,9 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.back { margin-bottom: 8px; padding-left: 0; justify-content: flex-start; }
+.back { display: inline-block; margin: 0 0 12px 16px; }
 .head { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
 h2 { margin: 0; font-size: 20px; }
 .id { color: var(--tg-hint-text); font-size: 13px; }
-.err { color: var(--tg-danger); }
+.err { color: var(--tg-danger-text); }
 </style>
