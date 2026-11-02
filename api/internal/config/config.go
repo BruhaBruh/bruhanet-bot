@@ -8,6 +8,8 @@ type Config struct {
 	Remnawave         coreconfig.RemnawaveConfig
 	Logger            coreconfig.LoggerConfig
 	Admin             coreconfig.AdminConfig
+	Payment           coreconfig.PaymentConfig
+	Support           coreconfig.SupportConfig
 	Addr              string `env:"API_ADDR" envDefault:":8090" validate:"required"`
 	ObservabilityAddr string `env:"API_OBSERVABILITY_ADDR" envDefault:":8091" validate:"required"`
 }

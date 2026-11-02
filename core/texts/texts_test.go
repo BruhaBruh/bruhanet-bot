@@ -223,3 +223,15 @@ func TestRegistryDeepClone(t *testing.T) {
 		t.Fatal("Lookup() leaked the global registry")
 	}
 }
+
+func TestProblem(t *testing.T) {
+	def, _ := Lookup("menu.greeting")
+	err := Validate(def, "<b>x")
+	if err == nil {
+		t.Fatal("want error")
+	}
+	got := Problem(err)
+	if strings.Contains(got, "invalid telegram html") || !strings.Contains(got, "не закрыт") {
+		t.Fatalf("problem = %q", got)
+	}
+}

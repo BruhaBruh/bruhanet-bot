@@ -3,6 +3,7 @@ package settings
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -48,6 +49,53 @@ func TestMergeBroken(t *testing.T) {
 	}
 }
 
+func TestMergeKeyNamed(t *testing.T) {
+	_, err := Merge(def(), map[string][]byte{"prices": []byte(`"x"`)})
+	p := Problems(err)
+	if len(p) != 1 || !strings.Contains(p[0], `"prices"`) {
+		t.Fatalf("problems = %v", p)
+	}
+	if !errors.Is(err, ErrInvalidSetting) {
+		t.Fatal(err)
+	}
+}
+
+func TestMergeNull(t *testing.T) {
+	for _, k := range []string{"prices", "comments", "phone", "bank", "supportUrl"} {
+		got, err := Merge(def(), map[string][]byte{k: []byte(" null ")})
+		p := Problems(err)
+		if len(p) != 1 || !strings.Contains(p[0], k) {
+			t.Fatalf("%s: problems = %v", k, p)
+		}
+		if got.Validate() != nil {
+			t.Fatalf("%s: field corrupted: %+v", k, got)
+		}
+	}
+}
+
+func TestValidateMessages(t *testing.T) {
+	s := def()
+	s.Prices = map[int]int{9: 0, 1: 0, 5: 0}
+	s.Comments = []string{"ok", " ", "<b>"}
+	s.Comments[2] = strings.Repeat("я", 65)
+	s.Phone = strings.Repeat("1", 65)
+	p := Problems(s.Validate())
+	want := []string{
+		"цена тарифа на 1 мес. должна быть от 1 до 1 000 000 ₽",
+		"цена тарифа на 5 мес. должна быть от 1 до 1 000 000 ₽",
+		"цена тарифа на 9 мес. должна быть от 1 до 1 000 000 ₽",
+		"телефон должен быть от 1 до 64 символов",
+		"комментарий 2 (« ») должен быть от 1 до 64 символов",
+		"комментарий 3 («" + s.Comments[2] + "») должен быть от 1 до 64 символов",
+	}
+	if !slices.Equal(p, want) {
+		t.Fatalf("problems:\n%q\nwant:\n%q", p, want)
+	}
+	if strings.HasPrefix(p[0], "некорректная") {
+		t.Fatal("prefix leaked")
+	}
+}
+
 func TestValidate(t *testing.T) {
 	long := make([]byte, 65)
 	for i := range long {
@@ -68,6 +116,8 @@ func TestValidate(t *testing.T) {
 		{"months 121", func(s *Settings) { s.Prices = map[int]int{121: 100} }, false},
 		{"empty phone", func(s *Settings) { s.Phone = " " }, false},
 		{"empty bank", func(s *Settings) { s.Bank = "" }, false},
+		{"long phone", func(s *Settings) { s.Phone = string(long) }, false},
+		{"long bank", func(s *Settings) { s.Bank = string(long) }, false},
 		{"no comments", func(s *Settings) { s.Comments = nil }, false},
 		{"11 comments", func(s *Settings) { s.Comments = slices.Repeat([]string{"a"}, 11) }, false},
 		{"empty comment", func(s *Settings) { s.Comments = []string{"a", ""} }, false},

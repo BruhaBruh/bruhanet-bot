@@ -58,3 +58,18 @@ func TestSettingsRaw(t *testing.T) {
 		t.Fatal("invalid json must fail")
 	}
 }
+
+func TestSetSettingsAtomic(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	if err := s.SetSettings(ctx, map[string][]byte{"phone": []byte(`"a"`), "bank": []byte(`"b"`)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSettings(ctx, map[string][]byte{"phone": []byte(`"z"`), "bad": []byte(`{`)}); err == nil {
+		t.Fatal("invalid json must fail")
+	}
+	m, err := s.SettingsRaw(ctx)
+	if err != nil || string(m["phone"]) != `"a"` || len(m) != 2 {
+		t.Fatalf("rolled back: %v %v", m, err)
+	}
+}

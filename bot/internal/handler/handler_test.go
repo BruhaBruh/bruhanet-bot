@@ -24,7 +24,7 @@ func newTestHandler(t *testing.T) (*bot.Bot, *tgtest.Server, *bytes.Buffer) {
 	logger, buf := tgtest.Logger()
 	cfg := &config.Config{
 		Telegram: coreconfig.TelegramConfig{Token: tgtest.Token, AdminID: 1},
-		Support:  config.SupportConfig{URL: "https://t.me/support"},
+		Support:  coreconfig.SupportConfig{URL: "https://t.me/support"},
 	}
 	rw := tgtest.NewRemnawave(time.Now)
 	rw.AddUser(42, time.Now().Add(24*time.Hour))

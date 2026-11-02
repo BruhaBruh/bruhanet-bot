@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/hex"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/bruhabruh/bruhanet/api/internal/server"
 	"github.com/bruhabruh/bruhanet/core/auth"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
 )
 
@@ -37,6 +39,10 @@ type fakeStore struct {
 	lastQ    string
 	lastF    model.PaymentFilter
 	lastRev  [2]time.Time
+
+	overrides map[string]string
+	setRaw    map[string][]byte
+	outbox    []model.OutboxMessage
 }
 
 type session struct {
@@ -114,6 +120,56 @@ func (f *fakeStore) DeleteSession(_ context.Context, hash []byte) error {
 	return nil
 }
 
+func (f *fakeStore) TextOverrides(context.Context) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]string{}
+	maps.Copy(out, f.overrides)
+	return out, nil
+}
+
+func (f *fakeStore) SetText(_ context.Context, key, body string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.overrides == nil {
+		f.overrides = map[string]string{}
+	}
+	f.overrides[key] = body
+	return nil
+}
+
+func (f *fakeStore) ResetText(_ context.Context, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.overrides, key)
+	return nil
+}
+
+func (f *fakeStore) SettingsRaw(context.Context) (map[string][]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string][]byte{}
+	maps.Copy(out, f.setRaw)
+	return out, nil
+}
+
+func (f *fakeStore) SetSettings(_ context.Context, v map[string][]byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.setRaw == nil {
+		f.setRaw = map[string][]byte{}
+	}
+	maps.Copy(f.setRaw, v)
+	return nil
+}
+
+func (f *fakeStore) Enqueue(_ context.Context, m model.OutboxMessage) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.outbox = append(f.outbox, m)
+	return nil
+}
+
 func newServer(t *testing.T, baseURL string) (http.Handler, *fakeStore) {
 	t.Helper()
 	return newServerPanel(t, baseURL, &fakePanel{})
@@ -130,6 +186,7 @@ func newServerTimeout(t *testing.T, baseURL string, panel server.Panel, panelTim
 	h := server.New(server.Deps{
 		Store:        st,
 		Panel:        panel,
+		Defaults:     settings.Defaults(map[int]int{1: 150, 6: 800}, "+7 900", "Т-Банк", "https://t.me/support"),
 		PanelTimeout: panelTimeout,
 		AdminID:      adminID,
 		BaseURL:      baseURL,

@@ -3,8 +3,8 @@ package config
 import coreconfig "github.com/bruhabruh/bruhanet/core/config"
 
 type Config struct {
-	Support       SupportConfig
-	Payment       PaymentConfig
+	Support       coreconfig.SupportConfig
+	Payment       coreconfig.PaymentConfig
 	Logger        coreconfig.LoggerConfig
 	Telegram      coreconfig.TelegramConfig
 	Admin         coreconfig.AdminConfig

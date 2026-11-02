@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/settings"
 )
 
 // Store — методы core/store, которыми пользуется api.
@@ -27,6 +28,12 @@ type Store interface {
 	PaymentsByUser(ctx context.Context, id int64) ([]model.Payment, error)
 	ListPayments(ctx context.Context, f model.PaymentFilter) ([]model.Payment, int, error)
 	Revenue(ctx context.Context, from, to time.Time) (int, error)
+	TextOverrides(ctx context.Context) (map[string]string, error)
+	SetText(ctx context.Context, key, body string) error
+	ResetText(ctx context.Context, key string) error
+	SettingsRaw(ctx context.Context) (map[string][]byte, error)
+	SetSettings(ctx context.Context, values map[string][]byte) error
+	Enqueue(ctx context.Context, m model.OutboxMessage) error
 }
 
 // Panel — Remnawave (pkg/remnawave).
@@ -37,6 +44,8 @@ type Panel interface {
 type Deps struct {
 	Store Store
 	Panel Panel
+	// Defaults — настройки по умолчанию из env (те же PAYMENT_*/SUPPORT_URL, что у бота).
+	Defaults settings.Settings
 	// PanelTimeout — потолок на один вызов панели; 0 → 5с.
 	PanelTimeout time.Duration
 	AdminID      int64
@@ -68,6 +77,12 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("GET /api/users", s.users)
 	apiMux.HandleFunc("GET /api/users/{id}", s.userCard)
 	apiMux.HandleFunc("GET /api/payments", s.payments)
+	apiMux.HandleFunc("GET /api/texts", s.texts)
+	apiMux.HandleFunc("PUT /api/texts/{key}", s.putText)
+	apiMux.HandleFunc("DELETE /api/texts/{key}", s.deleteText)
+	apiMux.HandleFunc("POST /api/texts/{key}/test", s.testText)
+	apiMux.HandleFunc("GET /api/settings", s.settings)
+	apiMux.HandleFunc("PUT /api/settings", s.putSettings)
 	apiMux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})

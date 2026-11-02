@@ -4,7 +4,7 @@ import "github.com/go-telegram/bot/models"
 
 // OutboxMessage — исходящее сообщение Telegram; payload-колонка хранит всё, кроме EventType.
 type OutboxMessage struct {
-	EventType string `json:"-"` // payment_result | reminder | broadcast | broadcast_summary
+	EventType string `json:"-"` // payment_result | reminder | broadcast | broadcast_summary | text_test
 
 	ChatID    int64                        `json:"chat_id"`
 	Text      string                       `json:"text,omitempty"`

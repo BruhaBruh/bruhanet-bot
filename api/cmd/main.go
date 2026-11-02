@@ -17,6 +17,7 @@ import (
 	"github.com/bruhabruh/bruhanet/api/internal/config"
 	"github.com/bruhabruh/bruhanet/api/internal/server"
 	"github.com/bruhabruh/bruhanet/api/internal/web"
+	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/app"
 	"github.com/bruhabruh/bruhanet/pkg/cfg"
@@ -88,12 +89,13 @@ func newApp(logger *slog.Logger, conf *config.Config) (app.App, error) {
 	srv := &http.Server{
 		Addr: conf.Addr,
 		Handler: server.New(server.Deps{
-			Store:   st,
-			Panel:   panel,
-			AdminID: conf.Telegram.AdminID,
-			BaseURL: conf.Admin.BaseURL,
-			Now:     time.Now,
-			Static:  web.FS(),
+			Store:    st,
+			Panel:    panel,
+			Defaults: settings.Defaults(conf.Payment.Prices, conf.Payment.Phone, conf.Payment.Bank, conf.Support.URL),
+			AdminID:  conf.Telegram.AdminID,
+			BaseURL:  conf.Admin.BaseURL,
+			Now:      time.Now,
+			Static:   web.FS(),
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx },

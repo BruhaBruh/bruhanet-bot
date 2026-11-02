@@ -1,6 +1,10 @@
 package store
 
-import "context"
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+)
 
 // TextOverrides возвращает все переопределения текстов (key → body).
 func (s *Store) TextOverrides(ctx context.Context) (map[string]string, error) {
@@ -51,9 +55,25 @@ func (s *Store) SettingsRaw(ctx context.Context) (map[string][]byte, error) {
 	return out, rows.Err()
 }
 
-// SetSetting сохраняет JSON-значение настройки (невалидный JSON отвергает Postgres).
-func (s *Store) SetSetting(ctx context.Context, key string, value []byte) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO settings (key, value) VALUES ($1, $2::jsonb)
+func setSetting(ctx context.Context, q querier, key string, value []byte) error {
+	_, err := q.Exec(ctx, `INSERT INTO settings (key, value) VALUES ($1, $2::jsonb)
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, key, string(value))
 	return err
+}
+
+// SetSetting сохраняет JSON-значение настройки (невалидный JSON отвергает Postgres).
+func (s *Store) SetSetting(ctx context.Context, key string, value []byte) error {
+	return setSetting(ctx, s.pool, key, value)
+}
+
+// SetSettings сохраняет все настройки в одной транзакции: либо все, либо ни одной.
+func (s *Store) SetSettings(ctx context.Context, values map[string][]byte) error {
+	return s.tx(ctx, func(tx pgx.Tx) error {
+		for k, v := range values {
+			if err := setSetting(ctx, tx, k, v); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
