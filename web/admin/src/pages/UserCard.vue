@@ -27,7 +27,7 @@ onMounted(async () => {
     <div class="head">
       <TgAvatar :text="d.user.username || String(d.user.telegramId)" :size="48" />
       <div class="who">
-        <h2>{{ d.user.username ? '@' + d.user.username : d.user.telegramId }}</h2>
+        <h1>{{ d.user.username ? '@' + d.user.username : d.user.telegramId }}</h1>
         <div class="id">{{ d.user.telegramId }}</div>
       </div>
     </div>
@@ -52,7 +52,7 @@ onMounted(async () => {
 <style scoped>
 .back { display: inline-block; margin: 0 0 12px 16px; }
 .head { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-h2 { margin: 0; font-size: 20px; }
+h1 { margin: 0; font-size: 20px; }
 .id { color: var(--tg-hint-text); font-size: 13px; }
 .err { color: var(--tg-danger-text); }
 </style>

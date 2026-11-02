@@ -43,6 +43,15 @@ main { flex: 1; min-width: 0; padding: 24px 16px; }
 .col { max-width: 720px; margin: 0 auto; }
 @media (max-width: 700px) {
   .layout { flex-direction: column; }
-  nav { width: auto; height: auto; position: static; border-right: 0; border-bottom: 1px solid var(--tg-sep); }
+  nav { width: auto; height: auto; position: static; flex-direction: row; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden;
+    padding: 8px; border-right: 0; border-bottom: 1px solid var(--tg-sep); }
+  .brand { display: none; }
+  nav :deep(.tg-cell) { flex: none; padding: 0 12px 0 8px; gap: 8px; }
+  nav :deep(.tg-cell)::before { display: none; }
+  nav :deep(.tg-cell-body) { padding: 8px 0; }
+  nav :deep(.tg-sub) { display: none; }
+  nav :deep(.tg-av) { --s: 28px !important; }
+  .logout { margin-top: 0; margin-left: auto; flex: none; align-self: center; }
+  main { padding: 16px 12px; }
 }
 </style>

@@ -46,6 +46,7 @@ onMounted(load)
 </script>
 
 <template>
+  <h1 class="tg-visually-hidden">Платежи</h1>
   <TgSection header="Фильтры">
     <div class="filters">
       <TgSelect grouped v-model="status" :options="statusOptions" aria-label="Статус" @change="apply" />

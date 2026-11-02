@@ -2,7 +2,7 @@
 :root {
   --tg-bg: #fff; --tg-secondary-bg: #efeff4; --tg-text: #000; --tg-hint: #8e8e93;
   --tg-accent: #2481cc; --tg-hint-text: #696970; --tg-link: #155a96; --tg-button: #1f74b8; --tg-button-text: #fff;
-  --tg-sep: #c8c7cc80; --tg-fill: #2481cc1f; --tg-danger: #e53935; --tg-danger-text: #c62828;
+  --tg-sep: #c8c7cc80; --tg-fill: #2481cc1f; --tg-hover: #0000000d; --tg-hover-soft: #0000000d; --tg-danger: #e53935; --tg-danger-text: #c62828;
   --tg-font: -apple-system, "SF Pro Text", Roboto, "Segoe UI", system-ui, sans-serif;
   color-scheme: light;
 }
@@ -10,7 +10,7 @@
   :root {
     --tg-bg: #212121; --tg-secondary-bg: #0f0f0f; --tg-text: #fff; --tg-hint: #aaa;
     --tg-accent: #8774e1; --tg-hint-text: #aaa; --tg-link: #a99cf3; --tg-button: #6b57d1; --tg-fill: #8774e133;
-    --tg-sep: #ffffff1a; --tg-danger-text: #ff6b6b; color-scheme: dark;
+    --tg-hover: #ffffff14; --tg-hover-soft: #ffffff0a; --tg-sep: #ffffff1a; --tg-danger-text: #ff6b6b; color-scheme: dark;
   }
 }
 body { margin: 0; font: 16px/1.3 var(--tg-font); color: var(--tg-text); background: var(--tg-secondary-bg); }
@@ -39,7 +39,8 @@ a.tg-cell { cursor: pointer; }
 .tg-cell-after b { font-weight: 500; }
 .tg-chev { color: var(--tg-hint-text); flex: none; margin-left: -6px; }
 .tg-cell.tg-active { background: var(--tg-button); color: var(--tg-button-text); border-radius: 10px; }
-.tg-cell.tg-active .tg-sub, .tg-cell.tg-active .tg-chev { color: #fff; }
+.tg-cell.tg-active .tg-sub, .tg-cell.tg-active .tg-chev { color: var(--tg-button-text); }
+.tg-cell.tg-active:focus-visible { outline-color: var(--tg-button-text); }
 .tg-cell.tg-active::before, .tg-cell.tg-active + .tg-cell::before { display: none; }
 
 /* Avatar */
@@ -63,7 +64,8 @@ a.tg-cell { cursor: pointer; }
 .tg-btn-filled { background: var(--tg-button); color: var(--tg-button-text); }
 .tg-btn-bezeled { background: var(--tg-fill); color: var(--tg-link); }
 .tg-btn-plain { background: transparent; color: var(--tg-link); }
-@media (hover: hover) and (pointer: fine) { .tg-btn:hover:not(:disabled) { box-shadow: inset 0 0 0 100px #0000000d; } }
+@media (hover: hover) and (pointer: fine) { .tg-btn:hover:not(:disabled) { box-shadow: inset 0 0 0 100px var(--tg-hover); }
+  .tg-btn-bezeled:hover:not(:disabled) { box-shadow: inset 0 0 0 100px var(--tg-hover-soft); } }
 .tg-btn:disabled { opacity: .5; cursor: default; }
 .tg-btn-content { overflow: hidden; text-overflow: ellipsis; }
 .tg-btn-loading .tg-btn-content { opacity: 0; }
@@ -76,6 +78,11 @@ a.tg-cell { cursor: pointer; }
   font: inherit; height: 100%; padding: 0; }
 .tg-field-flat { border-radius: 0; }
 .tg-field:focus-within { outline: 2px solid var(--tg-accent); }
+.tg-field-flat:focus-within { outline-offset: -2px; }
+.tg-field { position: relative; }
+.tg-field select { padding-right: 20px; }
+.tg-field select + span { position: absolute; right: 12px; pointer-events: none; }
+.tg-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .tg-field input::placeholder { color: var(--tg-hint-text); }
 .tg-field select { appearance: none; cursor: pointer; }
 .tg-field select option { background: var(--tg-bg); color: var(--tg-text); }

@@ -34,9 +34,10 @@ onMounted(load)
 </script>
 
 <template>
+  <h1 class="tg-visually-hidden">Юзеры</h1>
   <TgInput v-model="q" icon="search" placeholder="ID или @username" class="search" />
   <p v-if="error" class="err" role="alert">Не удалось загрузить</p>
-  <div v-if="!loaded && !error" class="loading" role="status" aria-label="Загрузка"><TgSpinner /></div>
+  <div v-if="!loaded && !error" class="loading" role="status" ><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
   <TgPlaceholder v-else-if="!items.length && !error" emoji="🔍" title="Никого нет" />
   <TgSection v-else-if="loaded" :header="`Найдено: ${items.length}`">
     <TgCell
