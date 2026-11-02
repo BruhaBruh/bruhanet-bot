@@ -28,9 +28,32 @@ func TestRenderRaw(t *testing.T) {
 	}
 }
 
+func TestRenderPlain(t *testing.T) {
+	got := RenderPlain("{{.months}} & {{.x}}", map[string]string{"months": "3 <м>"})
+	if want := "3 <м> & x"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestRenderDef(t *testing.T) {
+	d := Def{Kind: KindMessage, Vars: []Var{{Name: "a"}, {Name: "list", Raw: true}}}
+	vars := map[string]string{"a": "<i>", "list": "<code>x</code>"}
+	if got, want := RenderDef(d, "{{.a}} {{.list}}", vars), "&lt;i&gt; <code>x</code>"; got != want {
+		t.Fatalf("message: got %q, want %q", got, want)
+	}
+	for _, k := range []Kind{KindButton, KindPlain} {
+		d.Kind = k
+		if got, want := RenderDef(d, "{{.a}} {{.list}}", vars), "<i> <code>x</code>"; got != want {
+			t.Fatalf("%s: got %q, want %q", k, got, want)
+		}
+	}
+}
+
 func TestValidate(t *testing.T) {
 	msg := Def{Key: "t.msg", Kind: KindMessage}
 	btn := Def{Key: "t.btn", Kind: KindButton}
+	plain := Def{Key: "t.plain", Kind: KindPlain}
+	withVar := Def{Kind: KindMessage, Vars: []Var{{Name: "name", Sample: "a&b"}}}
 	tests := []struct {
 		name string
 		def  Def
@@ -47,8 +70,29 @@ func TestValidate(t *testing.T) {
 		{"plain span", msg, `<span>x</span>`, ErrInvalidMarkup},
 		{"bare lt", msg, "a < b", ErrInvalidMarkup},
 		{"entities", msg, "a &lt; b &amp; c", nil},
+		{"href http", msg, `<a href="http://x">y</a>`, nil},
+		{"href tg", msg, `<a href="tg://user?id=1">y</a>`, nil},
+		{"href mailto", msg, `<a href="mailto:a@b.c">y</a>`, nil},
+		{"href javascript", msg, `<a href="javascript:alert(1)">y</a>`, ErrInvalidMarkup},
+		{"href JAVASCRIPT", msg, `<a href="JavaScript:alert(1)">y</a>`, ErrInvalidMarkup},
+		{"href data", msg, `<a href="data:text/html,x">y</a>`, ErrInvalidMarkup},
+		{"href relative", msg, `<a href="/path">y</a>`, ErrInvalidMarkup},
+		{"href empty", msg, `<a href="">y</a>`, ErrInvalidMarkup},
+		{"href query amp", msg, `<a href="https://x?a=1&amp;b=2">y</a>`, nil},
+		{"empty message", msg, "", ErrInvalidMarkup},
+		{"blank message", msg, " \n ", ErrInvalidMarkup},
+		{"only tags", msg, "<b> </b>", ErrInvalidMarkup},
+		{"declared var", withVar, "Привет, {{.name}}", nil},
+		{"unknown var", withVar, "Привет, {{.nane}}", ErrInvalidMarkup},
+		{"unknown var in button", btn, "{{.x}}", ErrBadButton},
+		{"bare amp", msg, "a & b", ErrInvalidMarkup},
+		{"named entity", msg, "a &nbsp; b", ErrInvalidMarkup},
+		{"quot entity", msg, "&quot;x&quot;", nil},
+		{"numeric entities", msg, "&#169; &#xA9; &#XA9;", nil},
 		{"4096", msg, strings.Repeat("я", 4096), nil},
 		{"too long", msg, strings.Repeat("я", 4097), ErrTooLong},
+		{"utf16 2048 emoji", msg, strings.Repeat("😀", 2048), nil},
+		{"utf16 too long", msg, strings.Repeat("😀", 2048) + "a", ErrTooLong},
 		{"too long after render", Def{Kind: KindMessage, Vars: []Var{{Name: "v", Sample: strings.Repeat("a", 4000)}}}, strings.Repeat("b", 97) + "{{.v}}", ErrTooLong},
 		{"button ok", btn, "Оплатить", nil},
 		{"button empty", btn, "", ErrBadButton},
@@ -56,6 +100,12 @@ func TestValidate(t *testing.T) {
 		{"button tag", btn, "<b>x</b>", ErrBadButton},
 		{"button 64", btn, strings.Repeat("я", 64), nil},
 		{"button 65", btn, strings.Repeat("я", 65), ErrBadButton},
+		{"button utf16 65", btn, strings.Repeat("😀", 32) + "a", ErrBadButton},
+		{"button bare amp ok", btn, "Купить & продлить", nil},
+		{"plain ok", plain, "Активна", nil},
+		{"plain empty", plain, " ", ErrBadButton},
+		{"plain tag", plain, "<i>x</i>", ErrBadButton},
+		{"plain 65", plain, strings.Repeat("a", 65), ErrBadButton},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -87,7 +137,7 @@ func TestRegistryDefaultsValid(t *testing.T) {
 			t.Errorf("%s: group %q out of order", d.Key, d.Group)
 		}
 		lastGroup = g
-		if d.Title == "" || (d.Kind != KindMessage && d.Kind != KindButton) {
+		if d.Title == "" || (d.Kind != KindMessage && d.Kind != KindButton && d.Kind != KindPlain) {
 			t.Errorf("%s: empty title or bad kind", d.Key)
 		}
 		if err := Validate(d, d.Default); err != nil {
@@ -144,8 +194,32 @@ func TestRegistryCoversCode(t *testing.T) {
 		if !ok {
 			t.Fatalf("no %s", key)
 		}
-		if got := renderSamples(d, d.Default); got != want {
+		if got := RenderDef(d, d.Default, Samples(d)); got != want {
 			t.Errorf("%s:\ngot  %q\nwant %q", key, got, want)
 		}
+	}
+}
+
+func TestStatusesArePlain(t *testing.T) {
+	for _, k := range []string{"menu.status_active", "menu.status_disabled", "menu.status_limited", "menu.status_expired", "menu.status_unknown"} {
+		if d, ok := Lookup(k); !ok || d.Kind != KindPlain {
+			t.Errorf("%s: want KindPlain", k)
+		}
+	}
+}
+
+func TestRegistryDeepClone(t *testing.T) {
+	r := Registry()
+	i := slices.IndexFunc(r, func(d Def) bool { return len(d.Vars) > 0 })
+	key, name := r[i].Key, r[i].Vars[0].Name
+	r[i].Vars[0].Name = "mutated"
+	r[i].Default = "mutated"
+	d, _ := Lookup(key)
+	if d.Vars[0].Name != name || d.Default == "mutated" {
+		t.Fatal("Registry() leaked the global registry")
+	}
+	d.Vars[0].Name = "mutated"
+	if d2, _ := Lookup(key); d2.Vars[0].Name != name {
+		t.Fatal("Lookup() leaked the global registry")
 	}
 }

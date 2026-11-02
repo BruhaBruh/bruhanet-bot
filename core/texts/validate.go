@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
+	"regexp"
 	"slices"
 	"strings"
-	"unicode/utf8"
+	"unicode/utf16"
 
 	"golang.org/x/net/html"
 )
@@ -25,69 +27,99 @@ var allowedTags = map[string][]string{
 	"span": {"class"},
 }
 
+var allowedSchemes = []string{"http", "https", "tg", "mailto"}
+
+// ampersand находит каждое & — либо в составе допустимой в Telegram сущности, либо голое.
+var ampersand = regexp.MustCompile(`&(?:lt|gt|amp|quot|#[0-9]+|#[xX][0-9a-fA-F]+);|&`)
+
 // Validate проверяет текст def после рендера с примерами переменных.
 func Validate(def Def, body string) error {
-	rendered := renderSamples(def, body)
-	if def.Kind == KindButton {
-		return validateButton(rendered)
+	sentinel := ErrInvalidMarkup
+	if def.Kind != KindMessage {
+		sentinel = ErrBadButton
 	}
-	n, err := checkMarkup(rendered)
+	for _, m := range placeholder.FindAllStringSubmatch(body, -1) {
+		if !slices.ContainsFunc(def.Vars, func(v Var) bool { return v.Name == m[1] }) {
+			return errors.Join(sentinel, fmt.Errorf("неизвестная переменная %s", m[1]))
+		}
+	}
+	rendered := RenderDef(def, body, Samples(def))
+	if def.Kind != KindMessage {
+		return validatePlain(rendered)
+	}
+	text, err := checkMarkup(rendered)
 	if err != nil {
 		return errors.Join(ErrInvalidMarkup, err)
 	}
-	if n > maxMessageLen {
+	if strings.TrimSpace(text) == "" {
+		return errors.Join(ErrInvalidMarkup, errors.New("текст не может быть пустым"))
+	}
+	if n := utf16Len(text); n > maxMessageLen {
 		return errors.Join(ErrTooLong, fmt.Errorf("текст длиннее %d символов (%d)", maxMessageLen, n))
 	}
 	return nil
 }
 
-func validateButton(s string) error {
+func validatePlain(s string) error {
 	switch {
 	case strings.TrimSpace(s) == "":
-		return errors.Join(ErrBadButton, errors.New("текст кнопки пустой"))
+		return errors.Join(ErrBadButton, errors.New("текст не может быть пустым"))
 	case strings.ContainsAny(s, "<>"):
-		return errors.Join(ErrBadButton, errors.New("в тексте кнопки нельзя использовать теги"))
-	case utf8.RuneCountInString(s) > maxButtonLen:
-		return errors.Join(ErrBadButton, fmt.Errorf("текст кнопки длиннее %d символов", maxButtonLen))
+		return errors.Join(ErrBadButton, errors.New("в этом тексте нельзя использовать теги"))
+	case utf16Len(s) > maxButtonLen:
+		return errors.Join(ErrBadButton, fmt.Errorf("текст длиннее %d символов", maxButtonLen))
 	}
 	return nil
 }
 
-// checkMarkup проверяет теги, атрибуты и вложенность; возвращает длину видимого текста.
-func checkMarkup(s string) (int, error) {
+// utf16Len — длина в UTF-16 code units, как её считает Telegram.
+func utf16Len(s string) int {
+	n := 0
+	for _, r := range s {
+		n += max(utf16.RuneLen(r), 1)
+	}
+	return n
+}
+
+// checkMarkup проверяет сущности, теги, атрибуты и вложенность; возвращает видимый текст.
+func checkMarkup(s string) (string, error) {
+	for _, m := range ampersand.FindAllString(s, -1) {
+		if m == "&" {
+			return "", errors.New("символ & нужно писать как &amp;, допустимы только &lt; &gt; &amp; &quot; и числовые сущности")
+		}
+	}
 	z := html.NewTokenizer(strings.NewReader(s))
 	var open []string
-	n := 0
+	var text strings.Builder
 	for {
-		tt := z.Next()
-		switch tt {
+		switch z.Next() {
 		case html.ErrorToken:
 			if !errors.Is(z.Err(), io.EOF) {
-				return 0, z.Err()
+				return "", z.Err()
 			}
 			if len(open) > 0 {
-				return 0, fmt.Errorf("тег <%s> не закрыт", open[len(open)-1])
+				return "", fmt.Errorf("тег <%s> не закрыт", open[len(open)-1])
 			}
-			return n, nil
+			return text.String(), nil
 		case html.TextToken:
 			if strings.ContainsAny(string(z.Raw()), "<>") {
-				return 0, errors.New("символы < и > вне тегов нужно писать как &lt; и &gt;")
+				return "", errors.New("символы < и > вне тегов нужно писать как &lt; и &gt;")
 			}
-			n += utf8.RuneCount(z.Text())
+			text.Write(z.Text())
 		case html.StartTagToken:
 			tok := z.Token()
 			if err := checkTag(tok); err != nil {
-				return 0, err
+				return "", err
 			}
 			open = append(open, tok.Data)
 		case html.EndTagToken:
 			name := z.Token().Data
 			if len(open) == 0 || open[len(open)-1] != name {
-				return 0, fmt.Errorf("лишний или неправильно вложенный тег </%s>", name)
+				return "", fmt.Errorf("лишний или неправильно вложенный тег </%s>", name)
 			}
 			open = open[:len(open)-1]
 		case html.SelfClosingTagToken, html.CommentToken, html.DoctypeToken:
-			return 0, fmt.Errorf("недопустимая разметка %q", z.Raw())
+			return "", fmt.Errorf("недопустимая разметка %q", z.Raw())
 		}
 	}
 }
@@ -102,11 +134,19 @@ func checkTag(tok html.Token) error {
 			return fmt.Errorf("атрибут %s у тега <%s> не поддерживается", a.Key, tok.Data)
 		}
 	}
-	if tok.Data == "span" && (len(tok.Attr) != 1 || tok.Attr[0].Val != "tg-spoiler") {
-		return errors.New(`тег <span> допустим только как <span class="tg-spoiler">`)
-	}
-	if tok.Data == "a" && (len(tok.Attr) != 1 || tok.Attr[0].Val == "") {
-		return errors.New("у ссылки <a> нужен атрибут href")
+	switch tok.Data {
+	case "span":
+		if len(tok.Attr) != 1 || tok.Attr[0].Val != "tg-spoiler" {
+			return errors.New(`тег <span> допустим только как <span class="tg-spoiler">`)
+		}
+	case "a":
+		if len(tok.Attr) != 1 {
+			return errors.New("у ссылки <a> нужен атрибут href")
+		}
+		u, err := url.Parse(tok.Attr[0].Val)
+		if err != nil || !slices.Contains(allowedSchemes, strings.ToLower(u.Scheme)) {
+			return fmt.Errorf("ссылка %q: допустимы только http, https, tg и mailto", tok.Attr[0].Val)
+		}
 	}
 	return nil
 }

@@ -9,6 +9,8 @@ type Kind string
 const (
 	KindMessage Kind = "message"
 	KindButton  Kind = "button"
+	// KindPlain — простой текст-значение без разметки (подставляется в другие тексты).
+	KindPlain Kind = "plain"
 )
 
 // Var — переменная текста. Raw — значение уже готовый HTML и не экранируется (RenderRaw).
@@ -50,6 +52,10 @@ func msg(key, group, title, def string, vars ...Var) Def {
 	return Def{Key: key, Group: group, Title: title, Kind: KindMessage, Default: def, Vars: vars}
 }
 
+func plain(key, title, def string) Def {
+	return Def{Key: key, Group: groupMenu, Title: title, Kind: KindPlain, Default: def}
+}
+
 func btn(key, title, def string, vars ...Var) Def {
 	return Def{Key: key, Group: groupButton, Title: title, Kind: KindButton, Default: def, Vars: vars}
 }
@@ -64,11 +70,11 @@ var registry = []Def{
 		varExpireAt,
 		Var{Name: "telegramId", Description: "Telegram ID пользователя", Sample: "123456789"}),
 	msg("menu.info_not_bought", groupMenu, "Информация: подписка не куплена", infoHead+"Не куплена"),
-	msg("menu.status_active", groupMenu, "Статус: активна", "Активна"),
-	msg("menu.status_disabled", groupMenu, "Статус: отключена", "Отключена"),
-	msg("menu.status_limited", groupMenu, "Статус: ограничена", "Ограничена"),
-	msg("menu.status_expired", groupMenu, "Статус: исчерпана", "Исчерпана"),
-	msg("menu.status_unknown", groupMenu, "Статус: неизвестно", "Неизвестно"),
+	plain("menu.status_active", "Статус: активна", "Активна"),
+	plain("menu.status_disabled", "Статус: отключена", "Отключена"),
+	plain("menu.status_limited", "Статус: ограничена", "Ограничена"),
+	plain("menu.status_expired", "Статус: исчерпана", "Исчерпана"),
+	plain("menu.status_unknown", "Статус: неизвестно", "Неизвестно"),
 
 	msg("payment.tariffs", groupPayment, "Выбор тарифа", tariffHead+"Выберите тариф"),
 	msg("payment.confirm", groupPayment, "Подтверждение тарифа",
@@ -114,7 +120,11 @@ var registry = []Def{
 
 // Registry — все тексты по группам: Меню, Оплата, Напоминания, Ошибки, Кнопки.
 func Registry() []Def {
-	return slices.Clone(registry)
+	out := slices.Clone(registry)
+	for i := range out {
+		out[i].Vars = slices.Clone(out[i].Vars)
+	}
+	return out
 }
 
 func Lookup(key string) (Def, bool) {
@@ -122,5 +132,7 @@ func Lookup(key string) (Def, bool) {
 	if i < 0 {
 		return Def{}, false
 	}
-	return registry[i], true
+	d := registry[i]
+	d.Vars = slices.Clone(d.Vars)
+	return d, true
 }
