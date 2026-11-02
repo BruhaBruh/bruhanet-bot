@@ -12,3 +12,5 @@ deploy/
 bin/
 .idea
 .vscode
+web/**/node_modules
+web/admin/dist

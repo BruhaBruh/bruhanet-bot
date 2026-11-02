@@ -1,6 +1,7 @@
 {
   "name": "bruhanet-web",
   "private": true,
+  "packageManager": "pnpm@12.9.1",
   "scripts": {
     "build": "pnpm -C admin build",
     "test": "pnpm -C admin test",

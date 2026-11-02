@@ -19,6 +19,7 @@ services:
       LOG_JSON: "true"
       OBSERVABILITY_ADDR: ":8081"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+    command: ["/app/bot"]
     restart: unless-stopped
     stop_grace_period: 35s
     # liveness /healthz: падение Telegram/Remnawave бота unhealthy не делает
@@ -38,6 +39,32 @@ services:
     labels:
       logging: alloy
 
+  # админ-API + вшитый фронт; наружу — через nginx (admin.bruhanet.ru → 127.0.0.1:8090)
+  api:
+    image: ghcr.io/bruhabruh/bruhanet-bot:${BOT_IMAGE_TAG:-latest}
+    logging: *logging
+    env_file: .env
+    environment:
+      DATABASE_URL: *database_url
+      LOG_JSON: "true"
+    command: ["/app/api"]
+    ports:
+      - 127.0.0.1:8090:8090
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/api", "healthcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    labels:
+      logging: alloy
+
   # one-shot: миграции встроены в образ бота; бот стартует только после успешного завершения
   migrate:
     image: ghcr.io/bruhabruh/bruhanet-bot:${BOT_IMAGE_TAG:-latest}
@@ -45,7 +72,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: *database_url
-    command: ["migrate"] # ENTRYPOINT образа уже /app/bot
+    command: ["/app/bot", "migrate"]
     restart: "no"
     depends_on:
       postgres:

@@ -26,6 +26,29 @@ curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install
 
 Повторный запуск обновляет конфиги и перезапускает стек, существующий `.env` не трогает.
 
+## Админка
+
+Вход: команда `/login` в боте (только админ) присылает кнопку со ссылкой; сессия живёт сутки. Сервис `api` слушает `127.0.0.1:8090`, наружу его отдаёт nginx. Сертификат — выпускается так же, как для панели.
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name admin.bruhanet.ru;
+
+    # ssl_certificate / ssl_certificate_key — как у панели
+
+    location / {
+        proxy_pass http://127.0.0.1:8090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+В `.env` должен быть `ADMIN_BASE_URL=https://admin.bruhanet.ru` (`install.sh` допишет недостающие ключи).
+
+Одноразовый токен из `/auth?token=…` попадает в access-лог nginx. Это безвредно (токен живёт 5 минут и используется один раз), но при желании можно отключить лог для этого пути: добавить `location = /auth { access_log off; proxy_pass http://127.0.0.1:8090; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }`.
+
 ## Postgres, бэкап и восстановление
 
 Платежи и очередь уведомлений (outbox) лежат в Postgres (сервис `postgres`, том `postgres-data`). Пароль — `POSTGRES_PASSWORD` в `.env` (только латиница и цифры: значение идёт в URL; `install.sh` сгенерирует сам). Схему накатывает one-shot сервис `migrate` (`bot migrate`), бот стартует только после него. `install.sh` на существующем `.env` допишет недостающие ключи из `.env.example`, остальное не тронет.

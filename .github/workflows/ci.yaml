@@ -65,9 +65,26 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - run: go -C ${{ matrix.module }} test -race ./...
 
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm -C web install --frozen-lockfile
+      - run: pnpm -C web typecheck
+      - run: pnpm -C web test
+
   build:
     name: Build image
-    needs: [lint, test]
+    needs: [lint, test, web]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -156,24 +173,28 @@ jobs:
           docker compose --env-file .env pull
           docker compose --env-file .env up -d --remove-orphans
           EOF
-      # docker healthcheck по liveness /healthz: ждём healthy до 90 с, иначе логи и fail
-      - name: Check bot is healthy
+      # docker healthcheck по liveness /healthz: ждём healthy у bot и api до 90 с, иначе логи и fail
+      - name: Check bot and api are healthy
         run: |
           ssh vps bash -s -- "$WORK_DIR" 90 <<'EOF'
           set -euo pipefail
           cd "$1"
-          id=$(docker compose --env-file .env ps -aq bot) || id=
           deadline=$(( $(date +%s) + $2 ))
-          while :; do
-            s=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null) || s=missing
-            echo "bot: $s"
-            [ "$s" = healthy ] && exit 0
-            [ "$(date +%s)" -ge "$deadline" ] && break
-            sleep 5
+          for svc in bot api; do
+            id=$(docker compose --env-file .env ps -aq "$svc") || id=
+            while :; do
+              s=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null) || s=missing
+              echo "$svc: $s"
+              [ "$s" = healthy ] && break
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                docker compose --env-file .env logs --tail 50 migrate
+                docker compose --env-file .env logs --tail 50 bot
+                docker compose --env-file .env logs --tail 50 api
+                exit 1
+              fi
+              sleep 5
+            done
           done
-          docker compose --env-file .env logs --tail 50 migrate
-          docker compose --env-file .env logs --tail 50 bot
-          exit 1
           EOF
       # только висячие слои: на VPS ещё Remnawave, prune -a снёс бы чужое
       - name: Clean dangling images
