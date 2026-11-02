@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/google/uuid"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/model"
@@ -22,9 +22,6 @@ import (
 const (
 	routeBroadcastSend   = "bc_send"
 	routeBroadcastCancel = "bc_cancel"
-
-	// broadcastInterval держит скорость ниже лимита Telegram (~30 сообщений/с).
-	broadcastInterval = 40 * time.Millisecond
 )
 
 func (h *handlers) isAdmin(u *models.Update) bool {
@@ -119,41 +116,37 @@ func (h *handlers) broadcastSend(ctx context.Context, b *bot.Bot, u *models.Upda
 		return
 	}
 
-	middleware.Answer(ctx, b, u, "Рассылка запущена")
-	show(ctx, b, u, nil, "Рассылка идёт…")
 	ids, complete := h.broadcastRecipients(ctx)
-	var sent, failed int
-	interrupted := false
-loop:
-	for i, id := range ids {
-		if i > 0 {
-			select {
-			case <-ctx.Done():
-				interrupted = true
-				break loop
-			case <-time.After(broadcastInterval):
-			}
-		}
-		if err := copyMessage(ctx, b, id, bc); err != nil {
-			stlog.Warn(ctx, "failed to deliver broadcast", "error", err, "telegram_id", id)
-			failed++
-			continue
-		}
-		sent++
+	if !complete {
+		h.broadcastRestore(ctx, f, bc)
+		h.showError(ctx, b, u)
+		return
+	}
+	id := uuid.NewString()
+	ms := make([]model.OutboxMessage, 0, len(ids)+1)
+	for _, to := range ids {
+		ms = append(ms, model.OutboxMessage{EventType: "broadcast", ChatID: to, FromChatID: bc.ChatID, MessageID: bc.MessageID, Broadcast: id})
+	}
+	ms = append(ms, model.OutboxMessage{
+		EventType: "broadcast_summary", ChatID: h.cfg.Telegram.AdminID, ParseMode: string(models.ParseModeMarkdown), Broadcast: id,
+	})
+	if err = h.pay.EnqueueMany(ctx, ms); err != nil {
+		stlog.Error(ctx, "failed to enqueue broadcast", "error", err)
+		h.broadcastRestore(ctx, f, bc)
+		h.showError(ctx, b, u)
+		return
 	}
 	observability.Broadcasts.Inc()
-	observability.BroadcastMessages.WithLabelValues("sent").Add(float64(sent))
-	observability.BroadcastMessages.WithLabelValues("failed").Add(float64(failed))
-	stlog.Info(ctx, "broadcast finished", "sent", sent, "failed", failed, "interrupted", interrupted, "complete", complete)
-	rows := []string{"Разослано: *" + strconv.Itoa(sent) + "*, не доставлено: *" + strconv.Itoa(failed) + "*"}
-	if interrupted {
-		rows = append(rows, "Прервано, не отправлено: *"+strconv.Itoa(len(ids)-sent-failed)+"*")
+	stlog.Info(ctx, "broadcast queued", "recipients", len(ids), "broadcast", id)
+	middleware.Answer(ctx, b, u, "Рассылка запущена")
+	show(ctx, b, u, nil, "Рассылка поставлена в очередь: *"+strconv.Itoa(len(ids))+"* "+pluralPeople(len(ids)))
+}
+
+// broadcastRestore возвращает рассылку на подтверждение, чтобы админ мог нажать «Отправить» ещё раз.
+func (h *handlers) broadcastRestore(ctx context.Context, f *fsm.FSM, bc model.Broadcast) {
+	if err := fsm.Put(ctx, f, stateConfirmBroadcast, bc); err != nil {
+		stlog.Error(ctx, "failed to restore broadcast", "error", err)
 	}
-	if !complete {
-		rows = append(rows, "Список пользователей получен не полностью")
-	}
-	// ctx мог быть отменён при остановке — итог всё равно пробуем отправить.
-	send(context.WithoutCancel(ctx), b, h.cfg.Telegram.AdminID, nil, rows...)
 }
 
 func (h *handlers) broadcastCancel(ctx context.Context, b *bot.Bot, u *models.Update) {

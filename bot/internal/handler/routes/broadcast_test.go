@@ -2,6 +2,7 @@ package routes_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,16 +12,6 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
-
-func copiesTo(e *env, chat string) int {
-	n := 0
-	for _, c := range e.srv.Calls("copyMessage") {
-		if c.Params.Get("chat_id") == chat {
-			n++
-		}
-	}
-	return n
-}
 
 func startBroadcast(t *testing.T, e *env) {
 	t.Helper()
@@ -57,22 +48,49 @@ func TestBroadcastFlow(t *testing.T) {
 	if text := e.last(t, "answerCallbackQuery").Params.Get("text"); text != "Рассылка запущена" {
 		t.Fatalf("answer = %q", text)
 	}
-	for _, chat := range []string{"42", "43"} {
-		var found bool
-		for _, c := range e.srv.Calls("copyMessage") {
-			if c.Params.Get("chat_id") == chat && c.Params.Get("from_chat_id") == "1" && c.Params.Get("message_id") == "10" {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("no copy to %s", chat)
-		}
-	}
 	if st := e.state(t, adminID); st != "" {
 		t.Fatalf("state = %q", st)
 	}
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Разослано: *2*, не доставлено: *0*") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Рассылка поставлена в очередь: *2*") {
 		t.Fatalf("text = %s", text)
+	}
+}
+
+func TestBroadcastQueued(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUserAs(100, 42, now)
+	e.rw.AddUserAs(101, 42, now)
+	e.rw.AddUser(43, now)
+	e.rw.AddUserWithoutTelegramID(102, now)
+	startBroadcast(t, e)
+	previews := e.count("copyMessage")
+
+	e.process(t, tgtest.Callback(adminID, "bc_send"))
+
+	out := e.pay.Outbox()
+	if len(out) != 3 {
+		t.Fatalf("outbox = %+v", out)
+	}
+	id := out[2].Broadcast
+	if id == "" {
+		t.Fatal("empty broadcast id")
+	}
+	chats := make([]int64, 0, 2)
+	for _, m := range out[:2] {
+		if m.EventType != "broadcast" || m.FromChatID != adminID || m.MessageID != 10 || m.Broadcast != id {
+			t.Fatalf("msg = %+v", m)
+		}
+		chats = append(chats, m.ChatID)
+	}
+	slices.Sort(chats)
+	if !slices.Equal(chats, []int64{42, 43}) {
+		t.Fatalf("chats = %v", chats)
+	}
+	if s := out[2]; s.EventType != "broadcast_summary" || s.ChatID != adminID {
+		t.Fatalf("summary = %+v", s)
+	}
+	if e.count("copyMessage") != previews {
+		t.Fatal("direct copyMessage to recipients")
 	}
 }
 
@@ -82,29 +100,15 @@ func TestBroadcastDoubleTap(t *testing.T) {
 	e.rw.AddUser(43, now)
 	startBroadcast(t, e)
 	e.process(t, tgtest.Callback(adminID, "bc_send"))
-	before := e.count("copyMessage")
+	before := len(e.pay.Outbox())
 
 	e.process(t, tgtest.Callback(adminID, "bc_send"))
 
-	if e.count("copyMessage") != before {
+	if len(e.pay.Outbox()) != before {
 		t.Fatal("second tap sent again")
 	}
 	if text := e.last(t, "answerCallbackQuery").Params.Get("text"); text != "Рассылка уже отправлена или отменена" {
 		t.Fatalf("answer = %q", text)
-	}
-}
-
-func TestBroadcastFailedRecipient(t *testing.T) {
-	e := newEnv(t)
-	e.rw.AddUser(42, now)
-	e.rw.AddUser(43, now)
-	startBroadcast(t, e)
-	e.srv.FailChat(43, 403, "Forbidden")
-
-	e.process(t, tgtest.Callback(adminID, "bc_send"))
-
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Разослано: *1*, не доставлено: *1*") {
-		t.Fatalf("text = %s", text)
 	}
 }
 
@@ -175,8 +179,8 @@ func TestBroadcastDedupesTelegramIDs(t *testing.T) {
 		t.Fatalf("preview = %s", text)
 	}
 	e.process(t, tgtest.Callback(adminID, "bc_send"))
-	if n := copiesTo(e, "42"); n != 1 {
-		t.Fatalf("copies to 42 = %d", n)
+	if out := e.pay.Outbox(); len(out) != 2 || out[0].ChatID != 42 {
+		t.Fatalf("outbox = %+v", out)
 	}
 }
 
@@ -189,10 +193,10 @@ func TestBroadcastPanelError(t *testing.T) {
 
 	e.process(t, tgtest.Callback(adminID, "bc_send"))
 
-	if copiesTo(e, "42") != 1 || copiesTo(e, "43") != 0 {
-		t.Fatalf("copies: 42=%d 43=%d", copiesTo(e, "42"), copiesTo(e, "43"))
+	if len(e.pay.Outbox()) != 0 {
+		t.Fatalf("outbox = %+v", e.pay.Outbox())
 	}
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "не полностью") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); strings.Contains(text, "очередь") {
 		t.Fatalf("text = %s", text)
 	}
 }
@@ -240,33 +244,14 @@ func TestBroadcastStaleCancelKeepsPayment(t *testing.T) {
 	}
 }
 
-func TestBroadcastLogsFinished(t *testing.T) {
-	e := newEnv(t)
-	e.rw.AddUser(42, now)
-	e.rw.AddUser(43, now)
-	e.process(t, tgtest.Message(adminID, "/a"))
-	e.process(t, tgtest.Message(adminID, "Привет"))
-	e.process(t, tgtest.Callback(adminID, "bc_send"))
-
-	l := tgtest.FindLog(t, e.log, "broadcast finished")
-	if l["sent"] != float64(2) || l["failed"] != float64(0) || l["interrupted"] != false || l["complete"] != true {
-		t.Fatalf("entry = %v", l)
-	}
-}
-
 func TestBroadcastMetrics(t *testing.T) {
 	e := newEnv(t)
 	e.rw.AddUser(42, now)
 	e.rw.AddUser(43, now)
 	startBroadcast(t, e)
-	e.srv.FailChat(43, 403, "Forbidden")
 	bc := testutil.ToFloat64(observability.Broadcasts)
-	sent := testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("sent"))
-	failed := testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("failed"))
 
 	e.process(t, tgtest.Callback(adminID, "bc_send"))
 
 	wantDelta(t, "broadcasts", bc, testutil.ToFloat64(observability.Broadcasts), 1)
-	wantDelta(t, "sent", sent, testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("sent")), 1)
-	wantDelta(t, "failed", failed, testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("failed")), 1)
 }

@@ -4,14 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/go-telegram/bot/models"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
@@ -29,20 +33,35 @@ type call struct {
 	sub  string
 }
 
-type fakeNotifier struct {
+type fakeEnq struct {
 	mu    sync.Mutex
 	calls []call
+	msgs  []model.OutboxMessage
 	errs  map[int64]error
 }
 
-func (f *fakeNotifier) Remind(_ context.Context, id int64, kind reminder.Kind, exp time.Time, sub string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls = append(f.calls, call{id, kind, exp, sub})
-	return f.errs[id]
+func render(kind reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
+	return fmt.Sprintf("%s|%d|%s", kind, exp.Unix(), sub), nil
 }
 
-func (f *fakeNotifier) forID(id int64) []call {
+func (f *fakeEnq) Enqueue(_ context.Context, m model.OutboxMessage) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, f.parse(m))
+	if err := f.errs[m.ChatID]; err != nil {
+		return err
+	}
+	f.msgs = append(f.msgs, m)
+	return nil
+}
+
+func (f *fakeEnq) parse(m model.OutboxMessage) call {
+	parts := strings.SplitN(m.Text, "|", 3)
+	unix, _ := strconv.ParseInt(parts[1], 10, 64)
+	return call{m.ChatID, reminder.Kind(parts[0]), time.Unix(unix, 0), parts[2]}
+}
+
+func (f *fakeEnq) forID(id int64) []call {
 	var out []call
 	for _, c := range f.calls {
 		if c.id == id {
@@ -54,7 +73,7 @@ func (f *fakeNotifier) forID(id int64) []call {
 
 type env struct {
 	rw *tgtest.Remnawave
-	n  *fakeNotifier
+	n  *fakeEnq
 	mr *miniredis.Miniredis
 	r  *reminder.Reminder
 	db *redis.Client
@@ -67,7 +86,7 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(func() { _ = db.Close() })
 	e := &env{
 		rw: tgtest.NewRemnawave(func() time.Time { return now }),
-		n:  &fakeNotifier{errs: map[int64]error{}},
+		n:  &fakeEnq{errs: map[int64]error{}},
 		mr: mr,
 		db: db,
 	}
@@ -76,7 +95,7 @@ func newEnv(t *testing.T) *env {
 }
 
 func (e *env) at(t time.Time) *reminder.Reminder {
-	return reminder.New(e.rw, e.n, e.db, func() time.Time { return t })
+	return reminder.New(e.rw, e.n, render, e.db, func() time.Time { return t })
 }
 
 func TestWindows(t *testing.T) {
@@ -99,7 +118,7 @@ func TestWindows(t *testing.T) {
 	}
 }
 
-func TestNoRepeat(t *testing.T) {
+func TestReminderDedup(t *testing.T) {
 	e := newEnv(t)
 	e.rw.AddUser(userID, now.Add(3*24*time.Hour))
 	e.r.Run(t.Context())
@@ -158,24 +177,16 @@ func TestTemporaryFailureRetries(t *testing.T) {
 	}
 }
 
-func TestUndeliverableMarks(t *testing.T) {
+func TestReminderMessageFields(t *testing.T) {
 	e := newEnv(t)
-	exp := now.Add(3 * 24 * time.Hour)
-	e.rw.AddUser(userID, exp)
-	key := fmt.Sprintf("notify:%d:%d:week", userID, exp.Unix())
-
-	e.n.errs[userID] = errors.Join(reminder.ErrUndeliverable, errors.New("403"))
+	e.rw.AddUser(userID, now.Add(3*24*time.Hour))
 	e.r.Run(t.Context())
-	if !e.mr.Exists(key) {
-		t.Fatal("ключ должен остаться после постоянной ошибки")
+	if len(e.n.msgs) != 1 {
+		t.Fatalf("msgs = %d", len(e.n.msgs))
 	}
-	if ttl := e.mr.TTL(key); ttl < 8*24*time.Hour-time.Minute || ttl > 8*24*time.Hour {
-		t.Fatalf("ttl = %v", ttl)
-	}
-	delete(e.n.errs, userID)
-	e.r.Run(t.Context())
-	if len(e.n.calls) != 1 {
-		t.Fatalf("calls = %d, want 1", len(e.n.calls))
+	m := e.n.msgs[0]
+	if m.EventType != "reminder" || m.ChatID != userID || m.ParseMode != string(models.ParseModeMarkdown) {
+		t.Fatalf("msg = %+v", m)
 	}
 }
 

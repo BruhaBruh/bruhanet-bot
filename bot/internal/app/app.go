@@ -11,12 +11,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-telegram/bot/models"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
+	"github.com/bruhabruh/bruhanet/bot/internal/handler/routes"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
@@ -97,7 +99,9 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		return nil, errors.Join(errors.New("failed to register outbox gauge"), err)
 	}
 
-	rem := reminder.New(rwObs, handler.NewNotifier(b), rdb, nil)
+	rem := reminder.New(rwObs, st, func(k reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
+		return routes.ReminderMessage(string(k), exp, sub)
+	}, rdb, nil)
 	cl := cronLogger(logger)
 	c := cron.New(
 		cron.WithLocation(loc),

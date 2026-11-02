@@ -1,17 +1,18 @@
 // Package reminder напоминает юзерам об окончании подписки (за неделю и за сутки).
-// Доставку делает Notifier, пакет про Telegram не знает.
+// Доставку делает outbox-воркер, пакет только ставит сообщения в очередь.
 package reminder
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"iter"
 	"time"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
+	"github.com/go-telegram/bot/models"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/model"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/pkg/remnawave"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
@@ -30,29 +31,30 @@ const (
 	weekWindow = 7 * 24 * time.Hour
 )
 
-// ErrUndeliverable — получатель недоступен, повтор бессмыслен (Notifier оборачивает им такие ошибки).
-var ErrUndeliverable = errors.New("reminder: recipient unreachable")
-
-type Notifier interface {
-	Remind(ctx context.Context, telegramID int64, kind Kind, expireAt time.Time, subURL string) error
+type Enqueuer interface {
+	Enqueue(ctx context.Context, m model.OutboxMessage) error
 }
+
+// Render строит текст (MarkdownV2) и клавиатуру напоминания.
+type Render func(kind Kind, expireAt time.Time, subURL string) (string, *models.InlineKeyboardMarkup)
 
 type Users interface {
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
 }
 
 type Reminder struct {
-	users Users
-	n     Notifier
-	rdb   *redis.Client
-	now   func() time.Time
+	users  Users
+	q      Enqueuer
+	render Render
+	rdb    *redis.Client
+	now    func() time.Time
 }
 
-func New(users Users, n Notifier, rdb *redis.Client, now func() time.Time) *Reminder {
+func New(users Users, q Enqueuer, render Render, rdb *redis.Client, now func() time.Time) *Reminder {
 	if now == nil {
 		now = time.Now
 	}
-	return &Reminder{users: users, n: n, rdb: rdb, now: now}
+	return &Reminder{users: users, q: q, render: render, rdb: rdb, now: now}
 }
 
 // Run — один проход по всем юзерам панели.
@@ -93,17 +95,17 @@ func (r *Reminder) remind(ctx context.Context, u api.UserItemInfo, id int64, kin
 	if !fresh {
 		return
 	}
-	err = r.n.Remind(ctx, id, kind, u.ExpireAt, u.SubscriptionUrl)
-	switch {
-	case err == nil:
-		observability.RemindersSent.WithLabelValues(string(kind)).Inc()
-		stlog.Info(ctx, "reminder sent")
-	case errors.Is(err, ErrUndeliverable):
-		stlog.Warn(ctx, "failed to send reminder, not retrying", "error", err)
-	default:
+	text, kb := r.render(kind, u.ExpireAt, u.SubscriptionUrl)
+	err = r.q.Enqueue(ctx, model.OutboxMessage{
+		EventType: "reminder", ChatID: id, Text: text, ParseMode: string(models.ParseModeMarkdown), Keyboard: kb,
+	})
+	if err != nil {
 		if delErr := r.rdb.Del(context.WithoutCancel(ctx), key).Err(); delErr != nil {
 			stlog.Error(ctx, "failed to delete reminder key", "error", delErr)
 		}
-		stlog.Warn(ctx, "failed to send reminder, will retry", "error", err)
+		stlog.Warn(ctx, "failed to enqueue reminder, will retry", "error", err)
+		return
 	}
+	observability.RemindersSent.WithLabelValues(string(kind)).Inc()
+	stlog.Info(ctx, "reminder sent")
 }

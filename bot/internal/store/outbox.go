@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -17,7 +19,17 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+func validate(m model.OutboxMessage) error {
+	if m.EventType == "" || m.ChatID == 0 {
+		return errors.Join(ErrEmptyMessage, fmt.Errorf("event_type=%q chat_id=%d", m.EventType, m.ChatID))
+	}
+	return nil
+}
+
 func enqueue(ctx context.Context, q querier, m model.OutboxMessage) error {
+	if err := validate(m); err != nil {
+		return err
+	}
 	payload, err := json.Marshal(m)
 	if err != nil {
 		return err
@@ -31,6 +43,11 @@ func (s *Store) Enqueue(ctx context.Context, m model.OutboxMessage) error {
 }
 
 func (s *Store) EnqueueMany(ctx context.Context, ms []model.OutboxMessage) error {
+	for _, m := range ms { // до транзакции, чтобы не открывать её зря
+		if err := validate(m); err != nil {
+			return err
+		}
+	}
 	return s.tx(ctx, func(tx pgx.Tx) error {
 		for _, m := range ms {
 			if err := enqueue(ctx, tx, m); err != nil {

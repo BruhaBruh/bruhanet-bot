@@ -191,3 +191,80 @@ func tgtestErr(t *testing.T) (*bot.Bot, error) {
 	}
 	return b, err
 }
+
+// ctxQueue — fakeQueue, у которого DeleteOutbox падает при отменённом ctx и при failDeletes > 0.
+type ctxQueue struct {
+	*fakeQueue
+	failDeletes int
+}
+
+func (q *ctxQueue) DeleteOutbox(ctx context.Context, id int64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if q.failDeletes > 0 {
+		q.failDeletes--
+		return errors.New("db down")
+	}
+	return q.fakeQueue.DeleteOutbox(ctx, id)
+}
+
+func TestWorker429ZeroRetryAfterDoesNotSpin(t *testing.T) {
+	srv, q, w := setup(t)
+	srv.FailChatRetryAfter(7, 0)
+	it := model.OutboxItem{ID: 1, OutboxMessage: model.OutboxMessage{EventType: "reminder", ChatID: 7, Text: "hi"}}
+	q.add(it.OutboxMessage)
+	ctx, cancel := context.WithTimeout(t.Context(), 400*time.Millisecond)
+	defer cancel()
+	w.process(ctx, it)
+	if n := len(srv.Calls("sendMessage")); n != 1 {
+		t.Fatalf("attempts = %d, want 1 (sleep >= 1s)", n)
+	}
+}
+
+func TestWorkerDeleteSurvivesCanceledCtx(t *testing.T) {
+	_, q, w := setup(t)
+	cq := &ctxQueue{fakeQueue: q}
+	w.q = cq
+	it := model.OutboxItem{ID: 1, OutboxMessage: model.OutboxMessage{EventType: "reminder", ChatID: 7}}
+	q.add(it.OutboxMessage)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // отмена между отправкой и удалением
+	if !w.remove(ctx, it, true) || q.len() != 0 {
+		t.Fatalf("delete failed under canceled ctx, left=%d", q.len())
+	}
+}
+
+func TestWorkerTallyAfterDelete(t *testing.T) {
+	_, q, w := setup(t)
+	cq := &ctxQueue{fakeQueue: q, failDeletes: 1}
+	w.q = cq
+	it := model.OutboxItem{ID: 1, OutboxMessage: model.OutboxMessage{
+		EventType: "broadcast", ChatID: 7, FromChatID: 1, MessageID: 2, Broadcast: "u",
+	}}
+	q.add(it.OutboxMessage)
+	if w.process(t.Context(), it) {
+		t.Fatal("process must report delete failure")
+	}
+	if c := w.stats["u"]; c != nil {
+		t.Fatalf("counted before delete: %+v", c)
+	}
+	if !w.process(t.Context(), it) {
+		t.Fatal("second process must succeed")
+	}
+	if c := w.stats["u"]; c == nil || c.sent != 1 {
+		t.Fatalf("stats = %+v, want sent=1", c)
+	}
+}
+
+func TestWorkerSummaryTallyCleanedOnDrop(t *testing.T) {
+	srv, q, w := setup(t)
+	srv.FailChat(1, 403, "Forbidden")
+	w.stats["u"] = &counts{sent: 1}
+	it := model.OutboxItem{ID: 1, OutboxMessage: model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, Broadcast: "u"}}
+	q.add(it.OutboxMessage)
+	w.process(t.Context(), it)
+	if len(w.stats) != 0 {
+		t.Fatalf("stats leaked: %v", w.stats)
+	}
+}

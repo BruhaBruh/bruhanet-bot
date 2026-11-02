@@ -81,16 +81,14 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 		switch {
 		case err == nil:
 			observability.OutboxMessages.WithLabelValues(it.EventType, "sent").Inc()
-			w.count(it, true)
-			return w.remove(ctx, it.ID)
+			return w.remove(ctx, it, true)
 		case errors.Is(err, bot.ErrorForbidden), errors.Is(err, bot.ErrorBadRequest):
 			stlog.Warn(ctx, "outbox message rejected", "event_type", it.EventType, "error", err)
 			observability.OutboxMessages.WithLabelValues(it.EventType, "dropped").Inc()
-			w.count(it, false)
-			return w.remove(ctx, it.ID)
+			return w.remove(ctx, it, false)
 		case errors.As(err, &tm):
 			observability.OutboxMessages.WithLabelValues(it.EventType, "retry").Inc()
-			sleep(ctx, time.Duration(tm.RetryAfter)*time.Second)
+			sleep(ctx, time.Duration(max(tm.RetryAfter, 1))*time.Second)
 			continue
 		}
 		if ctx.Err() != nil {
@@ -101,8 +99,7 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 		if n >= maxAttempts {
 			stlog.Error(ctx, "outbox message dropped", "event_type", it.EventType, "attempts", n, "error", err)
 			observability.OutboxMessages.WithLabelValues(it.EventType, "dropped").Inc()
-			w.count(it, false)
-			return w.remove(ctx, it.ID)
+			return w.remove(ctx, it, false)
 		}
 		stlog.Warn(ctx, "outbox send failed", "event_type", it.EventType, "attempt", n, "error", err)
 		observability.OutboxMessages.WithLabelValues(it.EventType, "retry").Inc()
@@ -112,13 +109,19 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 	return false
 }
 
-func (w *Worker) remove(ctx context.Context, id int64) bool {
-	delete(w.attempts, id)
-	if err := w.q.DeleteOutbox(ctx, id); err != nil {
+// remove удаляет строку и только после этого учитывает исход (при сбое удаления строка уйдёт повторно).
+// Удаление идёт без отмены: иначе отмена между отправкой и удалением даёт гарантированный дубль.
+func (w *Worker) remove(ctx context.Context, it model.OutboxItem, ok bool) bool {
+	delete(w.attempts, it.ID)
+	if err := w.q.DeleteOutbox(context.WithoutCancel(ctx), it.ID); err != nil {
 		// at-least-once: строка отправится повторно
 		stlog.Error(ctx, "outbox delete failed", "error", err)
 		sleep(ctx, w.idle)
 		return false
+	}
+	w.count(it, ok)
+	if it.EventType == "broadcast_summary" {
+		delete(w.stats, it.Broadcast)
 	}
 	return true
 }
@@ -135,9 +138,6 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 			ChatID: it.ChatID, ParseMode: models.ParseMode(it.ParseMode),
 			Text: fmt.Sprintf("Разослано: *%d*, не доставлено: *%d*", c.sent, c.failed),
 		})
-		if err == nil {
-			delete(w.stats, it.Broadcast)
-		}
 		return err
 	case it.MessageID != 0:
 		_, err := w.b.CopyMessage(ctx, &bot.CopyMessageParams{

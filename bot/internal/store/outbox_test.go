@@ -95,3 +95,15 @@ func TestResolveEnqueues(t *testing.T) {
 		t.Fatalf("got %+v err=%v", got, err)
 	}
 }
+
+func TestEnqueueRejectsEmpty(t *testing.T) {
+	s := &Store{} // до пула дело не доходит
+	for _, m := range []model.OutboxMessage{{}, {EventType: "x"}, {ChatID: 1}} {
+		if err := s.Enqueue(t.Context(), m); !errors.Is(err, ErrEmptyMessage) {
+			t.Fatalf("Enqueue(%+v) = %v", m, err)
+		}
+	}
+	if err := s.EnqueueMany(t.Context(), []model.OutboxMessage{{EventType: "x", ChatID: 1}, {}}); !errors.Is(err, ErrEmptyMessage) {
+		t.Fatalf("EnqueueMany = %v", err)
+	}
+}

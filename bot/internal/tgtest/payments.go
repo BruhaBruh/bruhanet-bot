@@ -193,3 +193,10 @@ func (p *Payments) ResolvePayment(
 	p.outbox = append(p.outbox, msg)
 	return *x, nil
 }
+
+func (p *Payments) EnqueueMany(_ context.Context, ms []model.OutboxMessage) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.outbox = append(p.outbox, ms...)
+	return nil
+}

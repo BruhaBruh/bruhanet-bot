@@ -44,6 +44,7 @@ type Payments interface {
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
 		apply func(model.Payment) (model.OutboxMessage, error)) (model.Payment, error)
+	EnqueueMany(ctx context.Context, ms []model.OutboxMessage) error
 }
 
 type Deps struct {
