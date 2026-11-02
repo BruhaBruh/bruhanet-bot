@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [pkg, core, bot]
+        module: [pkg, core, bot, api]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [pkg, core, bot]
+        module: [pkg, core, bot, api]
     services:
       postgres:
         image: postgres:18

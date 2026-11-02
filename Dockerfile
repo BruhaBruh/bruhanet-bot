@@ -6,6 +6,8 @@ COPY go.work go.work.sum ./
 COPY pkg/go.* pkg/
 COPY core/go.* core/
 COPY bot/go.* bot/
+# go.work перечисляет все модули: без их go.mod сборка бота не загрузит workspace
+COPY api/go.* api/
 RUN --mount=type=cache,target=/go/pkg/mod \
     cd bot && go mod download
 COPY pkg/ pkg/

@@ -51,7 +51,7 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 	}
 	cfg := &config.Config{
 		Telegram: coreconfig.TelegramConfig{Token: tgtest.Token, AdminID: adminID},
-		Admin:    coreconfig.AdminConfig{BaseURL: "http://localhost:5173"},
+		Admin:    coreconfig.AdminConfig{BaseURL: "http://localhost:5173/"}, // слэш на конце: ссылка не должна получить «//auth»
 		Support:  config.SupportConfig{URL: "https://t.me/support"},
 		Payment: config.PaymentConfig{
 			Phone:  "+7 (800) 555-35-35",
