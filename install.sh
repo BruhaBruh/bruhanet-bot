@@ -136,7 +136,7 @@ if [[ -f .env ]]; then
       ((${#nodef[@]} == 0)) || die "в .env нет ключей без значения по умолчанию: ${nodef[*]} — запусти с терминала или BRUHANET_INPUT=<файл>"
     fi
     echo "В .env не хватает ключей из .env.example: ${missing[*]}"
-    cp .env .env.bak
+    cp -p .env .env.bak
     envnew="$dir/.env.new"
     cp -p .env "$envnew"
     for k in "${missing[@]}"; do
@@ -152,6 +152,7 @@ if [[ -f .env ]]; then
       printf "%s='%s'\n" "$k" "$val" >>"$envnew"
     done
     mv "$envnew" .env
+    chmod 600 .env
     envnew=""
     if ! err="$(docker compose -f docker-compose.yaml --env-file .env config -q </dev/null 2>&1)"; then
       mv .env.bak .env

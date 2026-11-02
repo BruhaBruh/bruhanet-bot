@@ -49,9 +49,6 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		st.Close()
 		return nil, err
 	}
-	if err = warnLegacyPayments(stlog.Wrap(context.Background(), logger), rdb); err != nil {
-		logger.Warn("failed to scan legacy fsm payments", "error", err)
-	}
 
 	rw, err := remnawave.New(
 		config.Remnawave.PanelURL,
@@ -66,6 +63,9 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	}
 
 	rdb.AddHook(observability.RedisHook())
+	if err = warnLegacyPayments(stlog.Wrap(context.Background(), logger), rdb); err != nil {
+		logger.Warn("failed to scan legacy fsm payments", "error", err)
+	}
 	observability.InitBusinessSeries(slices.Collect(maps.Keys(config.Payment.Prices)))
 
 	// Обёртка только для хендлеров и reminder; readiness ходит напрямую.
