@@ -30,6 +30,7 @@ func (s *Store) CreatePayment(
 	ctx context.Context, p model.Payment, rollback func(old model.Payment) error,
 ) (created model.Payment, cancelled *model.Payment, err error) {
 	err = s.tx(ctx, func(tx pgx.Tx) error {
+		// upsert берёт row-lock на users, поэтому параллельные CreatePayment одного юзера сериализуются.
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO users (telegram_id, username) VALUES ($1, $2)
 			 ON CONFLICT (telegram_id) DO UPDATE SET username = EXCLUDED.username`,
@@ -116,13 +117,14 @@ func (s *Store) UserStats(ctx context.Context, telegramID, excludeID int64) (mod
 	return st, err
 }
 
-// ResolvePayment под блокировкой строки вызывает apply и переводит pending в confirmed|declined.
+// ResolvePayment под блокировкой строки вызывает apply и переводит pending в confirmed|declined;
+// сообщение из apply кладётся в outbox в той же транзакции.
 // При ErrNotPending возвращается и загруженный платёж.
 func (s *Store) ResolvePayment(
-	ctx context.Context, id int64, status model.PaymentStatus, at time.Time, apply func(p model.Payment) error,
+	ctx context.Context, id int64, status model.PaymentStatus, at time.Time, apply func(p model.Payment) (model.OutboxMessage, error),
 ) (model.Payment, error) {
 	if status != model.PaymentConfirmed && status != model.PaymentDeclined {
-		return model.Payment{}, fmt.Errorf("resolve payment: invalid status %q", status)
+		return model.Payment{}, errors.Join(ErrInvalidStatus, fmt.Errorf("status %q", status))
 	}
 	var p model.Payment
 	err := s.tx(ctx, func(tx pgx.Tx) error {
@@ -134,11 +136,15 @@ func (s *Store) ResolvePayment(
 		if p.Status != model.PaymentPending {
 			return ErrNotPending
 		}
-		if err = apply(p); err != nil {
+		msg, err := apply(p)
+		if err != nil {
 			return err
 		}
 		if _, err = tx.Exec(ctx, `UPDATE payments SET status = $2, resolved_at = $3 WHERE id = $1`,
 			id, status, at); err != nil {
+			return err
+		}
+		if err = enqueue(ctx, tx, msg); err != nil {
 			return err
 		}
 		p.Status, p.ResolvedAt = status, &at

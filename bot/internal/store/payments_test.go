@@ -104,6 +104,10 @@ func TestSubmitPaymentOnce(t *testing.T) {
 	}
 }
 
+func okApply(model.Payment) (model.OutboxMessage, error) {
+	return model.OutboxMessage{EventType: "payment_result", ChatID: 1}, nil
+}
+
 func TestResolveConcurrent(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
@@ -114,18 +118,24 @@ func TestResolveConcurrent(t *testing.T) {
 
 	var applied atomic.Int32
 	errs := make([]error, 2)
-	start := make(chan struct{})
+	start, release := make(chan struct{}), make(chan struct{})
 	var wg sync.WaitGroup
 	for i := range errs {
 		wg.Go(func() {
 			<-start
-			_, errs[i] = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) error {
+			_, errs[i] = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) (model.OutboxMessage, error) {
 				applied.Add(1)
-				return nil
+				<-release // держим tx открытой, пока второй не упрётся в FOR UPDATE
+				return model.OutboxMessage{EventType: "payment_result", ChatID: 1}, nil
 			})
 		})
 	}
 	close(start)
+	for applied.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond) // второй успевает дойти до SELECT … FOR UPDATE
+	close(release)
 	wg.Wait()
 
 	if applied.Load() != 1 {
@@ -163,24 +173,24 @@ func TestResolveApplyError(t *testing.T) {
 		t.Fatal(err)
 	}
 	boom := errors.New("boom")
-	if _, err = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) error { return boom }); !errors.Is(err, boom) {
+	if _, err = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) (model.OutboxMessage, error) { return model.OutboxMessage{}, boom }); !errors.Is(err, boom) {
 		t.Fatalf("want boom, got %v", err)
 	}
 	got, err := s.PendingPayment(ctx, 1)
 	if err != nil || got.ResolvedAt != nil {
 		t.Fatalf("got %+v err=%v", got, err)
 	}
-	res, err := s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) error { return nil })
+	res, err := s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), okApply)
 	if err != nil || res.Status != model.PaymentConfirmed {
 		t.Fatalf("res %+v err=%v", res, err)
 	}
 	// повтор -> ErrNotPending с платежом
-	res, err = s.ResolvePayment(ctx, p.ID, model.PaymentDeclined, time.Now(), func(model.Payment) error { return nil })
+	res, err = s.ResolvePayment(ctx, p.ID, model.PaymentDeclined, time.Now(), okApply)
 	if !errors.Is(err, ErrNotPending) || res.ID != p.ID {
 		t.Fatalf("res %+v err=%v", res, err)
 	}
-	if _, err = s.ResolvePayment(ctx, p.ID, model.PaymentCancelled, time.Now(), nil); err == nil {
-		t.Fatal("want error for invalid status")
+	if _, err = s.ResolvePayment(ctx, p.ID, model.PaymentCancelled, time.Now(), nil); !errors.Is(err, ErrInvalidStatus) {
+		t.Fatalf("want ErrInvalidStatus, got %v", err)
 	}
 	if _, err = s.ResolvePayment(ctx, 9999, model.PaymentConfirmed, time.Now(), nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)

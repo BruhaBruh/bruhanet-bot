@@ -36,8 +36,9 @@ type Server struct {
 }
 
 type failure struct {
-	code int
-	desc string
+	code       int
+	desc       string
+	retryAfter int
 }
 
 func NewServer(t testing.TB) *Server {
@@ -59,7 +60,17 @@ func (s *Server) FailChat(chatID int64, code int, description string) {
 	if s.fail == nil {
 		s.fail = make(map[int64]failure)
 	}
-	s.fail[chatID] = failure{code, description}
+	s.fail[chatID] = failure{code: code, desc: description}
+}
+
+// FailChatRetryAfter: sendMessage/copyMessage в chatID отвечают 429 с parameters.retry_after.
+func (s *Server) FailChatRetryAfter(chatID int64, seconds int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail == nil {
+		s.fail = make(map[int64]failure)
+	}
+	s.fail[chatID] = failure{code: 429, desc: "Too Many Requests: retry after " + strconv.Itoa(seconds), retryAfter: seconds}
 }
 
 func (s *Server) Options() []bot.Option {
@@ -107,7 +118,11 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		if failed {
 			w.WriteHeader(f.code)
-			body, _ := json.Marshal(map[string]any{"ok": false, "error_code": f.code, "description": f.desc})
+			resp := map[string]any{"ok": false, "error_code": f.code, "description": f.desc}
+			if f.retryAfter > 0 {
+				resp["parameters"] = map[string]any{"retry_after": f.retryAfter}
+			}
+			body, _ := json.Marshal(resp)
 			_, _ = w.Write(body)
 			return
 		}

@@ -39,6 +39,9 @@ var (
 	BroadcastMessages = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "bot_broadcast_messages_total", Help: "Broadcast messages by delivery result.",
 	}, []string{"result"})
+	OutboxMessages = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "bot_outbox_messages_total", Help: "Outbox messages by delivery result.",
+	}, []string{"event_type", "result"})
 	Ready = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "bot_ready", Help: "1 if all dependencies are up.",
 	})
@@ -52,7 +55,7 @@ func init() {
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		Updates, UpdateDuration, ExternalRequests, ExternalDuration,
-		Payments, PaymentsConfirmedRubles, RemindersSent, Broadcasts, BroadcastMessages,
+		Payments, PaymentsConfirmedRubles, RemindersSent, Broadcasts, BroadcastMessages, OutboxMessages,
 		Ready, DependencyUp,
 	)
 }
@@ -69,6 +72,11 @@ func InitBusinessSeries(months []int) {
 	}
 	for _, k := range []string{"week", "day"} {
 		RemindersSent.WithLabelValues(k)
+	}
+	for _, e := range []string{"payment_result", "reminder", "broadcast", "broadcast_summary"} {
+		for _, r := range []string{"sent", "dropped", "retry"} {
+			OutboxMessages.WithLabelValues(e, r)
+		}
 	}
 	for _, r := range []string{"sent", "failed"} {
 		BroadcastMessages.WithLabelValues(r)

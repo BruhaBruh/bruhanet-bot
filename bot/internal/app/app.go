@@ -5,17 +5,20 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"math"
 	"net/http"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
+	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
 	"github.com/bruhabruh/bruhanet/bot/internal/store"
 	"github.com/bruhabruh/bruhanet/pkg/app"
@@ -76,6 +79,22 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	loc, err := time.LoadLocation("Europe/Moscow")
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to load Europe/Moscow"), err)
+	}
+
+	ow := outbox.New(st, b)
+	outboxDone := make(chan struct{})
+	if err = observability.Registry.Register(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "bot_outbox_pending", Help: "Messages waiting in the outbox.",
+	}, func() float64 {
+		ctx, cancel := context.WithTimeout(observability.WithProbe(context.Background()), 2*time.Second)
+		defer cancel()
+		n, err := st.OutboxCount(ctx)
+		if err != nil {
+			return math.NaN()
+		}
+		return float64(n)
+	})); err != nil {
+		return nil, errors.Join(errors.New("failed to register outbox gauge"), err)
 	}
 
 	rem := reminder.New(rwObs, handler.NewNotifier(b), rdb, nil)
@@ -177,6 +196,24 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 				}()
 				select {
 				case <-drained:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+		)),
+		app.WithComponent("outbox", lifecycle.New(
+			func(context.Context) error {
+				go func() {
+					defer close(outboxDone)
+					ow.Run(runCtx)
+				}()
+				return nil
+			},
+			func(ctx context.Context) error {
+				cancelRun()
+				select {
+				case <-outboxDone:
 					return nil
 				case <-ctx.Done():
 					return ctx.Err()
