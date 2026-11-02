@@ -30,6 +30,14 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	link := strings.TrimRight(h.cfg.Admin.BaseURL, "/") + "/auth?token=" + raw
-	send(ctx, b, h.cfg.Telegram.AdminID, keyboard.Inline(keyboard.Row(keyboard.URL("Открыть админку", link))),
-		"Вход в админку: "+bot.EscapeMarkdown(link), "Ссылка одноразовая, действует 5 минут")
+	// Ссылка только в кнопке и без превью: краулер превью Telegram сам открыл бы /auth и сжёг одноразовый токен.
+	if _, err = b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:             h.cfg.Telegram.AdminID,
+		Text:               buildMessage("Вход в админку", "Ссылка одноразовая, действует 5 минут"),
+		ParseMode:          models.ParseModeMarkdown,
+		ReplyMarkup:        keyboard.Inline(keyboard.Row(keyboard.URL("Открыть админку", link))),
+		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
+	}); err != nil {
+		stlog.Warn(ctx, "failed to send login link", "error", err)
+	}
 }

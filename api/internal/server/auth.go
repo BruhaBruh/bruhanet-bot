@@ -19,6 +19,9 @@ const staleLinkPage = `<!doctype html><html lang="ru"><meta charset="utf-8"><tit
 	`<p>Ссылка устарела. Отправь боту /login ещё раз.</p></html>`
 
 func (s *server) auth(w http.ResponseWriter, r *http.Request) {
+	// токен в URL: не отдавать его в Referer и не класть ответ в кэш
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Cache-Control", "no-store")
 	ctx := r.Context()
 	now := s.Now()
 	if err := s.Store.ConsumeLoginToken(ctx, auth.Hash(r.URL.Query().Get("token")), now); err != nil {

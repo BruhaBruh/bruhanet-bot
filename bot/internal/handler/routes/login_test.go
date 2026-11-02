@@ -24,6 +24,13 @@ func TestLoginAdmin(t *testing.T) {
 	if kb := p.Get("reply_markup"); !strings.Contains(kb, `"url":"http://localhost:5173/auth?token=`) {
 		t.Fatalf("reply_markup = %s", kb)
 	}
+	// превью-краулер Telegram сжёг бы одноразовый токен: ссылки нет в тексте, превью выключено
+	if text := p.Get("text"); strings.Contains(text, "auth") {
+		t.Fatalf("token leaked into text: %s", text)
+	}
+	if lp := p.Get("link_preview_options"); !strings.Contains(lp, `"is_disabled":true`) {
+		t.Fatalf("link_preview_options = %q", lp)
+	}
 }
 
 func TestLoginNonAdmin(t *testing.T) {

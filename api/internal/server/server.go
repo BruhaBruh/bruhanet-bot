@@ -47,20 +47,20 @@ type server struct {
 
 func New(d Deps) http.Handler {
 	s := &server{Deps: d, secure: strings.HasPrefix(d.BaseURL, "https://")}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /auth", s.auth)
-	mux.Handle("GET /api/me", s.api(s.me))
-	mux.Handle("POST /api/logout", s.api(s.logout))
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
+	// default-deny: всё под /api/ живёт в apiMux и проходит jsonOnly (дёшево, без БД) и сессию.
+	// Тот же *Request уходит во вложенный мукс, он перезаписывает r.Pattern — метрика видит точный шаблон.
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("GET /api/me", s.me)
+	apiMux.HandleFunc("POST /api/logout", s.logout)
+	apiMux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /auth", s.auth)
+	mux.Handle("/api/", jsonOnly(s.requireSession(apiMux)))
 	mux.HandleFunc("/", s.static) // без метода: "GET /" конфликтует с "/api/"
 	return metrics(mux)
-}
-
-// api — цепочка для /api/*: сначала тип тела (дёшево, без БД), потом сессия.
-func (s *server) api(h http.HandlerFunc) http.Handler {
-	return jsonOnly(s.requireSession(h))
 }
 
 type statusWriter struct {
@@ -72,6 +72,8 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.code = code
 	w.ResponseWriter.WriteHeader(code)
 }
+
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func metrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -160,6 +160,27 @@ func TestAPIRequiresSession(t *testing.T) {
 	}
 }
 
+// TestAPIDefaultDeny — /api/* закрыт сессией целиком, включая ещё не написанные и неизвестные маршруты.
+func TestAPIDefaultDeny(t *testing.T) {
+	h, _ := newServer(t, "http://localhost:5173")
+	for _, rt := range []struct{ method, path string }{
+		{http.MethodGet, "/api/me"},
+		{http.MethodPost, "/api/logout"},
+		{http.MethodGet, "/api/"},
+		{http.MethodGet, "/api/nope"},
+		{http.MethodGet, "/api/logout"},
+		{http.MethodDelete, "/api/users/1"},
+	} {
+		ct := ""
+		if rt.method != http.MethodGet {
+			ct = "application/json"
+		}
+		if w := do(h, rt.method, rt.path, "", ct); w.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s without cookie: %d", rt.method, rt.path, w.Code)
+		}
+	}
+}
+
 func TestJSONOnly(t *testing.T) {
 	h, st := newServer(t, "http://localhost:5173")
 	c := st.addSession(t, adminID, now.Add(time.Hour))

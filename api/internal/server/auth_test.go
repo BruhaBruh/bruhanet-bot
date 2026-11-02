@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ func TestAuthOK(t *testing.T) {
 			if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
 				t.Fatalf("auth: %d %q", w.Code, w.Header().Get("Location"))
 			}
+			assertNoLeak(t, w)
 			sc := w.Header().Get("Set-Cookie")
 			for _, part := range []string{"bn_session=", "Path=/", "HttpOnly", "SameSite=Strict"} {
 				if !strings.Contains(sc, part) {
@@ -44,6 +46,14 @@ func TestAuthOK(t *testing.T) {
 	}
 }
 
+// assertNoLeak — токен в URL не должен утечь через Referer или кэш.
+func assertNoLeak(t *testing.T, w *httptest.ResponseRecorder) {
+	t.Helper()
+	if rp, cc := w.Header().Get("Referrer-Policy"), w.Header().Get("Cache-Control"); rp != "no-referrer" || cc != "no-store" {
+		t.Fatalf("Referrer-Policy = %q, Cache-Control = %q", rp, cc)
+	}
+}
+
 func assertStale(t *testing.T, h http.Handler, target string) {
 	t.Helper()
 	w := do(h, http.MethodGet, target, "", "")
@@ -51,6 +61,7 @@ func assertStale(t *testing.T, h http.Handler, target string) {
 		!strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
 		t.Fatalf("%s: %d %s %s", target, w.Code, w.Header().Get("Content-Type"), w.Body)
 	}
+	assertNoLeak(t, w)
 	if w.Header().Get("Set-Cookie") != "" {
 		t.Fatal("stale link must not set a cookie")
 	}

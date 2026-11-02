@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
@@ -11,7 +12,8 @@ import (
 )
 
 func TestSPAFallback(t *testing.T) {
-	h, _ := newServer(t, "http://localhost:5173")
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
 
 	for _, p := range []string{"/", "/users/123", "/assets/missing.js"} {
 		if w := do(h, http.MethodGet, p, "", ""); w.Code != http.StatusOK || w.Body.String() != indexHTML {
@@ -29,9 +31,14 @@ func TestSPAFallback(t *testing.T) {
 	if n := testutil.ToFloat64(server.Requests.WithLabelValues("/", "200")); n < 3 {
 		t.Fatalf(`requests{route="/"} = %v`, n)
 	}
+	// шаблон вложенного api-мукса, а не "/api/"
+	do(h, http.MethodGet, "/api/me", c, "")
+	if n := testutil.ToFloat64(server.Requests.WithLabelValues("GET /api/me", "200")); n < 1 {
+		t.Fatalf(`requests{route="GET /api/me"} = %v`, n)
+	}
 
 	for _, p := range []string{"/api/nope", "/api/"} {
-		w := do(h, http.MethodGet, p, "", "")
+		w := do(h, http.MethodGet, p, c, "")
 		if w.Code != http.StatusNotFound || strings.TrimSpace(w.Body.String()) != `{"error":"not found"}` ||
 			!strings.HasPrefix(w.Header().Get("Content-Type"), "application/json") {
 			t.Fatalf("%s: %d %s", p, w.Code, w.Body)
