@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { post } from '../api'
 import { TgAvatar, TgButton, TgCell } from '../ui'
@@ -14,6 +15,13 @@ const items = [
   { to: '/settings', emoji: '⚙️', label: 'Настройки', sub: 'скоро', color: 6 },
 ] as const
 
+// На телефоне меню — горизонтальная полоса: подкручиваем активный пункт в зону видимости.
+const nav = ref<HTMLElement | null>(null)
+watch(() => route.path, async () => {
+  await nextTick()
+  nav.value?.querySelector('.tg-active')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}, { immediate: true })
+
 async function logout() {
   await post('/api/logout')
   await router.push('/login-required')
@@ -22,7 +30,7 @@ async function logout() {
 
 <template>
   <div class="layout">
-    <nav aria-label="Разделы">
+    <nav ref="nav" aria-label="Разделы">
       <div class="brand">BruhaNet</div>
       <TgCell v-for="i in items" :key="i.to" :to="i.to" :title="i.label" :subtitle="i.sub" :active="route.path.startsWith(i.to)">
         <template #before><TgAvatar :emoji="i.emoji" :color="i.color" /></template>

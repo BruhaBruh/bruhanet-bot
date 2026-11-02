@@ -42,7 +42,8 @@ export function plural(n: number, forms: [string, string, string]): string {
 }
 
 // «сентябрь 2026» (МСК)
+// Месяц в родительном падеже («с ноября 2026»): с day Intl отдаёт «ноября», без day — «ноябрь».
 export function formatMonthYear(iso: string): string {
-  const p = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', month: 'long', year: 'numeric' }).formatToParts(new Date(iso))
+  const p = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(new Date(iso))
   return `${p.find((x) => x.type === 'month')?.value} ${p.find((x) => x.type === 'year')?.value}`
 }

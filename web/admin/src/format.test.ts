@@ -22,6 +22,7 @@ test('plural picks russian forms', () => {
   ])
 })
 
-test('formatMonthYear is nominative Moscow month', () => {
-  expect(formatMonthYear('2026-09-12T09:30:00Z')).toBe('сентябрь 2026')
+test('formatMonthYear is genitive Moscow month (for «с … года»)', () => {
+  expect(formatMonthYear('2026-09-12T09:30:00Z')).toBe('сентября 2026')
+  expect(formatMonthYear('2026-10-31T22:30:00Z')).toBe('ноября 2026')
 })
