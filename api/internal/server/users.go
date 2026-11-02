@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -64,7 +65,9 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 
 	// Панель — вспомогательные данные: её сбой не роняет карточку.
 	var p panelInfo
-	switch info, err := s.Panel.GetUser(ctx, id); {
+	pctx, cancel := context.WithTimeout(ctx, s.PanelTimeout)
+	defer cancel()
+	switch info, err := s.Panel.GetUser(pctx, id); {
 	case errors.Is(err, remnawave.ErrUserNotFound):
 		p.Status = ptr("not_found")
 	case err != nil:

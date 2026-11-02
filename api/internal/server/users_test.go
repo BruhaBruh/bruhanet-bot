@@ -90,3 +90,12 @@ func TestUsersSearch(t *testing.T) {
 		t.Fatalf("%d %s q=%q", w.Code, w.Body, st.lastQ)
 	}
 }
+
+func TestUserCardPanelTimeout(t *testing.T) {
+	h, st := newServerTimeout(t, "http://localhost:5173", blockingPanel{}, 20*time.Millisecond)
+	st.users = []model.UserSummary{{TelegramID: 7, Username: "bob"}}
+	got := getCard(t, h, st.addSession(t, adminID, now.Add(time.Hour)), http.StatusOK)
+	if got.Panel.Error == nil || *got.Panel.Error != "panel_unavailable" {
+		t.Fatalf("panel = %+v", got.Panel)
+	}
+}

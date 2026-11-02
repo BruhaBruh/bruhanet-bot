@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -31,13 +32,26 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	link := strings.TrimRight(h.cfg.Admin.BaseURL, "/") + "/auth?token=" + raw
 	// Ссылка только в кнопке и без превью: краулер превью Telegram сам открыл бы /auth и сжёг одноразовый токен.
-	if _, err = b.SendMessage(ctx, &bot.SendMessageParams{
+	text := buildMessage("Вход в админку", "Ссылка одноразовая, действует 5 минут")
+	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:             h.cfg.Telegram.AdminID,
-		Text:               buildMessage("Вход в админку", "Ссылка одноразовая, действует 5 минут"),
+		Text:               text,
 		ParseMode:          models.ParseModeMarkdown,
 		ReplyMarkup:        keyboard.Inline(keyboard.Row(keyboard.URL("Открыть админку", link))),
 		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
-	}); err != nil {
+	})
+	if errors.Is(err, bot.ErrorBadRequest) {
+		// Telegram не принимает, например, localhost в URL-кнопке (dev): шлём ссылку текстом, тоже без превью.
+		stlog.Warn(ctx, "login button rejected, sending plain link", "error", err)
+		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:             h.cfg.Telegram.AdminID,
+			Text:               text + "\n" + bot.EscapeMarkdown(link),
+			ParseMode:          models.ParseModeMarkdown,
+			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
+		})
+	}
+	if err != nil {
 		stlog.Warn(ctx, "failed to send login link", "error", err)
+		send(ctx, b, h.cfg.Telegram.AdminID, nil, errorText)
 	}
 }

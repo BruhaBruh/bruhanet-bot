@@ -35,12 +35,14 @@ type Panel interface {
 }
 
 type Deps struct {
-	Store   Store
-	Panel   Panel
-	AdminID int64
-	BaseURL string
-	Now     func() time.Time
-	Static  fs.FS
+	Store Store
+	Panel Panel
+	// PanelTimeout — потолок на один вызов панели; 0 → 5с.
+	PanelTimeout time.Duration
+	AdminID      int64
+	BaseURL      string
+	Now          func() time.Time
+	Static       fs.FS
 }
 
 // Requests — api_http_requests_total; route — шаблон маршрута ServeMux, без id.
@@ -54,6 +56,9 @@ type server struct {
 }
 
 func New(d Deps) http.Handler {
+	if d.PanelTimeout == 0 {
+		d.PanelTimeout = 5 * time.Second
+	}
 	s := &server{Deps: d, secure: strings.HasPrefix(d.BaseURL, "https://")}
 	// default-deny: всё под /api/ живёт в apiMux и проходит jsonOnly (дёшево, без БД) и сессию.
 	// Тот же *Request уходит во вложенный мукс, он перезаписывает r.Pattern — метрика видит точный шаблон.

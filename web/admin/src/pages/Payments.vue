@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { get } from '../api'
-import { formatRub, statusLabels } from '../format'
+import { formatRub, mskDate, statusLabels } from '../format'
 import type { Payment } from '../types'
 import PaymentsTable from './PaymentsTable.vue'
 
 const pageSize = 50
 const status = ref('')
-const from = ref('')
-const to = ref('')
+// период всегда виден и уходит явно: сегодня и 29 дней назад (МСК), как default сервера
+const from = ref(mskDate(new Date(), -29))
+const to = ref(mskDate(new Date()))
 const page = ref(1)
 const items = ref<Payment[]>([])
 const total = ref(0)
@@ -18,7 +19,6 @@ const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 
 async function load() {
   const p = new URLSearchParams({ status: status.value, page: String(page.value) })
-  // пустые from/to → сервер берёт последние 30 дней МСК
   if (from.value) p.set('from', from.value)
   if (to.value) p.set('to', to.value)
   try {
@@ -54,8 +54,9 @@ onMounted(load)
     <label>по <input v-model="to" type="date" @change="apply" /></label>
   </div>
   <p v-if="error" class="err">Не удалось загрузить</p>
-  <p>Выручка (подтверждено за период): <b>{{ formatRub(revenue) }}</b> · всего платежей: {{ total }}</p>
+  <p>Выручка (по дате подтверждения за период): <b>{{ formatRub(revenue) }}</b> · всего платежей: {{ total }}</p>
   <PaymentsTable :items="items" show-user />
+  <p class="hint">Список отфильтрован по дате создания платежа.</p>
   <div class="pager">
     <button :disabled="page <= 1" @click="go(page - 1)">←</button>
     <span>{{ page }} / {{ pages }}</span>
@@ -65,5 +66,6 @@ onMounted(load)
 
 <style scoped>
 .filters { display: flex; gap: 12px; margin: 8px 0 16px; align-items: center; }
+.hint { color: #888; font-size: 12px; }
 .pager { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
 </style>

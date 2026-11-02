@@ -47,6 +47,8 @@ services:
     environment:
       DATABASE_URL: *database_url
       LOG_JSON: "true"
+      API_ADDR: ":8090"
+      API_OBSERVABILITY_ADDR: ":8091"
     command: ["/app/api"]
     ports:
       - 127.0.0.1:8090:8090

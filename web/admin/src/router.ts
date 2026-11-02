@@ -24,5 +24,6 @@ export const router = createRouter({
         { path: 'settings', component: Soon },
       ],
     },
+    { path: '/:p(.*)*', redirect: '/users' },
   ],
 })

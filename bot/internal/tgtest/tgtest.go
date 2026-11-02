@@ -39,6 +39,7 @@ type failure struct {
 	code       int
 	desc       string
 	retryAfter int
+	onlyMarkup bool // отказ только для запросов с reply_markup
 }
 
 func NewServer(t testing.TB) *Server {
@@ -64,6 +65,16 @@ func (s *Server) FailChat(chatID int64, code int, description string) {
 }
 
 // FailChatRetryAfter: sendMessage/copyMessage в chatID отвечают 429 с parameters.retry_after.
+// FailChatMarkup: как FailChat, но отказ только для sendMessage/copyMessage с reply_markup (Telegram отвергает localhost-URL в кнопках).
+func (s *Server) FailChatMarkup(chatID int64, code int, description string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail == nil {
+		s.fail = make(map[int64]failure)
+	}
+	s.fail[chatID] = failure{code: code, desc: description, onlyMarkup: true}
+}
+
 func (s *Server) FailChatRetryAfter(chatID int64, seconds int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -116,7 +127,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		f, failed := s.fail[id]
 		s.mu.Unlock()
-		if failed {
+		if failed && (!f.onlyMarkup || r.Form.Get("reply_markup") != "") {
 			w.WriteHeader(f.code)
 			resp := map[string]any{"ok": false, "error_code": f.code, "description": f.desc}
 			if f.retryAfter > 0 {

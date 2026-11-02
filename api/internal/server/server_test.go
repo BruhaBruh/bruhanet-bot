@@ -121,13 +121,19 @@ func newServer(t *testing.T, baseURL string) (http.Handler, *fakeStore) {
 
 func newServerPanel(t *testing.T, baseURL string, panel server.Panel) (http.Handler, *fakeStore) {
 	t.Helper()
+	return newServerTimeout(t, baseURL, panel, 0)
+}
+
+func newServerTimeout(t *testing.T, baseURL string, panel server.Panel, panelTimeout time.Duration) (http.Handler, *fakeStore) {
+	t.Helper()
 	st := newFakeStore()
 	h := server.New(server.Deps{
-		Store:   st,
-		Panel:   panel,
-		AdminID: adminID,
-		BaseURL: baseURL,
-		Now:     func() time.Time { return now },
+		Store:        st,
+		Panel:        panel,
+		PanelTimeout: panelTimeout,
+		AdminID:      adminID,
+		BaseURL:      baseURL,
+		Now:          func() time.Time { return now },
 		Static: fstest.MapFS{
 			"index.html":    {Data: []byte(indexHTML)},
 			"assets/app.js": {Data: []byte("console.log(1)")},
@@ -279,3 +285,11 @@ type fakePanel struct {
 }
 
 func (p *fakePanel) GetUser(context.Context, int64) (*api.UserItemInfo, error) { return p.user, p.err }
+
+// blockingPanel висит, пока не отменят контекст.
+type blockingPanel struct{}
+
+func (blockingPanel) GetUser(ctx context.Context, _ int64) (*api.UserItemInfo, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}

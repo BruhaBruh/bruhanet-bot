@@ -24,3 +24,9 @@ export const statusLabels: Record<string, string> = {
   declined: 'отклонён',
   cancelled: 'отменён',
 }
+
+// YYYY-MM-DD в МСК, сдвинутая на days (для default-периода фильтра)
+export function mskDate(now: Date, days = 0): string {
+  const d = new Date(now.getTime() + days * 864e5)
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(d)
+}

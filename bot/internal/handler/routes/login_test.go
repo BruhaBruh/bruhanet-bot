@@ -46,3 +46,31 @@ func TestLoginNonAdmin(t *testing.T) {
 		t.Fatal("reply must go to the user")
 	}
 }
+
+func TestLoginURLRejectedFallsBackToText(t *testing.T) {
+	e := newEnv(t)
+	e.srv.FailChatMarkup(adminID, 400, "Bad Request: wrong HTTP URL")
+	e.process(t, tgtest.Message(adminID, "/login"))
+
+	p := e.last(t, "sendMessage").Params
+	if p.Get("reply_markup") != "" || !strings.Contains(p.Get("text"), "http://localhost:5173/auth?token") {
+		t.Fatalf("fallback params = %v", p)
+	}
+	if lp := p.Get("link_preview_options"); !strings.Contains(lp, `"is_disabled":true`) {
+		t.Fatalf("link_preview_options = %q", lp)
+	}
+}
+
+func TestLoginBothSendsFail(t *testing.T) {
+	e := newEnv(t)
+	e.srv.FailChat(adminID, 400, "Bad Request: nope")
+	e.process(t, tgtest.Message(adminID, "/login"))
+
+	calls := e.srv.Calls("sendMessage")
+	if len(calls) != 3 {
+		t.Fatalf("sendMessage calls = %d, want 3 (button, text, error)", len(calls))
+	}
+	if got := calls[2].Params.Get("text"); !strings.Contains(got, "произошла ошибка") {
+		t.Fatalf("last text = %q", got)
+	}
+}
