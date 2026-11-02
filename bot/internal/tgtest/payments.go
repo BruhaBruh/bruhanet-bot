@@ -21,6 +21,13 @@ type Payments struct {
 	failResolve    bool
 	failSubmitOnce bool
 	failAdvance    bool
+	loginTokens    []LoginToken
+}
+
+// LoginToken — токен входа, созданный через CreateLoginToken.
+type LoginToken struct {
+	Hash      []byte
+	ExpiresAt time.Time
 }
 
 func NewPayments() *Payments {
@@ -220,4 +227,17 @@ func (p *Payments) EnqueueMany(_ context.Context, ms []model.OutboxMessage) erro
 	defer p.mu.Unlock()
 	p.outbox = append(p.outbox, ms...)
 	return nil
+}
+
+func (p *Payments) CreateLoginToken(_ context.Context, hash []byte, expiresAt time.Time) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.loginTokens = append(p.loginTokens, LoginToken{Hash: hash, ExpiresAt: expiresAt})
+	return nil
+}
+
+func (p *Payments) LoginTokens() []LoginToken {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.loginTokens)
 }

@@ -46,6 +46,7 @@ type Payments interface {
 	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
 		apply func(model.Payment) (model.OutboxMessage, error)) (model.Payment, error)
 	EnqueueMany(ctx context.Context, ms []model.OutboxMessage) error
+	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
 }
 
 type Deps struct {
@@ -80,6 +81,7 @@ func Register(r *router.Router, d Deps) {
 	// Message-роуты матчатся в порядке регистрации: рассылка раньше оплаты.
 	r.Message("broadcast", h.broadcastMessage, router.InState(stateAwaitBroadcast))
 	r.Command("a", h.broadcastStart)
+	r.Command("login", h.login)
 	r.Photo("payment", h.photo, router.InState(stateAwaitPhoto, stateInReview))
 	adminOnly := middleware.AdminOnly(d.Config.Telegram.AdminID)
 	r.Callback(confirmRoute.Name(), h.confirm, adminOnly)

@@ -7,6 +7,7 @@ type Config struct {
 	Payment       PaymentConfig
 	Logger        coreconfig.LoggerConfig
 	Telegram      coreconfig.TelegramConfig
+	Admin         coreconfig.AdminConfig
 	Remnawave     coreconfig.RemnawaveConfig
 	Redis         RedisConfig
 	Database      coreconfig.DatabaseConfig
