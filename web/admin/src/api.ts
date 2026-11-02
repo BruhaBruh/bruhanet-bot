@@ -1,0 +1,20 @@
+import { router } from './router'
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (res.status === 401) {
+    await router.push('/login-required')
+    throw new Error('unauthorized')
+  }
+  if (!res.ok) throw new Error(`${method} ${path}: ${res.status}`)
+  if (res.status === 204) return undefined as T
+  return (await res.json()) as T
+}
+
+export const get = <T>(path: string) => request<T>('GET', path)
+export const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {})

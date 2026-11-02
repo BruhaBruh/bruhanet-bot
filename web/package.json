@@ -1,0 +1,9 @@
+{
+  "name": "bruhanet-web",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -C admin build",
+    "test": "pnpm -C admin test",
+    "typecheck": "pnpm -C admin typecheck"
+  }
+}

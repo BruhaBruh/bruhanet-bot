@@ -39,3 +39,24 @@ tasks:
     silent: true
     cmds:
       - task --list
+
+  web:install:
+    desc: Установить зависимости фронта
+    cmds:
+      - pnpm -C web install
+
+  web:dev:
+    desc: Vite dev-сервер админки (proxy на api :8090)
+    cmds:
+      - pnpm -C web/admin dev
+
+  web:build:
+    desc: Собрать фронт в web/admin/dist
+    cmds:
+      - pnpm -C web build
+
+  web:test:
+    desc: Тесты и typecheck фронта
+    cmds:
+      - pnpm -C web test
+      - pnpm -C web typecheck

@@ -14,3 +14,6 @@ tmp/
 docs/
 
 deploy/.env
+
+web/**/node_modules
+web/admin/dist
