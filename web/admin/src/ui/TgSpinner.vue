@@ -1,3 +1,3 @@
 <template>
-  <span class="tg-spin" role="status" aria-label="Загрузка" />
+  <span class="tg-spin" aria-hidden="true" />
 </template>

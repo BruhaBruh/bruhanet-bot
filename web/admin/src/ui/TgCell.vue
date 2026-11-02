@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { RouteLocationRaw } from 'vue-router'
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
 
 defineProps<{
   title: string
@@ -13,7 +13,7 @@ defineProps<{
 </script>
 
 <template>
-  <component :is="to ? 'RouterLink' : 'div'" :to="to" class="tg-cell" :class="{ 'tg-active': active }">
+  <component :is="to ? RouterLink : 'div'" :to="to" class="tg-cell" :class="{ 'tg-active': active }">
     <slot name="before" />
     <div class="tg-cell-body">
       <div class="tg-title">{{ title }}</div>

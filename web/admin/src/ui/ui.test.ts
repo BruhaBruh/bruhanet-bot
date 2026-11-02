@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { describe, expect, it } from 'vitest'
-import { TgAvatar, TgBadge, TgCell } from './index'
+import { TgAvatar, TgBadge, TgButton, TgCell, TgInput, TgSelect } from './index'
 import { readFileSync } from 'node:fs'
 
 const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: {} }, { path: '/x', component: {} }] })
@@ -35,5 +35,19 @@ describe('ui kit', () => {
     expect(css).toMatch(/\.tg-sub\s*\{[^}]*text-overflow:\s*ellipsis/)
     expect(css).toMatch(/\.tg-cell-body\s*\{[^}]*min-width:\s*0/)
     expect(w.find('.tg-cell-body').exists()).toBe(true)
+  })
+  it('TgInput/TgSelect: aria-label reaches the native control', () => {
+    expect(mount(TgInput, { props: { modelValue: '' }, attrs: { 'aria-label': 'Поиск' } }).find('input').attributes('aria-label')).toBe('Поиск')
+    expect(mount(TgInput, { props: { modelValue: '', placeholder: 'ID' } }).find('input').attributes('aria-label')).toBe('ID')
+    const sel = mount(TgSelect, { props: { modelValue: 'a', options: [{ value: 'a', label: 'A' }] }, attrs: { 'aria-label': 'Статус' } })
+    expect(sel.find('select').attributes('aria-label')).toBe('Статус')
+    expect(sel.find('label').attributes('aria-label')).toBeUndefined()
+  })
+  it('TgButton: type=button by default, overridable; loading sets aria-busy', () => {
+    expect(mount(TgButton).attributes('type')).toBe('button')
+    expect(mount(TgButton, { attrs: { type: 'submit' } }).attributes('type')).toBe('submit')
+    const b = mount(TgButton, { props: { loading: true } })
+    expect(b.attributes('aria-busy')).toBe('true')
+    expect(b.find('[role=status]').exists()).toBe(false)
   })
 })

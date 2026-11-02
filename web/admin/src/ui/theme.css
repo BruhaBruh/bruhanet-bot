@@ -1,7 +1,7 @@
 /* Look follows TelegramUI (MIT, see LICENSE-TelegramUI). */
 :root {
   --tg-bg: #fff; --tg-secondary-bg: #efeff4; --tg-text: #000; --tg-hint: #8e8e93;
-  --tg-accent: #2481cc; --tg-button: #2481cc; --tg-button-text: #fff;
+  --tg-accent: #2481cc; --tg-hint-text: #696970; --tg-link: #1a6aaf; --tg-button: #1f74b8; --tg-button-text: #fff;
   --tg-sep: #c8c7cc80; --tg-fill: #2481cc1f; --tg-danger: #e53935;
   --tg-font: -apple-system, "SF Pro Text", Roboto, "Segoe UI", system-ui, sans-serif;
   color-scheme: light;
@@ -9,18 +9,20 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --tg-bg: #212121; --tg-secondary-bg: #0f0f0f; --tg-text: #fff; --tg-hint: #aaa;
-    --tg-accent: #8774e1; --tg-button: #8774e1; --tg-fill: #8774e133;
+    --tg-accent: #8774e1; --tg-hint-text: #aaa; --tg-link: #a99cf3; --tg-button: #6b57d1; --tg-fill: #8774e133;
     --tg-sep: #ffffff1a; color-scheme: dark;
   }
 }
 body { margin: 0; font: 16px/1.3 var(--tg-font); color: var(--tg-text); background: var(--tg-secondary-bg); }
-a { color: var(--tg-accent); }
+a { color: var(--tg-link); }
 :focus-visible { outline: 2px solid var(--tg-accent); outline-offset: 2px; }
+/* cells sit in overflow:hidden sections: keep the ring inside */
+.tg-cell:focus-visible { outline-offset: -2px; }
 .tg-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Section */
 .tg-section { margin-bottom: 24px; }
-.tg-section-h, .tg-section-f { font-size: 13px; color: var(--tg-hint); margin: 0 16px 6px; }
+.tg-section-h, .tg-section-f { font-size: 13px; color: var(--tg-hint-text); margin: 0 16px 6px; }
 .tg-section-f { margin: 6px 16px 0; }
 .tg-section-body { background: var(--tg-bg); border-radius: 12px; overflow: hidden; }
 
@@ -32,12 +34,12 @@ a.tg-cell { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) { a.tg-cell:hover { background: var(--tg-fill); } }
 .tg-cell-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; padding: 12px 0; }
 .tg-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tg-sub { font-size: 13px; color: var(--tg-hint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-sub { font-size: 13px; color: var(--tg-hint-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tg-cell-after { margin-left: auto; text-align: right; flex: none; display: flex; flex-direction: column; align-items: flex-end; }
 .tg-cell-after b { font-weight: 500; }
-.tg-chev { color: var(--tg-hint); flex: none; margin-left: -6px; }
+.tg-chev { color: var(--tg-hint-text); flex: none; margin-left: -6px; }
 .tg-cell.tg-active { background: var(--tg-button); color: var(--tg-button-text); border-radius: 10px; }
-.tg-cell.tg-active .tg-sub, .tg-cell.tg-active .tg-chev { color: #ffffffcc; }
+.tg-cell.tg-active .tg-sub, .tg-cell.tg-active .tg-chev { color: #fff; }
 .tg-cell.tg-active::before, .tg-cell.tg-active + .tg-cell::before { display: none; }
 
 /* Avatar */
@@ -59,8 +61,8 @@ a.tg-cell { cursor: pointer; }
 .tg-btn-m { height: 42px; padding: 8px 14px; }
 .tg-btn-l { height: 50px; padding: 10px 20px; }
 .tg-btn-filled { background: var(--tg-button); color: var(--tg-button-text); }
-.tg-btn-bezeled { background: var(--tg-fill); color: var(--tg-accent); }
-.tg-btn-plain { background: transparent; color: var(--tg-accent); }
+.tg-btn-bezeled { background: var(--tg-fill); color: var(--tg-link); }
+.tg-btn-plain { background: transparent; color: var(--tg-link); }
 @media (hover: hover) and (pointer: fine) { .tg-btn:hover:not(:disabled) { opacity: .85; } }
 .tg-btn:disabled { opacity: .5; cursor: default; }
 .tg-btn-content { overflow: hidden; text-overflow: ellipsis; }
@@ -69,11 +71,11 @@ a.tg-cell { cursor: pointer; }
 
 /* Input / Select */
 .tg-field { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; background: var(--tg-bg);
-  border-radius: 10px; padding: 0 12px; height: 42px; color: var(--tg-hint); }
+  border-radius: 10px; padding: 0 12px; height: 42px; color: var(--tg-hint-text); }
 .tg-field input, .tg-field select { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--tg-text);
   font: inherit; height: 100%; padding: 0; }
 .tg-field:focus-within { outline: 2px solid var(--tg-accent); }
-.tg-field input::placeholder { color: var(--tg-hint); }
+.tg-field input::placeholder { color: var(--tg-hint-text); }
 .tg-field select { appearance: none; cursor: pointer; }
 .tg-field select option { background: var(--tg-bg); color: var(--tg-text); }
 
@@ -85,7 +87,7 @@ a.tg-cell { cursor: pointer; }
 .tg-ph { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 32px; text-align: center; overflow-wrap: anywhere; }
 .tg-ph-emoji { font-size: 64px; line-height: 1; }
 .tg-ph-title { margin: 0; font-size: 20px; font-weight: 600; }
-.tg-ph-desc { margin: 8px 0 0; color: var(--tg-hint); }
+.tg-ph-desc { margin: 8px 0 0; color: var(--tg-hint-text); }
 
 /* Spinner */
 .tg-spin { width: 20px; height: 20px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
