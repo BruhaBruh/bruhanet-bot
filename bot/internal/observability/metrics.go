@@ -35,6 +35,9 @@ var (
 	RemindersSent = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "bot_reminders_sent_total", Help: "Expiry reminders queued.",
 	}, []string{"kind"})
+	Broadcasts = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "bot_broadcasts_total", Help: "Admin broadcasts started.",
+	})
 	BroadcastMessages = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "bot_broadcast_messages_total", Help: "Broadcast messages by delivery result.",
 	}, []string{"result"})
@@ -54,7 +57,7 @@ func init() {
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		Updates, UpdateDuration, ExternalRequests, ExternalDuration,
-		Payments, PaymentsConfirmedRubles, RemindersSent, BroadcastMessages, OutboxMessages,
+		Payments, PaymentsConfirmedRubles, RemindersSent, Broadcasts, BroadcastMessages, OutboxMessages,
 		Ready, DependencyUp,
 	)
 }

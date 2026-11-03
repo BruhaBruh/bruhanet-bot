@@ -185,6 +185,9 @@ func (w *Worker) summary(ctx context.Context, it model.OutboxItem) (string, erro
 func (w *Worker) count(ctx context.Context, it model.OutboxItem, ok bool) {
 	var err error
 	switch it.EventType {
+	case "broadcast_summary":
+		observability.Broadcasts.Inc() // одна рассылка = один итог (и /a-строки тоже)
+		return
 	case "broadcast":
 		result := "failed"
 		if ok {

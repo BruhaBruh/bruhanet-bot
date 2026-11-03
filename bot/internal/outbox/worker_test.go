@@ -403,3 +403,17 @@ func TestWorkerTallyAfterDelete(t *testing.T) {
 		t.Fatalf("broadcast = %+v, want sent=1", b)
 	}
 }
+
+// Одна рассылка = +1 к bot_broadcasts_total при обработке итога, в том числе у строк /a.
+func TestWorkerBroadcastsTotal(t *testing.T) {
+	_, q, w := setup(t)
+	before := testutil.ToFloat64(observability.Broadcasts)
+	q.add(
+		model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, ParseMode: "HTML", Broadcast: q.addBroadcast(0).String()},
+		model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, ParseMode: "MarkdownV2", Broadcast: uuid.NewString()},
+	)
+	drain(t, w, q)
+	if got := testutil.ToFloat64(observability.Broadcasts) - before; got != 2 {
+		t.Fatalf("broadcasts_total delta = %v, want 2", got)
+	}
+}
