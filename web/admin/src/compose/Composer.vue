@@ -104,17 +104,17 @@ const direct = () =>
 
     <div class="label">Превью</div>
     <!-- только разрешённые теги после sanitize -->
-    <div class="preview">
+    <div class="preview tg-msg">
       <div v-if="photo" class="ph">🖼 фото</div>
       <div v-html="preview" />
     </div>
 
-    <p v-if="mode === 'broadcast' && recipients === undefined" class="err" role="alert">
+    <p v-if="mode === 'broadcast' && recipients === undefined" class="tg-err" role="alert">
       Панель недоступна, количество получателей неизвестно
       <TgButton mode="plain" size="s" @click="loadRecipients">Повторить</TgButton>
     </p>
-    <p v-if="error" class="err" role="alert">{{ error }}</p>
-    <p v-if="testSent" class="ok" role="status">Отправлено в Telegram</p>
+    <p v-if="error" class="tg-err" role="alert">{{ error }}</p>
+    <p v-if="testSent" class="tg-ok" role="status">Отправлено в Telegram</p>
 
     <div class="actions">
       <template v-if="mode === 'broadcast'">
@@ -137,12 +137,7 @@ const direct = () =>
 .count { font-size: 13px; color: var(--tg-hint-text); white-space: nowrap; }
 .count.over { color: var(--tg-danger-text); }
 .label { font-size: 13px; color: var(--tg-hint-text); margin: 16px 0 6px; }
-.preview { padding: 12px 16px; background: var(--tg-bg); border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.3em; }
-.preview :deep(pre), .preview :deep(blockquote) { margin: 0; }
-.preview :deep(blockquote) { border-left: 3px solid var(--tg-link); padding-left: 8px; }
-.preview :deep(tg-spoiler) { background: var(--tg-sep); border-radius: 4px; }
+.preview { min-height: 1.3em; }
 .ph { color: var(--tg-hint-text); font-size: 13px; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
-.err { color: var(--tg-danger-text); }
-.ok { color: var(--tg-link); }
 </style>

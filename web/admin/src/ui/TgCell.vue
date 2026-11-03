@@ -13,7 +13,7 @@ defineProps<{
 </script>
 
 <template>
-  <component :is="to ? RouterLink : 'div'" :to="to" class="tg-cell" :class="{ 'tg-active': active }">
+  <component :is="to ? RouterLink : 'div'" :to="to" class="tg-cell" :class="{ 'tg-active': active, 'tg-cell-av': !!$slots.before }">
     <slot name="before" />
     <div class="tg-cell-body">
       <div class="tg-title">{{ title }}</div>

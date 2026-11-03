@@ -54,7 +54,7 @@ onMounted(load)
       <TgInput grouped v-model="to" type="date" aria-label="По дату" @change="apply" />
     </div>
   </TgSection>
-  <p v-if="error" class="err" role="alert">Не удалось загрузить</p>
+  <p v-if="error" class="tg-err" role="alert">Не удалось загрузить</p>
   <TgSection header="Выручка (по дате подтверждения за период)">
     <TgCell title="Выручка" :after="formatRub(revenue)" :after-sub="`всего платежей: ${total}`" />
   </TgSection>
@@ -71,5 +71,4 @@ onMounted(load)
 .filters { display: flex; flex-direction: column; gap: 1px; background: var(--tg-sep); }
 .hint { color: var(--tg-hint-text); font-size: 13px; margin: 0 16px; }
 .pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 12px; }
-.err { color: var(--tg-danger-text); }
 </style>

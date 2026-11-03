@@ -37,8 +37,8 @@ const stats = (b: Broadcast) => `доставлено ${b.sent} из ${b.total},
   </TgSection>
 
   <TgSection header="История">
-    <p v-if="loadError" class="err" role="alert">Не удалось загрузить</p>
-    <div v-else-if="!items" class="loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
+    <p v-if="loadError" class="tg-err" role="alert">Не удалось загрузить</p>
+    <div v-else-if="!items" class="tg-loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
     <TgPlaceholder v-else-if="!items.length" emoji="📣" title="Рассылок ещё не было" />
     <TgCell
       v-for="b in items"
@@ -52,6 +52,4 @@ const stats = (b: Broadcast) => `доставлено ${b.sent} из ${b.total},
 
 <style scoped>
 .pad { padding: 12px 16px; }
-.loading { display: flex; justify-content: center; padding: 32px; color: var(--tg-hint-text); }
-.err { color: var(--tg-danger-text); padding: 0 16px; }
 </style>

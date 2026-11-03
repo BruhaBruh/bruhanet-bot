@@ -18,6 +18,7 @@ const Spoiler = Mark.create({
 
 const editor = useEditor({
   content: fromTelegramHtml(props.modelValue),
+  editorProps: { attributes: { class: 'tg-msg' } },
   extensions: [
     StarterKit.configure({
       heading: false,
@@ -100,10 +101,6 @@ defineExpose({ insert })
 <style scoped>
 .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .toolbar [aria-pressed='true'] { background: var(--tg-button); color: var(--tg-button-text); }
-.area :deep(.ProseMirror) { min-height: 120px; padding: 12px 16px; background: var(--tg-bg); border-radius: 12px; outline: none; white-space: pre-wrap; }
+.area :deep(.ProseMirror) { min-height: 120px; outline: none; }
 .area :deep(.ProseMirror:focus-visible) { box-shadow: 0 0 0 2px var(--tg-link); }
-.area :deep(p) { margin: 0; min-height: 1.3em; }
-.area :deep(pre), .area :deep(blockquote) { margin: 0; }
-.area :deep(blockquote) { border-left: 3px solid var(--tg-link); padding-left: 8px; }
-.area :deep(tg-spoiler) { background: var(--tg-sep); border-radius: 4px; }
 </style>

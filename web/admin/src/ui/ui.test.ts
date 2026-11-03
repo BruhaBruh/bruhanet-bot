@@ -29,6 +29,13 @@ describe('ui kit', () => {
     expect(mount(TgCell, { props: { title: 't', to: '/x' }, ...g }).element.tagName).toBe('A')
     expect(mount(TgCell, { props: { title: 't' }, ...g }).element.tagName).toBe('DIV')
   })
+
+  it('TgCell: separator inset only under an avatar', () => {
+    const g = { global: { plugins: [router] } }
+    expect(mount(TgCell, { props: { title: 't' }, ...g }).classes()).not.toContain('tg-cell-av')
+    expect(mount(TgCell, { props: { title: 't' }, slots: { before: 'A' }, ...g }).classes()).toContain('tg-cell-av')
+  })
+
   it('TgCell: subtitle is single-line ellipsis, text block can shrink', () => {
     const w = mount(TgCell, { props: { title: 't', subtitle: 'очень длинная подпись' } })
     const sub = w.find('.tg-sub')

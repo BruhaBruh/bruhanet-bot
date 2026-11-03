@@ -122,8 +122,8 @@ function cancel(c: TextItem) {
 
 <template>
   <h1 class="tg-visually-hidden">Тексты</h1>
-  <p v-if="loadError" class="err" role="alert">Не удалось загрузить</p>
-  <div v-else-if="!loaded" class="loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
+  <p v-if="loadError" class="tg-err" role="alert">Не удалось загрузить</p>
+  <div v-else-if="!loaded" class="tg-loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
   <div v-else class="texts">
     <div class="list">
       <TgInput v-model="q" icon="search" placeholder="Поиск" class="search" />
@@ -164,11 +164,11 @@ function cancel(c: TextItem) {
 
       <div class="label">Превью</div>
       <!-- превью сообщения: только разрешённые теги после sanitize -->
-      <div v-if="cur.kind === 'message'" class="preview" v-html="preview" />
-      <div v-else class="preview">{{ preview }}</div>
+      <div v-if="cur.kind === 'message'" class="tg-msg" v-html="preview" />
+      <div v-else class="tg-msg">{{ preview }}</div>
 
-      <p v-if="error" class="err" role="alert">{{ error }}</p>
-      <p v-if="sent" class="ok" role="status">Отправлено в Telegram</p>
+      <p v-if="error" class="tg-err" role="alert">{{ error }}</p>
+      <p v-if="sent" class="tg-ok" role="status">Отправлено в Telegram</p>
 
       <div class="actions">
         <TgButton :loading="busy" :disabled="!isDirty(cur)" @click="save(cur)">Сохранить</TgButton>
@@ -191,14 +191,9 @@ h2 { margin: 0; font-size: 20px; }
 .label { font-size: 13px; color: var(--tg-hint-text); margin: 16px 0 6px; }
 .vars, .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .actions { margin-top: 16px; }
-.preview { padding: 12px 16px; background: var(--tg-bg); border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.preview :deep(pre), .preview :deep(blockquote) { margin: 0; }
-.preview :deep(blockquote) { border-left: 3px solid var(--tg-link); padding-left: 8px; }
-.preview :deep(tg-spoiler) { background: var(--tg-sep); border-radius: 4px; }
 .hint { color: var(--tg-hint-text); font-size: 13px; margin: 6px 16px 0; }
-.loading { display: flex; justify-content: center; padding: 32px; color: var(--tg-hint-text); }
-.err { color: var(--tg-danger-text); }
-.ok { color: var(--tg-link); }
+/* узкая колонка: длинные названия переносятся, а не обрезаются */
+.list :deep(.tg-title) { white-space: normal; }
 @media (max-width: 700px) {
   .texts { flex-direction: column; }
   .list { width: 100%; }

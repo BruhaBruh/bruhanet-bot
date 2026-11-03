@@ -91,7 +91,7 @@ describe('Composer', () => {
     }
     await setText('hi')
     await send()
-    expect(w.find('.err').exists()).toBe(true)
+    expect(w.find('.tg-err').exists()).toBe(true)
     await send()
     await setText('next')
     await send()
@@ -166,7 +166,7 @@ describe('Composer', () => {
     await btn('Разослать всем (3)')!.trigger('click')
     await btn('Точно разослать 3 юзерам?')!.trigger('click')
     await flushPromises()
-    expect(w.find('.err').text()).toBe('Панель недоступна, рассылка не создана')
+    expect(w.find('.tg-err').text()).toBe('Панель недоступна, рассылка не создана')
   })
 
   it('editor and photo picker are locked while a send is in flight', async () => {

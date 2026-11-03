@@ -66,12 +66,12 @@ function remove() {
     </template>
     <TgButton v-else mode="bezeled" size="s" :loading="busy" :disabled="disabled" @click="input?.click()">🖼 Добавить фото</TgButton>
     <span v-if="busy" class="tg-visually-hidden" role="status">Загрузка…</span>
-    <p v-if="error" class="err" role="alert">{{ error }}</p>
+    <p v-if="error" class="tg-err" role="alert">{{ error }}</p>
   </div>
 </template>
 
 <style scoped>
 .photo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 img { max-width: 160px; max-height: 120px; border-radius: 8px; object-fit: cover; }
-.err { color: var(--tg-danger-text); margin: 0; width: 100%; }
+.tg-err { margin: 0; width: 100%; }
 </style>
