@@ -102,6 +102,36 @@ describe('Composer', () => {
     expect(keys[2]).not.toBe(keys[0])
   })
 
+  it('editing the draft after a failure gives a new key', async () => {
+    replies['POST /api/broadcasts'] = [json(500, { error: 'internal' }), json(500, { error: 'internal' }), json(500, { error: 'internal' })]
+    const { setText, setPhoto, btn } = await setup()
+    const send = async () => {
+      await btn('Разослать всем (3)')!.trigger('click')
+      await btn('Точно разослать 3 юзерам?')!.trigger('click')
+      await flushPromises()
+    }
+    await setText('hi')
+    await send()
+    await setText('hi2')
+    await send()
+    await setPhoto('file1')
+    await send()
+    const keys = posts().map((c) => c.body.idempotencyKey)
+    expect(new Set(keys).size).toBe(3)
+  })
+
+  it('send buttons are disabled while a photo uploads', async () => {
+    const { w, setText, btn } = await setup()
+    await setText('hi')
+    w.findComponent(PhotoPicker).vm.$emit('uploading', true)
+    await flushPromises()
+    expect(btn('Разослать всем (3)')!.attributes('disabled')).toBeDefined()
+    expect(btn('Отправить себе')!.attributes('disabled')).toBeDefined()
+    w.findComponent(PhotoPicker).vm.$emit('uploading', false)
+    await flushPromises()
+    expect(btn('Разослать всем (3)')!.attributes('disabled')).toBeUndefined()
+  })
+
   it('panel down: no recipients count, broadcast disabled', async () => {
     replies['GET /api/broadcasts/recipients'] = [json(502, { error: 'panel_unavailable' })]
     const { w, setText } = await setup()

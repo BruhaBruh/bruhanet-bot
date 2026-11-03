@@ -6,12 +6,13 @@ import { checkPhoto } from './photo'
 
 // v-model — file_id загруженного фото
 const props = defineProps<{ modelValue?: string }>()
-const emit = defineEmits<{ 'update:modelValue': [string | undefined] }>()
+const emit = defineEmits<{ 'update:modelValue': [string | undefined]; uploading: [boolean] }>()
 
 const url = ref('')
 const busy = ref(false)
 const error = ref('')
 const input = ref<HTMLInputElement>()
+watch(busy, (v) => emit('uploading', v))
 
 function setUrl(v: string) {
   if (url.value) URL.revokeObjectURL(url.value)

@@ -19,7 +19,9 @@ const testSent = ref(false)
 const confirming = ref(false)
 // null — грузится, undefined — панель недоступна
 const recipients = ref<number | null | undefined>(null)
-// ключ идемпотентности черновика: повтор после сбоя не создаст вторую рассылку
+const uploading = ref(false)
+// ключ идемпотентности — на конкретное содержимое: повтор без правок после сбоя
+// не создаст вторую рассылку, а правка даёт новый ключ (иначе сервер вернёт старую)
 let key = crypto.randomUUID()
 
 onMounted(async () => {
@@ -33,11 +35,12 @@ onMounted(async () => {
 
 const len = computed(() => visibleLen(text.value))
 const limit = computed(() => (photo.value ? 1024 : 4096))
-const valid = computed(() => len.value <= limit.value && (!!photo.value || visibleText(text.value).trim() !== ''))
+const valid = computed(() => !uploading.value && len.value <= limit.value && (!!photo.value || visibleText(text.value).trim() !== ''))
 const preview = computed(() => sanitize(text.value))
 
-// правка черновика отменяет начатое подтверждение
+// правка черновика отменяет начатое подтверждение и меняет ключ
 watch([text, photo], () => {
+  key = crypto.randomUUID()
   confirming.value = false
   testSent.value = false
 })
@@ -66,7 +69,6 @@ const sendTest = () =>
 function reset() {
   text.value = ''
   photo.value = undefined
-  key = crypto.randomUUID()
 }
 
 const broadcast = () =>
@@ -90,7 +92,7 @@ const direct = () =>
   <div class="composer">
     <TgEditor v-model="text" />
     <div class="row">
-      <PhotoPicker v-model="photo" />
+      <PhotoPicker v-model="photo" @uploading="uploading = $event" />
       <span class="count" :class="{ over: len > limit }">{{ len }} / {{ limit }}</span>
     </div>
 
@@ -108,7 +110,7 @@ const direct = () =>
     <div class="actions">
       <template v-if="mode === 'broadcast'">
         <template v-if="confirming">
-          <TgButton :loading="busy" @click="broadcast">Точно разослать {{ recipients }} юзерам?</TgButton>
+          <TgButton :loading="busy" :disabled="!valid" @click="broadcast">Точно разослать {{ recipients }} юзерам?</TgButton>
           <TgButton mode="plain" :disabled="busy" @click="confirming = false">Отмена</TgButton>
         </template>
         <TgButton v-else :loading="busy" :disabled="!valid || recipients == null" @click="confirming = true">
