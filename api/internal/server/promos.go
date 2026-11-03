@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -18,16 +19,23 @@ const generateAttempts = 5
 type promoItem struct {
 	model.PromoWithUsage
 	Username *string `json:"username"`
+	// ValidUntil — включительная дата (МСК) для UI; expiresAt — сырая граница (следующая полночь МСК).
+	ValidUntil *string `json:"validUntil"`
 }
 
 func (s *server) promoItem(r *http.Request, p model.PromoWithUsage) (promoItem, error) {
 	it := promoItem{PromoWithUsage: p}
+	if p.ExpiresAt != nil {
+		it.ValidUntil = ptr(p.ExpiresAt.In(moscow).AddDate(0, 0, -1).Format(time.DateOnly))
+	}
 	if p.TelegramID == nil {
 		return it, nil
 	}
 	switch u, err := s.Store.UserByID(r.Context(), *p.TelegramID); {
 	case err == nil:
-		it.Username = &u.Username
+		if u.Username != "" {
+			it.Username = &u.Username
+		}
 	case !errors.Is(err, store.ErrNotFound):
 		return it, err
 	}
@@ -66,21 +74,22 @@ type promoInput struct {
 	Kind           model.PromoKind `json:"kind"`
 	Value          int             `json:"value"`
 	MaxActivations *int            `json:"maxActivations"`
-	ExpiresAt      *string         `json:"expiresAt"`
+	ExpiresAt      *string         `json:"validUntil"`
 	OnlyNew        bool            `json:"onlyNew"`
 	User           string          `json:"user"`
 }
 
 func (s *server) createPromo(w http.ResponseWriter, r *http.Request) {
 	var in promoInput
-	if !readJSONMax(w, r, &in, 4<<10, false) {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&in); err != nil {
+		if errors.As(err, new(*http.MaxBytesError)) {
+			writeInvalid(w, "слишком большой запрос")
+		} else {
+			writeBadRequest(w)
+		}
 		return
 	}
 	p := model.Promo{Code: in.Code, Kind: in.Kind, Value: in.Value, MaxActivations: in.MaxActivations, OnlyNew: in.OnlyNew}
-	if p.MaxActivations != nil && *p.MaxActivations < 1 {
-		writeInvalid(w, "лимит активаций — от 1")
-		return
-	}
 	if in.ExpiresAt != nil {
 		d, err := time.ParseInLocation(time.DateOnly, *in.ExpiresAt, moscow)
 		if err != nil {
@@ -94,41 +103,46 @@ func (s *server) createPromo(w http.ResponseWriter, r *http.Request) {
 		}
 		p.ExpiresAt = &end
 	}
-	if u := strings.TrimSpace(in.User); u != "" {
-		id, err := strconv.ParseInt(u, 10, 64)
-		if err != nil {
-			usr, err := s.Store.UserByUsername(r.Context(), u)
-			if errors.Is(err, store.ErrNotFound) {
-				writeInvalid(w, "юзер ещё не писал боту, укажи telegram ID")
-				return
-			}
-			if err != nil {
-				internal(w, r, "promo user", err)
-				return
-			}
-			id = usr.TelegramID
+	generated := strings.TrimSpace(in.Code) == ""
+	if generated {
+		p.Code = promo.Generate()
+	}
+	u := strings.TrimSpace(in.User)
+	var username string // непустой — ещё надо найти по @username (дорогой шаг, после дешёвой валидации)
+	if u != "" {
+		if id, err := strconv.ParseInt(u, 10, 64); err == nil {
+			p.TelegramID = &id
+		} else {
+			username = u
+			p.TelegramID = ptr(int64(1)) // заглушка для ValidateNew, настоящий id ниже
 		}
-		if id <= 0 {
-			writeInvalid(w, "некорректный telegram ID")
+	}
+	if err := promo.ValidateNew(p); err != nil {
+		writeInvalid(w, promoReason(err))
+		return
+	}
+	if username != "" {
+		usr, err := s.Store.UserByUsername(r.Context(), username)
+		if errors.Is(err, store.ErrNotFound) {
+			writeInvalid(w, "юзер ещё не писал боту, укажи telegram ID")
 			return
 		}
-		p.TelegramID = &id
+		if err != nil {
+			internal(w, r, "promo user", err)
+			return
+		}
+		p.TelegramID = &usr.TelegramID
 	}
 
-	generated := strings.TrimSpace(in.Code) == ""
 	attempts := 1
 	if generated {
 		attempts = generateAttempts
 	}
 	var created model.Promo
 	var err error
-	for range attempts {
-		if generated {
+	for i := range attempts {
+		if i > 0 {
 			p.Code = promo.Generate()
-		}
-		if err = promo.ValidateNew(p); err != nil {
-			writeInvalid(w, promoReason(err))
-			return
 		}
 		if created, err = s.Store.CreatePromo(r.Context(), p); !errors.Is(err, store.ErrPromoExists) {
 			break
@@ -136,7 +150,11 @@ func (s *server) createPromo(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case errors.Is(err, store.ErrPromoExists):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "exists", "message": "Такой код уже есть"})
+		msg := "Такой код уже есть"
+		if generated {
+			msg = "не удалось сгенерировать код, попробуй ещё раз"
+		}
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "exists", "message": msg})
 		return
 	case err != nil:
 		internal(w, r, "create promo", err)

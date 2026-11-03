@@ -88,6 +88,7 @@ type promoJSON struct {
 	MaxActivations *int       `json:"maxActivations"`
 	Used           int        `json:"used"`
 	ExpiresAt      *time.Time `json:"expiresAt"`
+	ValidUntil     *string    `json:"validUntil"`
 	OnlyNew        bool       `json:"onlyNew"`
 	TelegramID     *int64     `json:"telegramId"`
 	Username       *string    `json:"username"`
@@ -118,7 +119,7 @@ func TestCreatePromo(t *testing.T) {
 	h, st, c := promoServer(t)
 
 	// код не задан → сгенерирован; expiresAt — конец дня МСК
-	p := createPromo(t, h, c, `{"kind":"percent","value":20,"maxActivations":5,"expiresAt":"2026-12-31","onlyNew":true}`, http.StatusCreated)
+	p := createPromo(t, h, c, `{"kind":"percent","value":20,"maxActivations":5,"validUntil":"2026-12-31","onlyNew":true}`, http.StatusCreated)
 	if len(p.Code) != 8 || p.Kind != "percent" || p.Value != 20 || !p.OnlyNew || p.MaxActivations == nil || *p.MaxActivations != 5 || p.ID != 1 {
 		t.Fatalf("promo = %+v", p)
 	}
@@ -126,9 +127,14 @@ func TestCreatePromo(t *testing.T) {
 		t.Fatalf("expiresAt = %v, want %v", p.ExpiresAt, want)
 	}
 
+	// 2026-12-31 21:00 UTC = 2027-01-01 00:00 МСК: validUntil считается в МСК, а не в UTC
+	if p.ValidUntil == nil || *p.ValidUntil != "2026-12-31" {
+		t.Fatalf("validUntil = %v", p.ValidUntil)
+	}
+
 	// свой код нормализуется; null-поля, user "" = не персональный
-	p = createPromo(t, h, c, `{"code":" summer ","kind":"days","value":7,"maxActivations":null,"expiresAt":null,"user":""}`, http.StatusCreated)
-	if p.Code != "SUMMER" || p.MaxActivations != nil || p.ExpiresAt != nil || p.TelegramID != nil {
+	p = createPromo(t, h, c, `{"code":" summer ","kind":"days","value":7,"maxActivations":null,"validUntil":null,"user":""}`, http.StatusCreated)
+	if p.Code != "SUMMER" || p.MaxActivations != nil || p.ExpiresAt != nil || p.ValidUntil != nil || p.TelegramID != nil {
 		t.Fatalf("promo = %+v", p)
 	}
 
@@ -142,12 +148,18 @@ func TestCreatePromo(t *testing.T) {
 	if p.TelegramID == nil || *p.TelegramID != 7 || p.Username == nil || *p.Username != "Bob" {
 		t.Fatalf("promo = %+v", p)
 	}
+	// у юзера нет username → null, не ""
+	st.users = append(st.users, model.UserSummary{TelegramID: 8})
+	p = createPromo(t, h, c, `{"code":"NONAME","kind":"rub","value":50,"user":"8"}`, http.StatusCreated)
+	if p.Username != nil {
+		t.Fatalf("username = %v", *p.Username)
+	}
 	// числа нет в users — не ошибка, username null
 	p = createPromo(t, h, c, `{"code":"GHOST","kind":"rub","value":50,"user":"999"}`, http.StatusCreated)
 	if p.TelegramID == nil || *p.TelegramID != 999 || p.Username != nil {
 		t.Fatalf("promo = %+v", p)
 	}
-	if len(st.promos) != 5 {
+	if len(st.promos) != 6 {
 		t.Fatalf("stored %d", len(st.promos))
 	}
 }
@@ -162,18 +174,18 @@ func TestCreatePromoRejects(t *testing.T) {
 	}
 
 	bad := map[string]string{
-		`{"kind":"percent","value":0}`:                       "",
-		`{"kind":"percent","value":101}`:                     "",
-		`{"kind":"rub","value":1000001}`:                     "",
-		`{"kind":"days","value":3651}`:                       "",
-		`{"kind":"gift","value":5}`:                          "",
-		`{"code":"a!","kind":"days","value":5}`:              "",
-		`{"kind":"days","value":5,"maxActivations":0}`:       "",
-		`{"kind":"days","value":5,"expiresAt":"2026-11-01"}`: "дата уже прошла",
-		`{"kind":"days","value":5,"expiresAt":"02.11.2026"}`: "",
-		`{"kind":"days","value":5,"user":"@nobody"}`:         "юзер ещё не писал боту, укажи telegram ID",
-		`{"kind":"days","value":5,"user":"-5"}`:              "",
-		`{"kind":"days","value":5,"user":"bob bob"}`:         "",
+		`{"kind":"percent","value":0}`:                        "",
+		`{"kind":"percent","value":101}`:                      "",
+		`{"kind":"rub","value":1000001}`:                      "",
+		`{"kind":"days","value":3651}`:                        "",
+		`{"kind":"gift","value":5}`:                           "",
+		`{"code":"a!","kind":"days","value":5}`:               "",
+		`{"kind":"days","value":5,"maxActivations":0}`:        "",
+		`{"kind":"days","value":5,"validUntil":"2026-11-01"}`: "дата уже прошла",
+		`{"kind":"days","value":5,"validUntil":"02.11.2026"}`: "",
+		`{"kind":"days","value":5,"user":"@nobody"}`:          "юзер ещё не писал боту, укажи telegram ID",
+		`{"kind":"days","value":5,"user":"-5"}`:               "",
+		`{"kind":"days","value":5,"user":"bob bob"}`:          "",
 		`nope`: "",
 	}
 	for body, msg := range bad {
@@ -188,11 +200,18 @@ func TestCreatePromoRejects(t *testing.T) {
 	if w := send(h, http.MethodPost, "/api/promos", c, `{"kind":"percent","value":101}`); strings.Contains(w.Body.String(), `\n`) || strings.Contains(w.Body.String(), promo.ErrInvalid.Error()) {
 		t.Fatalf("message leaks sentinel: %s", w.Body)
 	}
+	// дешёвая валидация идёт до поиска юзера: плохое значение + неизвестный @user → ошибка значения
+	if w := send(h, http.MethodPost, "/api/promos", c, `{"kind":"percent","value":0,"user":"@nobody"}`); strings.Contains(w.Body.String(), "юзер") {
+		t.Fatalf("lookup before validation: %s", w.Body)
+	}
+	if w := send(h, http.MethodPost, "/api/promos", c, `{"kind":"days","value":5,"note":"`+strings.Repeat("x", 5000)+`"}`); !strings.Contains(w.Body.String(), "слишком большой запрос") {
+		t.Fatalf("limit: %d %s", w.Code, w.Body)
+	}
 	if len(st.promos) != 1 {
 		t.Fatalf("stored %d", len(st.promos))
 	}
 	// «до конца сегодняшнего дня МСК» (now = 2026-11-02 15:00 МСК) ещё действует
-	createPromo(t, h, c, `{"kind":"days","value":5,"expiresAt":"2026-11-02"}`, http.StatusCreated)
+	createPromo(t, h, c, `{"kind":"days","value":5,"validUntil":"2026-11-02"}`, http.StatusCreated)
 }
 
 func TestCreatePromoGenerateRetry(t *testing.T) {
