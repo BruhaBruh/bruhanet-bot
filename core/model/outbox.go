@@ -4,18 +4,20 @@ import "github.com/go-telegram/bot/models"
 
 // OutboxMessage — исходящее сообщение Telegram; payload-колонка хранит всё, кроме EventType.
 type OutboxMessage struct {
-	EventType string `json:"-"` // payment_result | reminder | broadcast | broadcast_summary | text_test
+	EventType string `json:"-"` // payment_result | reminder | broadcast | broadcast_summary | direct | text_test
 
 	ChatID    int64                        `json:"chat_id"`
 	Text      string                       `json:"text,omitempty"`
 	ParseMode string                       `json:"parse_mode,omitempty"`
 	Keyboard  *models.InlineKeyboardMarkup `json:"keyboard,omitempty"`
+	Photo     string                       `json:"photo,omitempty"` // file_id; есть — sendPhoto с подписью Text
 
 	// copy, если MessageID != 0
 	FromChatID int64 `json:"from_chat_id,omitempty"`
 	MessageID  int   `json:"message_id,omitempty"`
 
-	Broadcast string `json:"broadcast,omitempty"` // uuid рассылки для итога
+	Broadcast string `json:"broadcast,omitempty"` // uuid рассылки для счётчиков и итога
+	DirectID  int64  `json:"direct_id,omitempty"` // direct_messages.id для статуса
 }
 
 type OutboxItem struct {

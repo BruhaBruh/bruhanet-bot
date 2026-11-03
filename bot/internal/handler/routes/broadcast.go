@@ -77,7 +77,7 @@ func (h *handlers) broadcastMessage(ctx context.Context, b *bot.Bot, u *models.U
 		h.showError(ctx, b, u)
 		return
 	}
-	bc := model.Broadcast{ChatID: u.Message.Chat.ID, MessageID: u.Message.ID}
+	bc := model.BroadcastCopy{ChatID: u.Message.Chat.ID, MessageID: u.Message.ID}
 	if err := copyMessage(ctx, b, h.cfg.Telegram.AdminID, bc); err != nil {
 		stlog.Warn(ctx, "failed to copy broadcast preview", "error", err)
 		send(ctx, b, h.cfg.Telegram.AdminID, keyboard.Inline(keyboard.Row(broadcastCancelButton())),
@@ -95,14 +95,14 @@ func (h *handlers) broadcastMessage(ctx context.Context, b *bot.Bot, u *models.U
 	)), "Так увидят <b>"+strconv.Itoa(len(ids))+"</b> "+pluralPeople(len(ids))+". Отправить?")
 }
 
-func copyMessage(ctx context.Context, b *bot.Bot, to int64, bc model.Broadcast) error {
+func copyMessage(ctx context.Context, b *bot.Bot, to int64, bc model.BroadcastCopy) error {
 	_, err := b.CopyMessage(ctx, &bot.CopyMessageParams{ChatID: to, FromChatID: bc.ChatID, MessageID: bc.MessageID})
 	return err
 }
 
 func (h *handlers) broadcastSend(ctx context.Context, b *bot.Bot, u *models.Update) {
 	f := fsm.From(ctx)
-	bc, err := fsm.Data[model.Broadcast](ctx, f)
+	bc, err := fsm.Data[model.BroadcastCopy](ctx, f)
 	if err == nil {
 		err = fsm.Transition(ctx, f, stateConfirmBroadcast, fsm.StateNone, nil)
 	}
@@ -143,7 +143,7 @@ func (h *handlers) broadcastSend(ctx context.Context, b *bot.Bot, u *models.Upda
 }
 
 // broadcastRestore возвращает рассылку на подтверждение, чтобы админ мог нажать «Отправить» ещё раз.
-func (h *handlers) broadcastRestore(ctx context.Context, f *fsm.FSM, bc model.Broadcast) {
+func (h *handlers) broadcastRestore(ctx context.Context, f *fsm.FSM, bc model.BroadcastCopy) {
 	if err := fsm.Put(ctx, f, stateConfirmBroadcast, bc); err != nil {
 		stlog.Error(ctx, "failed to restore broadcast", "error", err)
 	}

@@ -50,7 +50,7 @@ func NewServer(t testing.TB) *Server {
 	return s
 }
 
-// FailChat: sendMessage/copyMessage в chatID отвечают ошибкой Telegram; code=0 снимает.
+// FailChat: sendMessage/copyMessage/sendPhoto в chatID отвечают ошибкой Telegram; code=0 снимает.
 func (s *Server) FailChat(chatID int64, code int, description string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -122,7 +122,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	if method == "sendMessage" || method == "copyMessage" {
+	if method == "sendMessage" || method == "copyMessage" || method == "sendPhoto" {
 		id, _ := strconv.ParseInt(r.Form.Get("chat_id"), 10, 64)
 		s.mu.Lock()
 		f, failed := s.fail[id]

@@ -9,9 +9,11 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/google/uuid"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
 
@@ -20,14 +22,17 @@ const (
 	interval    = 40 * time.Millisecond // между отправками (лимит Telegram ~30/с)
 	idle        = time.Second
 	maxAttempts = 10
+
+	legacySummary = "Рассылка завершена"
 )
 
 type Queue interface {
 	OutboxBatch(ctx context.Context, limit int) ([]model.OutboxItem, error)
 	DeleteOutbox(ctx context.Context, id int64) error
+	BroadcastDelivered(ctx context.Context, id uuid.UUID, ok bool) error
+	FinishBroadcast(ctx context.Context, id uuid.UUID) (model.Broadcast, error)
+	DirectDelivered(ctx context.Context, id int64, ok bool) error
 }
-
-type counts struct{ sent, failed int }
 
 type Worker struct {
 	q Queue
@@ -37,7 +42,6 @@ type Worker struct {
 	backoff        func(attempt int) time.Duration
 
 	attempts map[int64]int
-	stats    map[string]*counts
 }
 
 func New(q Queue, b *bot.Bot) *Worker {
@@ -45,7 +49,6 @@ func New(q Queue, b *bot.Bot) *Worker {
 		q: q, b: b, interval: interval, idle: idle,
 		backoff:  func(n int) time.Duration { return min(time.Duration(1<<n)*time.Second, time.Minute) },
 		attempts: map[int64]int{},
-		stats:    map[string]*counts{},
 	}
 }
 
@@ -120,29 +123,19 @@ func (w *Worker) remove(ctx context.Context, it model.OutboxItem, ok bool) bool 
 		sleep(ctx, w.idle)
 		return false
 	}
-	w.count(it, ok)
-	if it.EventType == "broadcast_summary" {
-		delete(w.stats, it.Broadcast)
-	}
+	w.count(context.WithoutCancel(ctx), it, ok)
 	return true
 }
 
 func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 	switch {
 	case it.EventType == "broadcast_summary":
-		c := w.stats[it.Broadcast]
-		if c == nil {
-			c = &counts{}
+		text, err := w.summary(ctx, it)
+		if err != nil {
+			return err
 		}
-		// ponytail: счётчики в памяти, после рестарта посреди рассылки итог неполный; поле-счётчик в БД, если станет важно.
-		// строки до перехода на HTML лежат с MarkdownV2 — текст под их parse_mode
-		format := "Разослано: <b>%d</b>, не доставлено: <b>%d</b>"
-		if it.ParseMode == string(models.ParseModeMarkdown) {
-			format = "Разослано: *%d*, не доставлено: *%d*"
-		}
-		_, err := w.b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: it.ChatID, ParseMode: models.ParseMode(it.ParseMode),
-			Text: fmt.Sprintf(format, c.sent, c.failed),
+		_, err = w.b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: it.ChatID, ParseMode: models.ParseMode(it.ParseMode), Text: text,
 		})
 		return err
 	case it.MessageID != 0:
@@ -150,9 +143,19 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 			ChatID: it.ChatID, FromChatID: it.FromChatID, MessageID: it.MessageID,
 		})
 		return err
+	case it.Photo != "":
+		p := &bot.SendPhotoParams{
+			ChatID: it.ChatID, Photo: &models.InputFileString{Data: it.Photo},
+			Caption: it.Text, ParseMode: models.ParseMode(it.ParseMode),
+		}
+		if it.Keyboard != nil { // nil-указатель в интерфейсе ReplyMarkup не годится
+			p.ReplyMarkup = it.Keyboard
+		}
+		_, err := w.b.SendPhoto(ctx, p)
+		return err
 	default:
 		p := &bot.SendMessageParams{ChatID: it.ChatID, Text: it.Text, ParseMode: models.ParseMode(it.ParseMode)}
-		if it.Keyboard != nil { // nil-указатель в интерфейсе ReplyMarkup не годится
+		if it.Keyboard != nil {
 			p.ReplyMarkup = it.Keyboard
 		}
 		_, err := w.b.SendMessage(ctx, p)
@@ -160,22 +163,48 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 	}
 }
 
-// count учитывает исход для итога рассылки и метрики.
-func (w *Worker) count(it model.OutboxItem, ok bool) {
-	if it.EventType != "broadcast" {
+// summary — итог рассылки из счётчиков в БД; рассылки /a (нет в таблице) — заглушка.
+func (w *Worker) summary(ctx context.Context, it model.OutboxItem) (string, error) {
+	id, perr := uuid.Parse(it.Broadcast)
+	if perr != nil { // строка /a без uuid
+		return legacySummary, nil //nolint:nilerr // не ошибка доставки
+	}
+	b, err := w.q.FinishBroadcast(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		// ponytail: строки /a от прошлого деплоя; счётчиков у них нет — уходит вместе с /a.
+		return legacySummary, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Разослано: <b>%d</b>, не доставлено: <b>%d</b>", b.Sent, b.Failed), nil
+}
+
+// count учитывает исход доставки (рассылка — счётчики, личное — статус) после удаления строки.
+// Сбой записи теряет одну отметку, но не дублирует отправку.
+func (w *Worker) count(ctx context.Context, it model.OutboxItem, ok bool) {
+	var err error
+	switch it.EventType {
+	case "broadcast":
+		result := "failed"
+		if ok {
+			result = "sent"
+		}
+		observability.BroadcastMessages.WithLabelValues(result).Inc()
+		id, perr := uuid.Parse(it.Broadcast)
+		if perr != nil {
+			return // строка /a без uuid
+		}
+		if err = w.q.BroadcastDelivered(ctx, id, ok); errors.Is(err, store.ErrNotFound) {
+			return // рассылка /a: в таблице её нет
+		}
+	case "direct":
+		err = w.q.DirectDelivered(ctx, it.DirectID, ok)
+	default:
 		return
 	}
-	c := w.stats[it.Broadcast]
-	if c == nil {
-		c = &counts{}
-		w.stats[it.Broadcast] = c
-	}
-	if ok {
-		c.sent++
-		observability.BroadcastMessages.WithLabelValues("sent").Inc()
-	} else {
-		c.failed++
-		observability.BroadcastMessages.WithLabelValues("failed").Inc()
+	if err != nil {
+		stlog.Error(ctx, "outbox delivery not recorded", "event_type", it.EventType, "error", err)
 	}
 }
 

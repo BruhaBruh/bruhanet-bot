@@ -9,17 +9,76 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/store"
 )
 
 type fakeQueue struct {
 	mu   sync.Mutex
 	next int64
 	rows []model.OutboxItem
+
+	broadcasts map[uuid.UUID]*model.Broadcast // счётчики «в БД»
+	direct     map[int64]string               // direct_id → статус
+}
+
+func (q *fakeQueue) addBroadcast(total int) uuid.UUID {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.broadcasts == nil {
+		q.broadcasts = map[uuid.UUID]*model.Broadcast{}
+	}
+	id := uuid.New()
+	q.broadcasts[id] = &model.Broadcast{ID: id, Total: total}
+	return id
+}
+
+func (q *fakeQueue) BroadcastDelivered(_ context.Context, id uuid.UUID, ok bool) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	b := q.broadcasts[id]
+	if b == nil {
+		return store.ErrNotFound
+	}
+	if ok {
+		b.Sent++
+	} else {
+		b.Failed++
+	}
+	return nil
+}
+
+func (q *fakeQueue) FinishBroadcast(_ context.Context, id uuid.UUID) (model.Broadcast, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	b := q.broadcasts[id]
+	if b == nil {
+		return model.Broadcast{}, store.ErrNotFound
+	}
+	now := time.Now()
+	b.FinishedAt = &now
+	return *b, nil
+}
+
+func (q *fakeQueue) DirectDelivered(_ context.Context, id int64, ok bool) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.direct == nil {
+		q.direct = map[int64]string{}
+	}
+	q.direct[id] = map[bool]string{true: model.DirectSent, false: model.DirectFailed}[ok]
+	return nil
+}
+
+func (q *fakeQueue) broadcast(id uuid.UUID) model.Broadcast {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return *q.broadcasts[id]
 }
 
 func (q *fakeQueue) add(ms ...model.OutboxMessage) {
@@ -161,30 +220,108 @@ func TestWorkerGivesUp(t *testing.T) {
 	}
 }
 
-// Итог рассылки: новые строки — HTML, лежащие с прошлого деплоя (MarkdownV2) — в своей разметке.
+// Итог рассылки собирается из счётчиков стора; 403 получателя — failed+1.
 func TestWorkerBroadcastSummary(t *testing.T) {
-	for mode, want := range map[string]string{
-		"HTML":       "Разослано: <b>1</b>, не доставлено: <b>1</b>",
-		"MarkdownV2": "Разослано: *1*, не доставлено: *1*",
-	} {
+	srv, q, w := setup(t)
+	srv.FailChat(8, 403, "Forbidden: bot was blocked by the user")
+	id := q.addBroadcast(2)
+	sent, failed := testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("sent")),
+		testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("failed"))
+	q.add(
+		model.OutboxMessage{EventType: "broadcast", ChatID: 7, Text: "hi", ParseMode: "HTML", Broadcast: id.String()},
+		model.OutboxMessage{EventType: "broadcast", ChatID: 8, Text: "hi", ParseMode: "HTML", Broadcast: id.String()},
+		model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, ParseMode: "HTML", Broadcast: id.String()},
+	)
+	drain(t, w, q)
+	if b := q.broadcast(id); b.Sent != 1 || b.Failed != 1 || b.FinishedAt == nil {
+		t.Fatalf("store counters: %+v", b)
+	}
+	calls := srv.Calls("sendMessage")
+	last := calls[len(calls)-1]
+	if len(calls) != 3 || last.Params.Get("chat_id") != "1" || last.Params.Get("parse_mode") != "HTML" ||
+		last.Params.Get("text") != "Разослано: <b>1</b>, не доставлено: <b>1</b>" {
+		t.Fatalf("calls: %+v", calls)
+	}
+	if testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("sent"))-sent != 1 ||
+		testutil.ToFloat64(observability.BroadcastMessages.WithLabelValues("failed"))-failed != 1 {
+		t.Fatal("broadcast metrics")
+	}
+}
+
+// Review Focus 2: рестарт посреди рассылки — новый Worker, итог из стора полный.
+func TestWorkerBroadcastSurvivesRestart(t *testing.T) {
+	srv, q, w := setup(t)
+	id := q.addBroadcast(3)
+	for _, chat := range []int64{7, 8, 9} {
+		q.add(model.OutboxMessage{EventType: "broadcast", ChatID: chat, Text: "hi", ParseMode: "HTML", Broadcast: id.String()})
+	}
+	q.add(model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, ParseMode: "HTML", Broadcast: id.String()})
+
+	first, _ := q.OutboxBatch(t.Context(), 2)
+	for _, it := range first { // до «рестарта» ушли двое
+		if !w.process(t.Context(), it) {
+			t.Fatal("process failed")
+		}
+	}
+	w2 := New(q, srv.Bot(t))
+	drain(t, w2, q)
+	calls := srv.Calls("sendMessage")
+	if got := calls[len(calls)-1].Params.Get("text"); got != "Разослано: <b>3</b>, не доставлено: <b>0</b>" {
+		t.Fatalf("summary = %q", got)
+	}
+}
+
+// Строки /a до этого деплоя: рассылки нет в таблице — ничего не считаем, итог-заглушка.
+func TestWorkerLegacyBroadcast(t *testing.T) {
+	for _, mode := range []string{"HTML", "MarkdownV2"} {
 		t.Run(mode, func(t *testing.T) {
 			srv, q, w := setup(t)
-			srv.FailChat(8, 403, "Forbidden")
+			legacy := uuid.NewString()
 			q.add(
-				model.OutboxMessage{EventType: "broadcast", ChatID: 7, FromChatID: 1, MessageID: 2, Broadcast: "u"},
-				model.OutboxMessage{EventType: "broadcast", ChatID: 8, FromChatID: 1, MessageID: 2, Broadcast: "u"},
-				model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, ParseMode: mode, Broadcast: "u"},
+				model.OutboxMessage{EventType: "broadcast", ChatID: 7, FromChatID: 1, MessageID: 2, Broadcast: legacy},
+				model.OutboxMessage{EventType: "broadcast", ChatID: 8, FromChatID: 1, MessageID: 2, Broadcast: "not-a-uuid"},
+				model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, ParseMode: mode, Broadcast: legacy},
 			)
 			drain(t, w, q)
+			if n := len(srv.Calls("copyMessage")); n != 2 {
+				t.Fatalf("copies = %d", n)
+			}
 			calls := srv.Calls("sendMessage")
-			if len(calls) != 1 || calls[0].Params.Get("chat_id") != "1" ||
-				calls[0].Params.Get("text") != want || calls[0].Params.Get("parse_mode") != mode {
+			if len(calls) != 1 || calls[0].Params.Get("text") != "Рассылка завершена" || calls[0].Params.Get("parse_mode") != mode {
 				t.Fatalf("calls: %+v", calls)
 			}
-			if len(w.stats) != 0 {
-				t.Fatal("stats not cleaned")
-			}
 		})
+	}
+}
+
+func TestWorkerPhoto(t *testing.T) {
+	srv, q, w := setup(t)
+	q.add(model.OutboxMessage{EventType: "direct", ChatID: 7, Text: "<b>hi</b>", ParseMode: "HTML", Photo: "file-1", DirectID: 3})
+	drain(t, w, q)
+	calls := srv.Calls("sendPhoto")
+	if len(calls) != 1 || calls[0].Params.Get("chat_id") != "7" || calls[0].Params.Get("photo") != "file-1" ||
+		calls[0].Params.Get("caption") != "<b>hi</b>" || calls[0].Params.Get("parse_mode") != "HTML" {
+		t.Fatalf("calls: %+v", calls)
+	}
+	if len(srv.Calls("sendMessage")) != 0 {
+		t.Fatal("unexpected sendMessage")
+	}
+	if q.direct[3] != model.DirectSent {
+		t.Fatalf("direct = %v", q.direct)
+	}
+}
+
+// Review Focus 4: юзер заблокировал бота — личное сообщение помечено «не доставлено».
+func TestWorkerDirectForbidden(t *testing.T) {
+	srv, q, w := setup(t)
+	srv.FailChat(7, 403, "Forbidden: bot was blocked by the user")
+	q.add(
+		model.OutboxMessage{EventType: "direct", ChatID: 7, Text: "hi", ParseMode: "HTML", DirectID: 1},
+		model.OutboxMessage{EventType: "direct", ChatID: 7, Text: "hi", Photo: "f", ParseMode: "HTML", DirectID: 2},
+	)
+	drain(t, w, q)
+	if q.direct[1] != model.DirectFailed || q.direct[2] != model.DirectFailed {
+		t.Fatalf("direct = %v", q.direct)
 	}
 }
 
@@ -248,32 +385,21 @@ func TestWorkerTallyAfterDelete(t *testing.T) {
 	_, q, w := setup(t)
 	cq := &ctxQueue{fakeQueue: q, failDeletes: 1}
 	w.q = cq
+	id := q.addBroadcast(1)
 	it := model.OutboxItem{ID: 1, OutboxMessage: model.OutboxMessage{
-		EventType: "broadcast", ChatID: 7, FromChatID: 1, MessageID: 2, Broadcast: "u",
+		EventType: "broadcast", ChatID: 7, Text: "hi", Broadcast: id.String(),
 	}}
 	q.add(it.OutboxMessage)
 	if w.process(t.Context(), it) {
 		t.Fatal("process must report delete failure")
 	}
-	if c := w.stats["u"]; c != nil {
-		t.Fatalf("counted before delete: %+v", c)
+	if b := q.broadcast(id); b.Sent != 0 {
+		t.Fatalf("counted before delete: %+v", b)
 	}
 	if !w.process(t.Context(), it) {
 		t.Fatal("second process must succeed")
 	}
-	if c := w.stats["u"]; c == nil || c.sent != 1 {
-		t.Fatalf("stats = %+v, want sent=1", c)
-	}
-}
-
-func TestWorkerSummaryTallyCleanedOnDrop(t *testing.T) {
-	srv, q, w := setup(t)
-	srv.FailChat(1, 403, "Forbidden")
-	w.stats["u"] = &counts{sent: 1}
-	it := model.OutboxItem{ID: 1, OutboxMessage: model.OutboxMessage{EventType: "broadcast_summary", ChatID: 1, Broadcast: "u"}}
-	q.add(it.OutboxMessage)
-	w.process(t.Context(), it)
-	if len(w.stats) != 0 {
-		t.Fatalf("stats leaked: %v", w.stats)
+	if b := q.broadcast(id); b.Sent != 1 {
+		t.Fatalf("broadcast = %+v, want sent=1", b)
 	}
 }
