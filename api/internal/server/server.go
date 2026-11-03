@@ -3,7 +3,9 @@ package server
 
 import (
 	"context"
+	"io"
 	"io/fs"
+	"iter"
 	"net/http"
 	"strconv"
 	"strings"
@@ -34,16 +36,27 @@ type Store interface {
 	SettingsRaw(ctx context.Context) (map[string][]byte, error)
 	SetSettings(ctx context.Context, values map[string][]byte) error
 	Enqueue(ctx context.Context, m model.OutboxMessage) error
+	CreateBroadcast(ctx context.Context, d model.BroadcastDraft, recipients []int64, adminID int64) (model.Broadcast, bool, error)
+	ListBroadcasts(ctx context.Context, limit, offset int) ([]model.Broadcast, int, error)
+	CreateDirect(ctx context.Context, telegramID int64, text, photo string) (int64, error)
+	DirectMessages(ctx context.Context, telegramID int64) ([]model.DirectMessage, error)
 }
 
 // Panel — Remnawave (pkg/remnawave).
 type Panel interface {
 	GetUser(ctx context.Context, telegramID int64) (*api.UserItemInfo, error)
+	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
+}
+
+// PhotoSender — загрузка фото в Telegram (api/internal/telegram); возвращает file_id.
+type PhotoSender interface {
+	SendPhoto(ctx context.Context, chatID int64, r io.Reader, filename, caption string) (fileID string, err error)
 }
 
 type Deps struct {
-	Store Store
-	Panel Panel
+	Store    Store
+	Panel    Panel
+	Telegram PhotoSender
 	// Defaults — настройки по умолчанию из env (те же PAYMENT_*/SUPPORT_URL, что у бота).
 	Defaults settings.Settings
 	// PanelTimeout — потолок на один вызов панели; 0 → 5с.
@@ -83,6 +96,11 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/texts/{key}/test", s.testText)
 	apiMux.HandleFunc("GET /api/settings", s.settings)
 	apiMux.HandleFunc("PUT /api/settings", s.putSettings)
+	apiMux.HandleFunc("POST /api/broadcasts/preview-send", s.previewBroadcast)
+	apiMux.HandleFunc("GET /api/broadcasts/recipients", s.recipients)
+	apiMux.HandleFunc("POST /api/broadcasts", s.createBroadcast)
+	apiMux.HandleFunc("GET /api/broadcasts", s.broadcasts)
+	apiMux.HandleFunc("POST /api/users/{id}/messages", s.directMessage)
 	apiMux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
@@ -90,6 +108,8 @@ func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /auth", s.auth)
 	mux.Handle("/api/", jsonOnly(s.requireSession(apiMux)))
+	// единственное исключение из jsonOnly: загрузка фото — multipart; сессия обязательна, тип проверяет сам хендлер.
+	mux.Handle("POST /api/photos", s.requireSession(http.HandlerFunc(s.uploadPhoto)))
 	mux.HandleFunc("/", s.static) // без метода: "GET /" конфликтует с "/api/"
 	return metrics(mux)
 }

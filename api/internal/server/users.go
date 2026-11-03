@@ -51,11 +51,15 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	}
 	var stats model.UserStats
 	var payments []model.Payment
+	var messages []model.DirectMessage
 	if err == nil {
 		stats, err = s.Store.UserStats(ctx, id, 0)
 	}
 	if err == nil {
 		payments, err = s.Store.PaymentsByUser(ctx, id)
+	}
+	if err == nil {
+		messages, err = s.Store.DirectMessages(ctx, id)
 	}
 	if err != nil {
 		stlog.L(ctx).Error("user card", slog.Any("error", err))
@@ -76,7 +80,7 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	default:
 		p.ExpireAt, p.Status = ptr(info.ExpireAt.UTC()), ptr(string(info.Status))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": u, "stats": stats, "payments": payments, "panel": p})
+	writeJSON(w, http.StatusOK, map[string]any{"user": u, "stats": stats, "payments": payments, "messages": messages, "panel": p})
 }
 
 func ptr[T any](v T) *T { return &v }

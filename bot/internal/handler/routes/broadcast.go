@@ -45,24 +45,12 @@ func (h *handlers) broadcastStart(ctx context.Context, b *bot.Bot, u *models.Upd
 		"Пришлите сообщение для рассылки")
 }
 
-// broadcastRecipients — уникальные Telegram ID юзеров панели в порядке первого появления;
-// complete=false, если список оборвался ошибкой панели.
+// broadcastRecipients — уникальные Telegram ID юзеров панели; complete=false при ошибке панели.
 func (h *handlers) broadcastRecipients(ctx context.Context) (ids []int64, complete bool) {
-	seen := make(map[int64]struct{})
-	for user, err := range h.rw.Users(ctx) {
-		if err != nil {
-			stlog.Error(ctx, "failed to list remnawave users", "error", err)
-			return ids, false
-		}
-		id, ok := remnawave.TelegramID(user)
-		if !ok {
-			continue
-		}
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
+	ids, err := remnawave.TelegramIDs(h.rw.Users(ctx))
+	if err != nil {
+		stlog.Error(ctx, "failed to list remnawave users", "error", err)
+		return nil, false
 	}
 	return ids, true
 }

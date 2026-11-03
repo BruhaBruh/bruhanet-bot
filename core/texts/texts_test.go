@@ -247,3 +247,9 @@ func TestProblem(t *testing.T) {
 		t.Fatalf("problem = %q", got)
 	}
 }
+
+func TestVisibleLen(t *testing.T) {
+	if n := VisibleLen("<b>я&amp;</b>😀"); n != 4 {
+		t.Fatalf("n = %d", n)
+	}
+}

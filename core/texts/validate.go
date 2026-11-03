@@ -80,6 +80,15 @@ func validatePlain(s string) error {
 	return nil
 }
 
+// VisibleLen — длина видимого текста Telegram HTML в UTF-16 (как считает Telegram);
+// для невалидной разметки — длина как есть. Вызывать после Validate.
+func VisibleLen(body string) int {
+	if text, err := checkMarkup(body); err == nil {
+		return utf16Len(text)
+	}
+	return utf16Len(body)
+}
+
 // utf16Len — длина в UTF-16 code units, как её считает Telegram.
 func utf16Len(s string) int {
 	n := 0

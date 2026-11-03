@@ -10,6 +10,8 @@ require (
 	github.com/Jolymmiles/remnawave-api-go/v3 v3.4.4
 	github.com/bruhabruh/bruhanet/core v0.0.0
 	github.com/bruhabruh/bruhanet/pkg v0.0.0-00010101000000-000000000000
+	github.com/go-telegram/bot v1.27.0
+	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.25.0
 )
 
@@ -29,8 +31,6 @@ require (
 	github.com/go-playground/locales v0.14.2 // indirect
 	github.com/go-playground/universal-translator v0.18.2 // indirect
 	github.com/go-playground/validator/v10 v10.30.5 // indirect
-	github.com/go-telegram/bot v1.27.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.12.0 // indirect

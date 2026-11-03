@@ -16,6 +16,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/api/internal/config"
 	"github.com/bruhabruh/bruhanet/api/internal/server"
+	"github.com/bruhabruh/bruhanet/api/internal/telegram"
 	"github.com/bruhabruh/bruhanet/api/internal/web"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
@@ -78,6 +79,12 @@ func newApp(logger *slog.Logger, conf *config.Config) (app.App, error) {
 		return nil, errors.Join(errors.New("failed to create remnawave api"), err)
 	}
 
+	tg, err := telegram.New(conf.Telegram.Token)
+	if err != nil {
+		st.Close()
+		return nil, errors.Join(errors.New("failed to create telegram client"), err)
+	}
+
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(server.Requests, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	obsMux := http.NewServeMux()
@@ -91,6 +98,7 @@ func newApp(logger *slog.Logger, conf *config.Config) (app.App, error) {
 		Handler: server.New(server.Deps{
 			Store:    st,
 			Panel:    panel,
+			Telegram: tg,
 			Defaults: settings.Defaults(conf.Payment.Prices, conf.Payment.Phone, conf.Payment.Bank, conf.Support.URL),
 			AdminID:  conf.Telegram.AdminID,
 			BaseURL:  conf.Admin.BaseURL,

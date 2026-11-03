@@ -72,3 +72,25 @@ func TelegramID(u api.UserItemInfo) (int64, bool) {
 	}
 	return int64(id), true
 }
+
+// TelegramIDs — уникальные Telegram ID юзеров панели в порядке первого появления;
+// ошибка панели обрывает список.
+func TelegramIDs(users iter.Seq2[api.UserItemInfo, error]) ([]int64, error) {
+	var ids []int64
+	seen := make(map[int64]struct{})
+	for user, err := range users {
+		if err != nil {
+			return nil, err
+		}
+		id, ok := TelegramID(user)
+		if !ok {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}

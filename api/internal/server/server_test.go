@@ -3,6 +3,8 @@ package server_test
 import (
 	"context"
 	"encoding/hex"
+	"io"
+	"iter"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
+	"github.com/google/uuid"
 
 	"github.com/bruhabruh/bruhanet/api/internal/server"
 	"github.com/bruhabruh/bruhanet/core/auth"
@@ -43,6 +46,16 @@ type fakeStore struct {
 	overrides map[string]string
 	setRaw    map[string][]byte
 	outbox    []model.OutboxMessage
+
+	broadcasts []fakeBroadcast // по порядку создания
+	directs    []model.DirectMessage
+}
+
+type fakeBroadcast struct {
+	b          model.Broadcast
+	key        uuid.UUID
+	recipients []int64
+	adminID    int64
 }
 
 type session struct {
@@ -182,10 +195,18 @@ func newServerPanel(t *testing.T, baseURL string, panel server.Panel) (http.Hand
 
 func newServerTimeout(t *testing.T, baseURL string, panel server.Panel, panelTimeout time.Duration) (http.Handler, *fakeStore) {
 	t.Helper()
+	h, st, _ := newServerTG(t, baseURL, panel, panelTimeout)
+	return h, st
+}
+
+func newServerTG(t *testing.T, baseURL string, panel server.Panel, panelTimeout time.Duration) (http.Handler, *fakeStore, *fakeTG) {
+	t.Helper()
 	st := newFakeStore()
+	tg := &fakeTG{fileID: "AgAD-file"}
 	h := server.New(server.Deps{
 		Store:        st,
 		Panel:        panel,
+		Telegram:     tg,
 		Defaults:     settings.Defaults(map[int]int{1: 150, 6: 800}, "+7 900", "Т-Банк", "https://t.me/support"),
 		PanelTimeout: panelTimeout,
 		AdminID:      adminID,
@@ -196,7 +217,7 @@ func newServerTimeout(t *testing.T, baseURL string, panel server.Panel, panelTim
 			"assets/app.js": {Data: []byte("console.log(1)")},
 		},
 	})
-	return h, st
+	return h, st, tg
 }
 
 func do(h http.Handler, method, target, cookie, contentType string) *httptest.ResponseRecorder {
@@ -337,11 +358,30 @@ func (f *fakeStore) Revenue(_ context.Context, from, to time.Time) (int, error) 
 }
 
 type fakePanel struct {
-	user *api.UserItemInfo
-	err  error
+	user     *api.UserItemInfo
+	err      error
+	ids      []int // telegram ID юзеров панели; 0 — без ID
+	usersErr error
 }
 
 func (p *fakePanel) GetUser(context.Context, int64) (*api.UserItemInfo, error) { return p.user, p.err }
+
+func (p *fakePanel) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
+	return func(yield func(api.UserItemInfo, error) bool) {
+		for _, id := range p.ids {
+			var u api.UserItemInfo
+			if id != 0 {
+				u.TelegramId.SetTo(id)
+			}
+			if !yield(u, nil) {
+				return
+			}
+		}
+		if p.usersErr != nil {
+			yield(api.UserItemInfo{}, p.usersErr)
+		}
+	}
+}
 
 // blockingPanel висит, пока не отменят контекст.
 type blockingPanel struct{}
@@ -349,4 +389,80 @@ type blockingPanel struct{}
 func (blockingPanel) GetUser(ctx context.Context, _ int64) (*api.UserItemInfo, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
+}
+
+func (blockingPanel) Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error] {
+	return func(yield func(api.UserItemInfo, error) bool) {
+		<-ctx.Done()
+		yield(api.UserItemInfo{}, ctx.Err())
+	}
+}
+
+func (f *fakeStore) CreateBroadcast(_ context.Context, d model.BroadcastDraft, recipients []int64, admin int64) (model.Broadcast, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, b := range f.broadcasts {
+		if b.key == d.IdempotencyKey {
+			return b.b, false, nil
+		}
+	}
+	b := model.Broadcast{ID: uuid.New(), Text: d.Text, Photo: d.Photo, Total: len(recipients), CreatedAt: now}
+	f.broadcasts = append(f.broadcasts, fakeBroadcast{b: b, key: d.IdempotencyKey, recipients: recipients, adminID: admin})
+	return b, true, nil
+}
+
+func (f *fakeStore) ListBroadcasts(_ context.Context, limit, offset int) ([]model.Broadcast, int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastF = model.PaymentFilter{Limit: limit, Offset: offset}
+	out := []model.Broadcast{}
+	for i := len(f.broadcasts) - 1 - offset; i >= 0 && len(out) < limit; i-- {
+		out = append(out, f.broadcasts[i].b)
+	}
+	return out, len(f.broadcasts), nil
+}
+
+func (f *fakeStore) CreateDirect(_ context.Context, telegramID int64, text, photo string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := int64(len(f.directs) + 1)
+	f.directs = append(f.directs, model.DirectMessage{ID: id, TelegramID: telegramID, Text: text, Photo: photo, Status: model.DirectPending, CreatedAt: now})
+	return id, nil
+}
+
+func (f *fakeStore) DirectMessages(_ context.Context, telegramID int64) ([]model.DirectMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []model.DirectMessage{}
+	for i := len(f.directs) - 1; i >= 0; i-- {
+		if f.directs[i].TelegramID == telegramID {
+			out = append(out, f.directs[i])
+		}
+	}
+	return out, nil
+}
+
+// fakeTG — Telegram для загрузки фото.
+type fakeTG struct {
+	mu      sync.Mutex
+	calls   int
+	chatID  int64
+	name    string
+	caption string
+	data    []byte
+	fileID  string
+	err     error
+}
+
+func (f *fakeTG) SendPhoto(_ context.Context, chatID int64, r io.Reader, filename, caption string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	f.chatID, f.name, f.caption = chatID, filename, caption
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return "", err
+	}
+	f.data = data
+	return f.fileID, f.err
 }
