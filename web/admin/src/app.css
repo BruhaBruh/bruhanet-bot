@@ -1,0 +1,46 @@
+/* Только раскладка; цвета — переменные telegram-ui (кроме градиентов аватарок меню: в ките их нет). */
+body { margin: 0; }
+
+.layout { display: flex; min-height: 100vh; background: var(--tgui--secondary_bg_color); }
+
+.nav {
+  width: 280px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 8px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  background: var(--tgui--bg_color); border-right: 1px solid var(--tgui--divider);
+}
+.nav .brand { font-weight: 600; font-size: 20px; padding: 4px 8px 12px; color: var(--tgui--text_color); }
+.nav a { display: block; text-decoration: none; color: inherit; border-radius: 12px; }
+.nav a > * { border-radius: inherit; background: transparent; }
+.nav a:focus-visible { outline: 2px solid var(--tgui--link_color); outline-offset: -2px; }
+.nav a[aria-current='page'] > * { background: var(--tgui--button_color); }
+.nav a[aria-current='page'] * { color: var(--tgui--button_text_color); }
+.nav .logout { margin-top: auto; align-self: stretch; }
+
+/* Градиенты аватарок как в Telegram (план admin-tg-ui, цвета 1–6). */
+.av-1 { background: linear-gradient(#ff885e, #ff516a); }
+.av-2 { background: linear-gradient(#72d5fd, #2a9ef1); }
+.av-3 { background: linear-gradient(#a0de7e, #54cb68); }
+.av-4 { background: linear-gradient(#e0a2f3, #d669ed); }
+.av-5 { background: linear-gradient(#ffcd6a, #ffa85c); }
+.av-6 { background: linear-gradient(#82b1ff, #665fff); }
+
+.main { flex: 1; min-width: 0; padding: 24px 16px; }
+.col { max-width: 720px; margin: 0 auto; }
+
+.login-box { max-width: 360px; margin: 20vh auto; }
+.login-emoji { font-size: 64px; line-height: 1; }
+
+@media (max-width: 719px) {
+  .layout { flex-direction: column; }
+  .nav {
+    width: auto; height: auto; position: static; flex-direction: row; align-items: center; gap: 4px;
+    overflow-x: auto; overflow-y: hidden; padding: 8px; border-right: 0; border-bottom: 1px solid var(--tgui--divider);
+  }
+  .nav .brand { display: none; }
+  .nav .nav-list { display: flex; gap: 4px; }
+  .nav a { flex: none; }
+  .nav .av { width: 28px !important; height: 28px !important; }
+  .nav .nav-sub { display: none; }
+  .nav .logout { margin-top: 0; margin-left: auto; flex: none; align-self: center; }
+  .main { padding: 16px 12px; }
+}

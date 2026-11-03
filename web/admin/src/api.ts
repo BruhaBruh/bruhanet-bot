@@ -1,4 +1,8 @@
-import { router } from './router'
+// 401 посреди сессии с любого экрана → App ставит переход на /login-required.
+let onUnauthorized = () => {}
+export function setUnauthorizedHandler(fn: () => void) {
+  onUnauthorized = fn
+}
 
 // Ошибка ответа с телом: для 400 сервер кладёт {error, message, problems?}.
 export class ApiError extends Error {
@@ -20,7 +24,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: form ? body : body === undefined ? undefined : JSON.stringify(body),
   })
   if (res.status === 401) {
-    await router.push('/login-required')
+    onUnauthorized()
     throw new Error('unauthorized')
   }
   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => ({})))
