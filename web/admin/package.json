@@ -9,6 +9,10 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@tiptap/core": "^3.32.2",
+    "@tiptap/pm": "^3.32.2",
+    "@tiptap/starter-kit": "^3.32.2",
+    "@tiptap/vue-3": "^3.32.2",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0"
   },

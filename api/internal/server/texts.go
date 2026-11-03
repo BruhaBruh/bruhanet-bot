@@ -19,6 +19,7 @@ type textVar struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Sample      string `json:"sample"`
+	Raw         bool   `json:"raw"`
 }
 
 type textItem struct {
@@ -64,7 +65,7 @@ func (s *server) texts(w http.ResponseWriter, r *http.Request) {
 			it.Body, it.Overridden = b, true
 		}
 		for _, v := range d.Vars {
-			it.Vars = append(it.Vars, textVar{Name: v.Name, Description: v.Description, Sample: v.Sample})
+			it.Vars = append(it.Vars, textVar{Name: v.Name, Description: v.Description, Sample: v.Sample, Raw: v.Raw})
 		}
 		items = append(items, it)
 	}

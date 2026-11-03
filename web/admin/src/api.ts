@@ -1,5 +1,15 @@
 import { router } from './router'
 
+// Ошибка ответа с телом: для 400 сервер кладёт {error, message, problems?}.
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: { error?: string; message?: string; problems?: string[] },
+  ) {
+    super(`${status}`)
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -11,10 +21,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     await router.push('/login-required')
     throw new Error('unauthorized')
   }
-  if (!res.ok) throw new Error(`${method} ${path}: ${res.status}`)
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => ({})))
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
 }
 
 export const get = <T>(path: string) => request<T>('GET', path)
 export const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {})
+export const put = <T>(path: string, body: unknown) => request<T>('PUT', path, body)
+export const del = <T>(path: string) => request<T>('DELETE', path)

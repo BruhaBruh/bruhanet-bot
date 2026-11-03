@@ -57,6 +57,10 @@ func TestTextsList(t *testing.T) {
 	if o := out.Items[1]; o.Overridden || o.Body != o.Default {
 		t.Fatalf("second = %+v", o)
 	}
+	if !strings.Contains(w.Body.String(), `"name":"comments","description":`) ||
+		!strings.Contains(w.Body.String(), `"raw":true`) { // comments — готовый HTML, превью вставляет его как есть
+		t.Fatal("comments var must be marked raw")
+	}
 	if !strings.Contains(w.Body.String(), `"vars":[]`) { // без переменных — [], не null
 		t.Fatal("vars must be [] for texts without variables")
 	}

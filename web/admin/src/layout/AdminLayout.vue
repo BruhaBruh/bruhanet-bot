@@ -11,8 +11,8 @@ const items = [
   { to: '/promos', emoji: '🎟', label: 'Промокоды', sub: 'скоро', color: 2 },
   { to: '/users', emoji: '👤', label: 'Юзеры', sub: 'поиск и карточки', color: 3 },
   { to: '/payments', emoji: '💳', label: 'Платежи', sub: 'история и выручка', color: 4 },
-  { to: '/texts', emoji: '✏️', label: 'Тексты', sub: 'скоро', color: 5 },
-  { to: '/settings', emoji: '⚙️', label: 'Настройки', sub: 'скоро', color: 6 },
+  { to: '/texts', emoji: '✏️', label: 'Тексты', sub: 'сообщения бота', color: 5 },
+  { to: '/settings', emoji: '⚙️', label: 'Настройки', sub: 'тарифы и реквизиты', color: 6 },
 ] as const
 
 // На телефоне меню — горизонтальная полоса: подкручиваем активный пункт в зону видимости.
