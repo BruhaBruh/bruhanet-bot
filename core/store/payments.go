@@ -12,12 +12,12 @@ import (
 )
 
 const paymentCols = `id, telegram_id, username, months, price, status, prev_expire_at, advance_granted,
-	coalesce(admin_message_id, 0), created_at, submitted_at, resolved_at`
+	coalesce(admin_message_id, 0), created_at, submitted_at, resolved_at, promo_id, base_price`
 
 func scanPayment(row pgx.Row) (model.Payment, error) {
 	var p model.Payment
 	err := row.Scan(&p.ID, &p.TelegramID, &p.Username, &p.Month, &p.Price, &p.Status, &p.PrevExpireAt,
-		&p.AdvanceGranted, &p.AdminMessageID, &p.CreatedAt, &p.SubmittedAt, &p.ResolvedAt)
+		&p.AdvanceGranted, &p.AdminMessageID, &p.CreatedAt, &p.SubmittedAt, &p.ResolvedAt, &p.PromoID, &p.BasePrice)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -58,9 +58,9 @@ func (s *Store) CreatePayment(
 		}
 
 		created, err = scanPayment(tx.QueryRow(ctx,
-			`INSERT INTO payments (telegram_id, username, months, price, status, prev_expire_at)
-			 VALUES ($1, $2, $3, $4, 'pending', $5) RETURNING `+paymentCols,
-			p.TelegramID, p.Username, p.Month, p.Price, p.PrevExpireAt))
+			`INSERT INTO payments (telegram_id, username, months, price, status, prev_expire_at, promo_id, base_price)
+			 VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7) RETURNING `+paymentCols,
+			p.TelegramID, p.Username, p.Month, p.Price, p.PrevExpireAt, p.PromoID, p.BasePrice))
 		return err
 	})
 	if err != nil {
@@ -122,7 +122,8 @@ func (s *Store) UserStats(ctx context.Context, telegramID, excludeID int64) (mod
 }
 
 // ResolvePayment под блокировкой строки вызывает apply и переводит pending в confirmed|declined;
-// сообщение из apply кладётся в outbox в той же транзакции.
+// сообщение из apply кладётся в outbox в той же транзакции. Подтверждение платежа с промокодом
+// записывает активацию (без проверки лимита; повтор тем же юзером — ничего не делает).
 // При ErrNotPending возвращается и загруженный платёж.
 func (s *Store) ResolvePayment(
 	ctx context.Context, id int64, status model.PaymentStatus, at time.Time, apply func(p model.Payment) (model.OutboxMessage, error),
@@ -147,6 +148,13 @@ func (s *Store) ResolvePayment(
 		if _, err = tx.Exec(ctx, `UPDATE payments SET status = $2, resolved_at = $3 WHERE id = $1`,
 			id, status, at); err != nil {
 			return err
+		}
+		if status == model.PaymentConfirmed && p.PromoID != nil {
+			if _, err = tx.Exec(ctx, `INSERT INTO promo_activations (promo_id, telegram_id, payment_id)
+				VALUES ($1, $2, $3) ON CONFLICT (promo_id, telegram_id) DO NOTHING`,
+				*p.PromoID, p.TelegramID, p.ID); err != nil {
+				return err
+			}
 		}
 		if err = enqueue(ctx, tx, msg); err != nil {
 			return err

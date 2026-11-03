@@ -24,6 +24,9 @@ type Payment struct {
 	CreatedAt      time.Time     `json:"createdAt"`
 	SubmittedAt    *time.Time    `json:"submittedAt"`
 	ResolvedAt     *time.Time    `json:"resolvedAt"`
+	// PromoID и BasePrice (цена тарифа до скидки) — nil у платежей без промокода.
+	PromoID   *int64 `json:"promoId"`
+	BasePrice *int   `json:"basePrice"`
 }
 
 type UserStats struct {

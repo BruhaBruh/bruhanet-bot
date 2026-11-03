@@ -11,4 +11,5 @@ var (
 	ErrInvalidStatus  = errors.New("invalid payment status")
 	ErrEmptyMessage   = errors.New("outbox message needs event type and chat")
 	ErrTokenInvalid   = errors.New("login token is invalid, used or expired")
+	ErrPromoExists    = errors.New("promo code already exists")
 )
