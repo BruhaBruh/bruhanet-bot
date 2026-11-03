@@ -15,6 +15,7 @@ const busy = ref(false)
 const saved = ref(false)
 const error = ref('')
 const problems = ref<string[]>([])
+const storedProblems = ref<string[] | null>(null)
 
 onMounted(async () => {
   try {
@@ -26,6 +27,7 @@ onMounted(async () => {
     bank.value = s.bank
     comments.value = [...s.comments]
     supportUrl.value = s.supportUrl
+    if (s.usingDefaults) storedProblems.value = s.problems ?? []
     loaded.value = true
   } catch {
     loadError.value = true
@@ -42,6 +44,11 @@ async function save() {
     error.value = `Тариф на ${dup || '(пусто)'} мес. указан дважды`
     return
   }
+  const bad = tariffs.value.find((t) => !/^\d+$/.test(t.months.trim()) || +t.months < 1 || +t.months > 120 || !/^\d+$/.test(t.price.trim()) || +t.price < 1)
+  if (bad) {
+    error.value = 'Срок тарифа — целое число от 1 до 120 месяцев, цена — целое число больше 0'
+    return
+  }
   const body: Settings = {
     prices: Object.fromEntries(tariffs.value.map((t) => [t.months.trim(), Number(t.price)])),
     phone: phone.value,
@@ -53,6 +60,7 @@ async function save() {
   try {
     await put('/api/settings', body)
     saved.value = true
+    storedProblems.value = null
   } catch (e) {
     if (e instanceof ApiError && e.body.message) {
       error.value = e.body.message
@@ -69,6 +77,9 @@ async function save() {
   <p v-if="loadError" class="err" role="alert">Не удалось загрузить</p>
   <div v-else-if="!loaded" class="loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
   <form v-else @submit.prevent="save" @input="saved = false">
+    <p v-if="storedProblems" class="warn" role="alert">
+      Сохранённые настройки некорректны, бот работает на значениях из .env: {{ storedProblems.join('; ') }}. Сохраните форму, чтобы применить новые.
+    </p>
     <TgSection header="Тарифы" footer="Месяцев и цена в рублях. Хотя бы один тариф.">
       <div v-for="(t, i) in tariffs" :key="i" class="row">
         <TgInput v-model="t.months" grouped type="number" min="1" placeholder="Месяцев" />
@@ -118,5 +129,6 @@ async function save() {
 .loading { display: flex; justify-content: center; padding: 32px; color: var(--tg-hint-text); }
 .err { color: var(--tg-danger-text); }
 .err p { margin: 0 0 8px; }
+.warn { color: var(--tg-danger-text); margin: 0 16px 16px; }
 .ok { color: var(--tg-link); }
 </style>

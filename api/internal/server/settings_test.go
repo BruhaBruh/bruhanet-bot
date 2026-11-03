@@ -83,3 +83,27 @@ func TestSettingsInvalid(t *testing.T) {
 		t.Fatalf("invalid saved: %v", st.setRaw)
 	}
 }
+
+func TestSettingsGetInvalidStoredUsesDefaults(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.setRaw = map[string][]byte{"prices": []byte(`{"1":0}`)}
+	w := send(h, http.MethodGet, "/api/settings", c, "")
+	var out struct {
+		UsingDefaults bool
+		Problems      []string
+		Phone         string
+		Prices        map[string]int
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if !out.UsingDefaults || len(out.Problems) != 1 || out.Phone != "+7 900" || out.Prices["6"] != 800 {
+		t.Fatalf("got %s", w.Body)
+	}
+	// валидные — без флага
+	st.setRaw = nil
+	if w := send(h, http.MethodGet, "/api/settings", c, ""); strings.Contains(w.Body.String(), "usingDefaults") {
+		t.Fatalf("flag on valid: %s", w.Body)
+	}
+}

@@ -57,6 +57,14 @@ func Validate(def Def, body string) error {
 	if n := utf16Len(text); n > maxMessageLen {
 		return errors.Join(ErrTooLong, fmt.Errorf("текст длиннее %d символов (%d)", maxMessageLen, n))
 	}
+	// худший случай: все переменные максимальной длины
+	worst, err := checkMarkup(RenderDef(def, body, maxSamples(def)))
+	if err != nil {
+		return errors.Join(ErrInvalidMarkup, err)
+	}
+	if n := utf16Len(worst); n > maxMessageLen {
+		return errors.Join(ErrTooLong, fmt.Errorf("текст может оказаться длиннее %d символов (с самыми длинными значениями переменных — %d)", maxMessageLen, n))
+	}
 	return nil
 }
 
@@ -111,6 +119,9 @@ func checkMarkup(s string) (string, error) {
 			if err := checkTag(tok); err != nil {
 				return "", err
 			}
+			if err := checkNesting(open, tok.Data); err != nil {
+				return "", err
+			}
 			open = append(open, tok.Data)
 		case html.EndTagToken:
 			name := z.Token().Data
@@ -122,6 +133,17 @@ func checkMarkup(s string) (string, error) {
 			return "", fmt.Errorf("недопустимая разметка %q", z.Raw())
 		}
 	}
+}
+
+// checkNesting: внутри code/pre тегов быть не может, blockquote и a не вкладываются сами в себя.
+func checkNesting(open []string, tag string) error {
+	if slices.ContainsFunc(open, func(o string) bool { return o == "code" || o == "pre" }) {
+		return fmt.Errorf("внутри <%s> нельзя использовать теги", open[slices.IndexFunc(open, func(o string) bool { return o == "code" || o == "pre" })])
+	}
+	if (tag == "blockquote" || tag == "a") && slices.Contains(open, tag) {
+		return fmt.Errorf("тег <%s> нельзя вкладывать в <%s>", tag, tag)
+	}
+	return nil
 }
 
 func checkTag(tok html.Token) error {
@@ -146,6 +168,9 @@ func checkTag(tok html.Token) error {
 		u, err := url.Parse(tok.Attr[0].Val)
 		if err != nil || !slices.Contains(allowedSchemes, strings.ToLower(u.Scheme)) {
 			return fmt.Errorf("ссылка %q: допустимы только http, https, tg и mailto", tok.Attr[0].Val)
+		}
+		if (strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https")) && u.Host == "" {
+			return fmt.Errorf("ссылка %q: не указан адрес сайта", tok.Attr[0].Val)
 		}
 	}
 	return nil

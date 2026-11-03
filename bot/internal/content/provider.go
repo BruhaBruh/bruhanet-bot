@@ -87,11 +87,12 @@ func (p *Provider) current(ctx context.Context) *snapshot {
 	p.refreshing = true
 	p.mu.Unlock()
 
+	defer func() { // и при панике: иначе refreshing навсегда останется true
+		p.mu.Lock()
+		p.loadedAt, p.refreshing = now, false
+		p.mu.Unlock()
+	}()
 	p.refresh(ctx)
-
-	p.mu.Lock()
-	p.loadedAt, p.refreshing = now, false
-	p.mu.Unlock()
 	return p.snap.Load()
 }
 

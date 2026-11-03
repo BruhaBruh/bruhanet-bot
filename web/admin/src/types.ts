@@ -59,4 +59,6 @@ export interface Settings {
   bank: string
   comments: string[]
   supportUrl: string
+  usingDefaults?: boolean
+  problems?: string[]
 }

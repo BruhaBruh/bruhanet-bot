@@ -13,7 +13,10 @@ import (
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
 
-const maxBody = 1 << 20
+const (
+	maxBody     = 1 << 20
+	maxTextBody = 16 << 10 // тело PUT/test текста; сообщение Telegram — не больше 4096 символов
+)
 
 type textVar struct {
 	Name        string `json:"name"`
@@ -35,11 +38,21 @@ type textItem struct {
 
 // readJSON читает тело в v; при ошибке сам отвечает 400.
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(v); err != nil {
+	return readJSONMax(w, r, v, maxBody, false)
+}
+
+// readJSONMax читает тело до limit байт; allowEmpty — пустое тело не ошибка.
+func readJSONMax(w http.ResponseWriter, r *http.Request, v any, limit int64, allowEmpty bool) bool {
+	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(v)
+	switch {
+	case err == nil, allowEmpty && errors.Is(err, io.EOF):
+		return true
+	case errors.As(err, new(*http.MaxBytesError)):
+		writeInvalid(w, "слишком длинный текст")
+	default:
 		writeBadRequest(w)
-		return false
 	}
-	return true
+	return false
 }
 
 func internal(w http.ResponseWriter, r *http.Request, msg string, err error) {
@@ -81,7 +94,7 @@ func (s *server) putText(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Body *string `json:"body"`
 	}
-	if !readJSON(w, r, &in) {
+	if !readJSONMax(w, r, &in, maxTextBody, false) {
 		return
 	}
 	if in.Body == nil {
@@ -128,8 +141,7 @@ func (s *server) testText(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Body *string `json:"body"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
-		writeBadRequest(w)
+	if !readJSONMax(w, r, &in, maxTextBody, true) {
 		return
 	}
 	body := def.Default

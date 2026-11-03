@@ -3,6 +3,7 @@ package texts
 import (
 	"html"
 	"regexp"
+	"strings"
 )
 
 var placeholder = regexp.MustCompile(`\{\{\s*\.([^{}\s]+)\s*\}\}`)
@@ -61,6 +62,21 @@ func Samples(def Def) map[string]string {
 	out := make(map[string]string, len(def.Vars))
 	for _, v := range def.Vars {
 		out[v.Name] = v.Sample
+	}
+	return out
+}
+
+// maxSamples — как Samples, но каждое значение дополнено до Max (худший случай); Raw — в <code>.
+func maxSamples(def Def) map[string]string {
+	out := Samples(def)
+	for _, v := range def.Vars {
+		if v.Max <= utf16Len(v.Sample) {
+			continue
+		}
+		out[v.Name] = strings.Repeat("я", v.Max)
+		if v.Raw {
+			out[v.Name] = "<code>" + out[v.Name] + "</code>"
+		}
 	}
 	return out
 }

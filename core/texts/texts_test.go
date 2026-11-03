@@ -94,6 +94,15 @@ func TestValidate(t *testing.T) {
 		{"utf16 2048 emoji", msg, strings.Repeat("😀", 2048), nil},
 		{"utf16 too long", msg, strings.Repeat("😀", 2048) + "a", ErrTooLong},
 		{"too long after render", Def{Kind: KindMessage, Vars: []Var{{Name: "v", Sample: strings.Repeat("a", 4000)}}}, strings.Repeat("b", 97) + "{{.v}}", ErrTooLong},
+		{"too long with max values", Def{Kind: KindMessage, Vars: []Var{{Name: "v", Sample: "a", Max: 100}}}, strings.Repeat("b", 4000) + "{{.v}}", ErrTooLong},
+		{"fits with max values", Def{Kind: KindMessage, Vars: []Var{{Name: "v", Sample: "a", Max: 96}}}, strings.Repeat("b", 4000) + "{{.v}}", nil},
+		{"href no host", msg, `<a href="https:">y</a>`, ErrInvalidMarkup},
+		{"href empty host", msg, `<a href="https:///x">y</a>`, ErrInvalidMarkup},
+		{"nested blockquote", msg, "<blockquote>a<blockquote>b</blockquote></blockquote>", ErrInvalidMarkup},
+		{"nested a", msg, `<a href="https://x">a<a href="https://y">b</a></a>`, ErrInvalidMarkup},
+		{"tag in code", msg, "<code><b>x</b></code>", ErrInvalidMarkup},
+		{"tag in pre", msg, "<pre><code>x</code></pre>", ErrInvalidMarkup},
+		{"code in bold", msg, "<b><code>x</code></b>", nil},
 		{"button ok", btn, "Оплатить", nil},
 		{"button empty", btn, "", ErrBadButton},
 		{"button blank", btn, "  ", ErrBadButton},
@@ -150,6 +159,9 @@ func TestRegistryDefaultsValid(t *testing.T) {
 		for _, v := range d.Vars {
 			if !used[v.Name] {
 				t.Errorf("%s: var %s not used in default", d.Key, v.Name)
+			}
+			if v.Max < utf16Len(v.Sample) {
+				t.Errorf("%s: var %s Max %d < sample", d.Key, v.Name, v.Max)
 			}
 			if v.Sample == "" || v.Description == "" {
 				t.Errorf("%s: var %s without sample or description", d.Key, v.Name)

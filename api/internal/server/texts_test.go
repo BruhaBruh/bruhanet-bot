@@ -173,3 +173,19 @@ func TestTextTest(t *testing.T) {
 		t.Fatalf("%d %s outbox=%d", w.Code, w.Body, len(st.outbox))
 	}
 }
+
+func TestTextBodyTooLong(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	big := `{"body":"` + strings.Repeat("a", 17<<10) + `"}`
+	for _, target := range []string{"/api/texts/menu.greeting", "/api/texts/menu.greeting/test"} {
+		method := http.MethodPut
+		if strings.HasSuffix(target, "/test") {
+			method = http.MethodPost
+		}
+		w := send(h, method, target, c, big)
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "слишком длинный текст") {
+			t.Errorf("%s: %d %s", target, w.Code, w.Body)
+		}
+	}
+}

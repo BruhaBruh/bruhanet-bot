@@ -19,7 +19,7 @@ Telegram-бот продажи VPN-подписок (панель Remnawave). О
 
 Реализация — `bot/internal/handler/routes/`: `tariffs.go` (pay/price/buy), `photo.go`, `review.go` (adm_ok/adm_no), `review_stats.go`.
 
-Outbox: все уведомления, не являющиеся ответом на действие юзера (результат проверки, напоминания, рассылка), кладутся в таблицу `outbox(id, event_type, payload)` (payload — jsonb; `payment_result`, `reminder`, `broadcast`, `broadcast_summary`) и доставляются воркером `internal/outbox`; обработанная строка удаляется. `payment_result` пишется в транзакции `ResolvePayment`. Напоминания (cron из `NOTIFICATION_CRON`, Europe/Moscow): «скоро закончится» (≤7д) и «в течение суток» (≤24ч), по одному разу на дату окончания; дедуп-ключ `notify:<id>:<expireAt unix>:<week|day>` остаётся в Redis. Код — `internal/reminder` (отбор/дедуп, кладёт в outbox), текст — `routes.ReminderMessage`.
+Outbox: все уведомления, не являющиеся ответом на действие юзера (результат проверки, напоминания, рассылка), кладутся в таблицу `outbox(id, event_type, payload)` (payload — jsonb; `payment_result`, `reminder`, `broadcast`, `broadcast_summary`, `text_test`) и доставляются воркером `internal/outbox`; обработанная строка удаляется. `payment_result` пишется в транзакции `ResolvePayment`. Напоминания (cron из `NOTIFICATION_CRON`, Europe/Moscow): «скоро закончится» (≤7д) и «в течение суток» (≤24ч), по одному разу на дату окончания; дедуп-ключ `notify:<id>:<expireAt unix>:<week|day>` остаётся в Redis. Код — `internal/reminder` (отбор/дедуп, кладёт в outbox), текст — `routes.ReminderMessage`.
 
 ## Структура
 
@@ -33,7 +33,7 @@ Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruh
 
 ## Админка
 
-Экраны SPA: Платежи, Пользователи, Тексты (tiptap-редактор → Telegram-HTML, санитизированное превью, «тест» шлёт текст админу через outbox `text_test`), Настройки (`PUT /api/settings` атомарно). API: `GET /api/texts`, `PUT|DELETE /api/texts/{key}`, `POST /api/texts/{key}/test`, `GET|PUT /api/settings`. Тексты юзеру и настройки (тарифы, реквизиты, комментарии, ссылка поддержки) живут в БД (`texts`, `settings`), значение из env (`PAYMENT_*`, `SUPPORT_URL`) — лишь дефолт; сброс (DELETE) возвращает дефолт. Тексты, адресованные админу, остаются в коде.
+Экраны SPA: Платежи, Пользователи, Тексты (tiptap-редактор → Telegram-HTML, санитизированное превью, «тест» шлёт текст админу через outbox `text_test`), Настройки (`PUT /api/settings` атомарно). API: `GET /api/texts`, `PUT|DELETE /api/texts/{key}`, `POST /api/texts/{key}/test`, `GET|PUT /api/settings`. Тексты юзеру и настройки (тарифы, реквизиты, комментарии, ссылка поддержки) живут в БД (`texts`, `settings`), значение из env (`PAYMENT_*`, `SUPPORT_URL`) — лишь дефолт, пока настройки не сохранены. У настроек сброса нет: после первого сохранения все ключи живут в БД и правки env больше не применяются. Если сохранённые настройки не проходят `Validate`, бот работает на env-дефолтах, а `GET /api/settings` отдаёт `usingDefaults` + `problems`. Сброс (DELETE) есть только у текстов. Тексты, адресованные админу, остаются в коде.
 
 Вход: `/login` в боте → inline-кнопка со ссылкой `ADMIN_BASE_URL/auth?token=…` (токен одноразовый, 5 мин; ссылка только в кнопке, превью отключено) → сессионная cookie `bn_session` на 24 ч. `/api/*` — default-deny: без сессии 401, мутирующие принимают только `application/json`. Админ один — `TELEGRAM_ADMIN_ID`.
 

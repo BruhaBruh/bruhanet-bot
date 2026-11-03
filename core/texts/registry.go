@@ -14,9 +14,11 @@ const (
 )
 
 // Var — переменная текста. Raw — значение уже готовый HTML и не экранируется (RenderRaw).
+// Max — наибольшая длина значения (видимые UTF-16 units): Validate проверяет лимит Telegram по худшему случаю.
 type Var struct {
 	Name, Description, Sample string
 	Raw                       bool
+	Max                       int
 }
 
 type Def struct {
@@ -35,10 +37,13 @@ const (
 )
 
 var (
-	varMonths   = Var{Name: "months", Description: "Срок тарифа с единицей: «3 месяца»", Sample: "3 месяца"}
-	varPrice    = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500"}
-	varExpireAt = Var{Name: "expireAt", Description: "Дата окончания подписки (МСК)", Sample: "2 ноября 2026 г. в 15:04, MSK"}
+	varMonths   = Var{Name: "months", Description: "Срок тарифа с единицей: «3 месяца»", Sample: "3 месяца", Max: 16}
+	varPrice    = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500", Max: 8}
+	varExpireAt = Var{Name: "expireAt", Description: "Дата окончания подписки (МСК)", Sample: "2 ноября 2026 г. в 15:04, MSK", Max: 40}
 )
+
+// maxComments — не больше комментариев к переводу (core/settings).
+const maxComments = 10
 
 const (
 	photoSent    = "<b>Вы успешно отправили фото на проверку</b>"
@@ -62,13 +67,13 @@ func btn(key, title, def string, vars ...Var) Def {
 
 var registry = []Def{
 	msg("menu.greeting", groupMenu, "Приветствие", "Здравствуйте, <b>{{.name}}</b>",
-		Var{Name: "name", Description: "Имя пользователя в Telegram", Sample: "Иван"}),
+		Var{Name: "name", Description: "Имя пользователя в Telegram", Sample: "Иван", Max: 64}),
 	msg("menu.info", groupMenu, "Информация о подписке",
 		infoHead+"{{.status}}\n\n<b>Трафик</b>\n{{.traffic}}\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}\n\n<b>Ваш Telegram ID</b>\n{{.telegramId}}",
-		Var{Name: "status", Description: "Статус подписки (тексты «Статус: …»)", Sample: "Активна"},
-		Var{Name: "traffic", Description: "Использованный трафик из лимита", Sample: "1.50 ГБ из ∞"},
+		Var{Name: "status", Description: "Статус подписки (тексты «Статус: …»)", Sample: "Активна", Max: 64},
+		Var{Name: "traffic", Description: "Использованный трафик из лимита", Sample: "1.50 ГБ из ∞", Max: 32},
 		varExpireAt,
-		Var{Name: "telegramId", Description: "Telegram ID пользователя", Sample: "123456789"}),
+		Var{Name: "telegramId", Description: "Telegram ID пользователя", Sample: "123456789", Max: 20}),
 	msg("menu.info_not_bought", groupMenu, "Информация: подписка не куплена", infoHead+"Не куплена"),
 	plain("menu.status_active", "Статус: активна", "Активна"),
 	plain("menu.status_disabled", "Статус: отключена", "Отключена"),
@@ -84,10 +89,11 @@ var registry = []Def{
 		"<b>Оплата тарифа на {{.months}} за {{.price}} ₽</b>\n\n<b>Для оплаты</b>\nПереведите <b>{{.price}} ₽</b>\n"+
 			"на номер <code>{{.phone}}</code> в <b>{{.bank}}</b>\nс одним из комментариев:\n{{.comments}}\nи отправьте в чат фото платежа",
 		varMonths, varPrice,
-		Var{Name: "phone", Description: "Номер для перевода (PAYMENT_PHONE)", Sample: "+79990000000"},
-		Var{Name: "bank", Description: "Банк для перевода (PAYMENT_BANK)", Sample: "Т-Банк"},
+		Var{Name: "phone", Description: "Номер для перевода (PAYMENT_PHONE)", Sample: "+79990000000", Max: 64},
+		Var{Name: "bank", Description: "Банк для перевода (PAYMENT_BANK)", Sample: "Т-Банк", Max: 64},
 		Var{
 			Name: "comments", Description: "Список комментариев к переводу, по строке «- <code>…</code>» на комментарий", Raw: true,
+			Max: maxComments * (64 + 4), // до 10 комментариев по 64 символа + «- » и перенос строки
 			Sample: "- <code>На кофе</code>\n- <code>Перекус</code>\n- <code>Одолжил</code>\n- <code>Вернул долг</code>",
 		}),
 	msg("payment.photo_sent", groupPayment, "Фото отправлено (без аванса)", photoSent),

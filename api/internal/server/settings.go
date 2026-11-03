@@ -20,7 +20,16 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 	if err != nil { // битый ключ в БД: остальные применены, админ видит дефолт этого ключа
 		stlog.L(r.Context()).Warn("broken stored settings", slog.Any("error", err))
 	}
-	writeJSON(w, http.StatusOK, cur)
+	out := struct {
+		settings.Settings
+		UsingDefaults bool     `json:"usingDefaults,omitempty"`
+		Problems      []string `json:"problems,omitempty"`
+	}{Settings: cur}
+	// как в боте (content.Provider): невалидные сохранённые настройки — бот работает на env-дефолтах
+	if err := cur.Validate(); err != nil {
+		out.Settings, out.UsingDefaults, out.Problems = s.Defaults, true, settings.Problems(err)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
