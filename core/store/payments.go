@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/promo"
 )
 
 const paymentCols = `id, telegram_id, username, months, price, status, prev_expire_at, advance_granted,
@@ -141,6 +143,12 @@ func (s *Store) ResolvePayment(
 		if p.Status != model.PaymentPending {
 			return ErrNotPending
 		}
+		// Активация — до apply: повтор бесплатного платежа отклоняется раньше, чем тронута панель.
+		if status == model.PaymentConfirmed && p.PromoID != nil {
+			if err = activatePaymentPromo(ctx, tx, p); err != nil {
+				return err
+			}
+		}
 		msg, err := apply(p)
 		if err != nil {
 			return err
@@ -149,13 +157,6 @@ func (s *Store) ResolvePayment(
 			id, status, at); err != nil {
 			return err
 		}
-		if status == model.PaymentConfirmed && p.PromoID != nil {
-			if _, err = tx.Exec(ctx, `INSERT INTO promo_activations (promo_id, telegram_id, payment_id)
-				VALUES ($1, $2, $3) ON CONFLICT (promo_id, telegram_id) DO NOTHING`,
-				*p.PromoID, p.TelegramID, p.ID); err != nil {
-				return err
-			}
-		}
 		if err = enqueue(ctx, tx, msg); err != nil {
 			return err
 		}
@@ -163,4 +164,31 @@ func (s *Store) ResolvePayment(
 		return nil
 	})
 	return p, err
+}
+
+// activatePaymentPromo засчитывает промокод подтверждённого платежа. Оплаченный (цена > 0) подтверждает
+// админ: повтор активации того же юзера — ON CONFLICT DO NOTHING. Цена 0 подтверждается без админа:
+// повтор — promo.ErrAlreadyUsed, транзакция откатывается.
+func activatePaymentPromo(ctx context.Context, tx pgx.Tx, p model.Payment) error {
+	q := `INSERT INTO promo_activations (promo_id, telegram_id, payment_id) VALUES ($1, $2, $3)`
+	if p.Price > 0 {
+		q += ` ON CONFLICT (promo_id, telegram_id) DO NOTHING`
+	}
+	_, err := tx.Exec(ctx, q, *p.PromoID, p.TelegramID, p.ID)
+	if pg, ok := errors.AsType[*pgconn.PgError](err); ok && pg.Code == "23505" {
+		return errors.Join(promo.ErrAlreadyUsed, err)
+	}
+	return err
+}
+
+// CancelPayment отменяет pending-платёж (без отката аванса — вызывающий проверяет сам); иначе ErrNotPending.
+func (s *Store) CancelPayment(ctx context.Context, id int64) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE payments SET status = 'cancelled', resolved_at = now() WHERE id = $1 AND status = 'pending'`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotPending
+	}
+	return nil
 }

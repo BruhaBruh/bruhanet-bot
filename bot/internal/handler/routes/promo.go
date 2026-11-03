@@ -154,6 +154,8 @@ func (h *handlers) buyPromo(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	next := st
 	defer func() {
+		// без отмены: graceful shutdown отменяет ctx, а замок должен сняться
+		ctx := context.WithoutCancel(ctx)
 		if err := fsm.Transition(ctx, f, statePromoPaying, next, nil); err != nil && !errors.Is(err, fsm.ErrStateMismatch) {
 			stlog.Error(ctx, "failed to unlock promo payment", "error", err)
 		}
@@ -215,6 +217,14 @@ func (h *handlers) payByPromo(ctx context.Context, b *bot.Bot, u *models.Update,
 		h.start(ctx, b, u)
 		return
 	case err != nil:
+		// платёж 0 ₽ без подтверждения не нужен: фото по нему не ждём (аванса не было — панель не откатываем)
+		if cerr := h.pay.CancelPayment(context.WithoutCancel(ctx), pay.ID); cerr != nil && !errors.Is(cerr, store.ErrNotPending) {
+			stlog.Error(ctx, "failed to cancel promo payment", "error", cerr)
+		}
+		if errors.Is(err, promo.ErrAlreadyUsed) { // БД отклонила повтор, мимо FSM-замка
+			h.rejectPromo(ctx, b, u, err, promo.PlacePayment, routePay)
+			return
+		}
 		stlog.Error(ctx, "failed to confirm promo payment", "error", err)
 		h.showError(ctx, b, u)
 		return
@@ -310,6 +320,7 @@ func (h *handlers) leavePromo(ctx context.Context, userID int64) {
 	next := fsm.StateNone
 	p, err := h.pay.PendingPayment(ctx, userID)
 	switch {
+	case err == nil && p.Price == 0: // платёж 0 ₽ подтверждается без фото
 	case err == nil && p.SubmittedAt != nil:
 		next = stateInReview
 	case err == nil:

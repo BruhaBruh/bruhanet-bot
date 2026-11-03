@@ -212,6 +212,15 @@ func (p *Payments) ResolvePayment(
 	if x.Status != model.PaymentPending {
 		return *x, store.ErrNotPending
 	}
+	// как в store: активация до apply; повтор у оплаченного — ON CONFLICT DO NOTHING, у цены 0 — ErrAlreadyUsed
+	activate := false
+	if status == model.PaymentConfirmed && x.PromoID != nil {
+		_, already := p.usage(*x.PromoID, x.TelegramID)
+		if already && x.Price == 0 {
+			return model.Payment{}, promo.ErrAlreadyUsed
+		}
+		activate = !already
+	}
 	msg, err := apply(*x)
 	if err != nil {
 		return model.Payment{}, err
@@ -222,12 +231,9 @@ func (p *Payments) ResolvePayment(
 	}
 	x.Status, x.ResolvedAt = status, &at
 	p.outbox = append(p.outbox, msg)
-	// как в store: активация скидки при подтверждении, повтор — ON CONFLICT DO NOTHING
-	if status == model.PaymentConfirmed && x.PromoID != nil {
-		if _, already := p.usage(*x.PromoID, x.TelegramID); !already {
-			id := x.ID
-			p.activations = append(p.activations, model.PromoActivation{PromoID: *x.PromoID, TelegramID: x.TelegramID, PaymentID: &id})
-		}
+	if activate {
+		id := x.ID
+		p.activations = append(p.activations, model.PromoActivation{PromoID: *x.PromoID, TelegramID: x.TelegramID, PaymentID: &id})
 	}
 	return *x, nil
 }
@@ -327,5 +333,17 @@ func (p *Payments) ActivateDaysPromo(
 		return err
 	}
 	p.activations = append(p.activations, model.PromoActivation{PromoID: promoID, TelegramID: telegramID})
+	return nil
+}
+
+func (p *Payments) CancelPayment(_ context.Context, id int64) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	x, err := p.byID(id)
+	if err != nil || x.Status != model.PaymentPending {
+		return store.ErrNotPending
+	}
+	at := time.Now()
+	x.Status, x.ResolvedAt = model.PaymentCancelled, &at
 	return nil
 }

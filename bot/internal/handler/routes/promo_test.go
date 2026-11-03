@@ -1,6 +1,7 @@
 package routes_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/promo"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 
@@ -189,6 +191,10 @@ func TestPromoFreePanelError(t *testing.T) {
 	}
 	if st := e.state(t, userID); st != fsm.StateNone {
 		t.Fatalf("state = %q", st)
+	}
+	// неподтверждённый платёж 0 ₽ отменён: фото по нему не уйдёт админу
+	if all := e.pay.All(); len(all) != 1 || all[0].Status != model.PaymentCancelled {
+		t.Fatalf("payments = %+v", all)
 	}
 	// панель ожила — повтор проходит
 	e.rw.FailUpdateWith(nil)
@@ -423,6 +429,74 @@ func TestPhotoInPromoState(t *testing.T) {
 		t.Fatalf("copyMessage = %d", n)
 	}
 	if st := e.state(t, userID); st != "in_review" {
+		t.Fatalf("state = %q", st)
+	}
+}
+
+// noLockFSM — FSM без CAS: замок от двойного «Да» не работает, остаётся защита в БД.
+type noLockFSM struct{ *fsm.InMemory }
+
+func (s noLockFSM) CompareAndSet(ctx context.Context, userID int64, _ fsm.State, r fsm.Record) error {
+	return s.Set(ctx, userID, r)
+}
+
+// Повторное подтверждение 0 ₽ отклоняется хранилищем, даже если FSM-замок обойдён.
+func TestPromoFreeRepeatRefusedWithoutLock(t *testing.T) {
+	for range 20 {
+		e := newEnvWithStore(t, noLockFSM{fsm.NewInMemory()})
+		e.rw.AddUser(userID, now)
+		e.pay.AddPromo(model.Promo{Code: "FREE", Kind: model.PromoPercent, Value: 100})
+		var wg sync.WaitGroup
+		for range 2 {
+			wg.Go(func() { e.process(t, tgtest.Callback(userID, "buyp:1:1")) })
+		}
+		wg.Wait()
+		if n := len(e.rw.Updates()); n != 1 {
+			t.Fatalf("UpdateUser calls = %d", n)
+		}
+		var confirmed int
+		for _, p := range e.pay.All() {
+			switch p.Status {
+			case model.PaymentConfirmed:
+				confirmed++
+			case model.PaymentPending:
+				t.Fatalf("остался pending: %+v", p)
+			case model.PaymentDeclined, model.PaymentCancelled:
+			}
+		}
+		if confirmed != 1 || len(e.pay.Activations()) != 1 {
+			t.Fatalf("confirmed = %d, activations = %d", confirmed, len(e.pay.Activations()))
+		}
+	}
+}
+
+func TestFakeResolveFreePromoRepeat(t *testing.T) {
+	e := newEnv(t)
+	pr := e.pay.AddPromo(model.Promo{Code: "FREE", Kind: model.PromoPercent, Value: 100})
+	confirmedWith(t, e, &pr.ID) // активация уже есть
+	p, _, err := e.pay.CreatePayment(t.Context(), model.Payment{TelegramID: userID, Month: 1, PromoID: &pr.ID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied := false
+	_, err = e.pay.ResolvePayment(t.Context(), p.ID, model.PaymentConfirmed, now, func(model.Payment) (model.OutboxMessage, error) {
+		applied = true
+		return model.OutboxMessage{}, nil
+	})
+	if !errors.Is(err, promo.ErrAlreadyUsed) || applied {
+		t.Fatalf("err = %v, applied = %v", err, applied)
+	}
+}
+
+// Ожидание кода не возвращает await_photo для pending 0 ₽ — такой платёж фото не ждёт.
+func TestLeavePromoIgnoresFreePending(t *testing.T) {
+	e := newEnv(t)
+	if _, _, err := e.pay.CreatePayment(t.Context(), model.Payment{TelegramID: userID, Month: 1, Price: 0}, nil); err != nil {
+		t.Fatal(err)
+	}
+	e.process(t, tgtest.Callback(userID, "have_promo:1"))
+	e.process(t, tgtest.Message(userID, "/start"))
+	if st := e.state(t, userID); st != fsm.StateNone {
 		t.Fatalf("state = %q", st)
 	}
 }

@@ -46,6 +46,7 @@ type Payments interface {
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
 		apply func(model.Payment) (model.OutboxMessage, error)) (model.Payment, error)
+	CancelPayment(ctx context.Context, id int64) error
 	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
 	// Промокоды; PromoByCode нормализует ввод (trim + upper), нет кода — store.ErrNotFound.
 	PromoByCode(ctx context.Context, code string) (model.Promo, error)

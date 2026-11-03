@@ -257,3 +257,73 @@ func TestResolvePaymentPromoActivation(t *testing.T) {
 		t.Fatalf("plain %+v err=%v", plain, err)
 	}
 }
+
+// Цена 0: активация пишется до apply и без ON CONFLICT — повтор отклоняется в БД, панель не трогается.
+func TestResolveFreePromoPaymentRejectsRepeat(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	pr := mustPromo(t, s, model.Promo{Code: "FREE", Kind: promo.KindPercent, Value: 100})
+	free := func() model.Payment {
+		p := newPay(1, time.Now())
+		p.Price, p.PromoID, p.BasePrice = 0, &pr.ID, ptr(150)
+		created, _, err := s.CreatePayment(ctx, p, noRollback)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return created
+	}
+	if _, err := s.ResolvePayment(ctx, free().ID, model.PaymentConfirmed, time.Now(), okApply); err != nil {
+		t.Fatal(err)
+	}
+	second := free()
+	applied := false
+	_, err := s.ResolvePayment(ctx, second.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) (model.OutboxMessage, error) {
+		applied = true
+		return okApply(second)
+	})
+	if !errors.Is(err, promo.ErrAlreadyUsed) || applied {
+		t.Fatalf("err = %v, applied = %v", err, applied)
+	}
+	if got, err := s.PaymentByID(ctx, second.ID); err != nil || got.Status != model.PaymentPending {
+		t.Fatalf("second = %+v, %v", got, err)
+	}
+	if used, _, err := s.PromoUsage(ctx, pr.ID, 1); err != nil || used != 1 {
+		t.Fatalf("used = %d, %v", used, err)
+	}
+	// ошибка apply откатывает и активацию
+	other := newPay(2, time.Now())
+	other.Price, other.PromoID = 0, &pr.ID
+	o, _, err := s.CreatePayment(ctx, other, noRollback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ResolvePayment(ctx, o.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) (model.OutboxMessage, error) {
+		return model.OutboxMessage{}, errors.New("panel down")
+	}); err == nil {
+		t.Fatal("ожидалась ошибка apply")
+	}
+	if _, already, err := s.PromoUsage(ctx, pr.ID, 2); err != nil || already {
+		t.Fatalf("активация после отката: %v %v", already, err)
+	}
+}
+
+func TestCancelPayment(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.CancelPayment(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.PaymentByID(ctx, p.ID); got.Status != model.PaymentCancelled || got.ResolvedAt == nil {
+		t.Fatalf("payment = %+v", got)
+	}
+	if err = s.CancelPayment(ctx, p.ID); !errors.Is(err, ErrNotPending) {
+		t.Fatalf("повтор: %v", err)
+	}
+	if err = s.CancelPayment(ctx, 999999); !errors.Is(err, ErrNotPending) {
+		t.Fatalf("нет платежа: %v", err)
+	}
+}
