@@ -35,7 +35,7 @@ async function logout() {
       <TgCell v-for="i in items" :key="i.to" :to="i.to" :title="i.label" :subtitle="i.sub" :active="route.path.startsWith(i.to)">
         <template #before><TgAvatar :emoji="i.emoji" :color="i.color" /></template>
       </TgCell>
-      <TgButton class="logout" mode="plain" @click="logout">выйти</TgButton>
+      <TgButton class="logout" mode="plain" @click="logout">Выйти</TgButton>
     </nav>
     <main><div class="col"><router-view /></div></main>
   </div>

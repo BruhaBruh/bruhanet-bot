@@ -74,10 +74,10 @@ async function save() {
 
 <template>
   <h1 class="tg-visually-hidden">Настройки</h1>
-  <p v-if="loadError" class="err" role="alert">Не удалось загрузить</p>
-  <div v-else-if="!loaded" class="loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
+  <p v-if="loadError" class="tg-err" role="alert">Не удалось загрузить</p>
+  <div v-else-if="!loaded" class="tg-loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
   <form v-else @submit.prevent="save" @input="saved = false">
-    <p v-if="storedProblems" class="warn" role="alert">
+    <p v-if="storedProblems" class="tg-err warn" role="alert">
       Сохранённые настройки некорректны, бот работает на значениях из .env: {{ storedProblems.join('; ') }}. Сохраните форму, чтобы применить новые.
     </p>
     <TgSection header="Тарифы" footer="Месяцев и цена в рублях. Хотя бы один тариф.">
@@ -108,13 +108,13 @@ async function save() {
       <TgInput v-model="supportUrl" grouped type="url" placeholder="https://t.me/…" aria-label="Ссылка на поддержку" />
     </TgSection>
 
-    <div v-if="error" class="err" role="alert">
+    <div v-if="error" class="tg-err" role="alert">
       <p v-if="problems.length <= 1">{{ error }}</p>
       <ul v-else>
         <li v-for="p in problems" :key="p">{{ p }}</li>
       </ul>
     </div>
-    <p v-if="saved" class="ok" role="status">Сохранено</p>
+    <p v-if="saved" class="tg-ok" role="status">Сохранено</p>
     <TgButton :loading="busy" @click="save">Сохранить</TgButton>
   </form>
 </template>
@@ -123,12 +123,9 @@ async function save() {
 .row { display: flex; align-items: center; gap: 1px; background: var(--tg-sep); }
 .row > :deep(.tg-field) { flex: 1; min-width: 0; }
 .row > .tg-btn { background: var(--tg-bg); border-radius: 0; align-self: stretch; }
-.row + .row { margin-top: 1px; }
+.row + .row { border-top: 1px solid var(--tg-sep); }
 .col { display: flex; flex-direction: column; gap: 1px; background: var(--tg-sep); }
 .add { margin: -16px 0 24px 16px; }
-.loading { display: flex; justify-content: center; padding: 32px; color: var(--tg-hint-text); }
-.err { color: var(--tg-danger-text); }
-.err p { margin: 0 0 8px; }
-.warn { color: var(--tg-danger-text); margin: 0 16px 16px; }
-.ok { color: var(--tg-link); }
+.tg-err p { margin: 0 0 8px; }
+.warn { margin: 0 16px 16px; }
 </style>

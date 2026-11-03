@@ -3,7 +3,7 @@ import { defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { get } from '../api'
 import { snippet } from '../editor/serialize'
-import { formatDate, formatRub } from '../format'
+import { formatDate, formatRub, panelStatusLabels } from '../format'
 import type { Broadcast, DirectMessage, UserDetail } from '../types'
 import { TgAvatar, TgButton, TgCell, TgPlaceholder, TgSection } from '../ui'
 import PaymentsTable from './PaymentsTable.vue'
@@ -36,7 +36,7 @@ function onSent(m: Broadcast | DirectMessage) {
 
 <template>
   <router-link to="/users" class="back">← Юзеры</router-link>
-  <p v-if="error" class="err" role="alert">{{ error }}</p>
+  <p v-if="error" class="tg-err" role="alert">{{ error }}</p>
   <template v-if="d">
     <div class="head">
       <TgAvatar :text="d.user.username || String(d.user.telegramId)" :size="48" />
@@ -49,7 +49,7 @@ function onSent(m: Broadcast | DirectMessage) {
       <TgCell
         title="Подписка до"
         :after="d.panel.error ? 'панель недоступна' : d.panel.expireAt ? formatDate(d.panel.expireAt) : '—'"
-        :after-sub="!d.panel.error && d.panel.status ? d.panel.status : undefined"
+        :after-sub="!d.panel.error && d.panel.status ? (panelStatusLabels[d.panel.status] ?? d.panel.status) : undefined"
       />
     </TgSection>
     <TgSection header="Статистика">
@@ -65,7 +65,7 @@ function onSent(m: Broadcast | DirectMessage) {
         <Composer v-if="writing" mode="direct" :user-id="d.user.telegramId" @sent="onSent" />
         <template v-else>
           <TgButton mode="bezeled" @click="(writing = true), (sent = false)">Написать</TgButton>
-          <span v-if="sent" class="ok" role="status">Отправлено</span>
+          <span v-if="sent" class="tg-ok" role="status">Отправлено</span>
         </template>
       </div>
       <TgPlaceholder v-if="!d.messages.length" emoji="✉️" title="Сообщений нет" />
@@ -81,12 +81,10 @@ function onSent(m: Broadcast | DirectMessage) {
 </template>
 
 <style scoped>
-.back { display: inline-block; margin: 0 0 12px 16px; }
+.back { display: inline-block; margin: 0 0 12px 16px; text-decoration: none; }
 .head { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
 h1 { margin: 0; font-size: 20px; }
 .id { color: var(--tg-hint-text); font-size: 13px; }
-.err { color: var(--tg-danger-text); }
 .pad { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
 .pad > :deep(.composer) { flex: 1; min-width: 0; }
-.ok { color: var(--tg-link); }
 </style>

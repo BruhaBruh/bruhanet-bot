@@ -25,6 +25,15 @@ export const statusLabels: Record<string, string> = {
   cancelled: 'отменён',
 }
 
+// статус юзера в Remnawave (+ not_found от api)
+export const panelStatusLabels: Record<string, string> = {
+  ACTIVE: 'активна',
+  DISABLED: 'отключена',
+  LIMITED: 'ограничена',
+  EXPIRED: 'исчерпана',
+  not_found: 'нет в панели',
+}
+
 // YYYY-MM-DD в МСК, сдвинутая на days (для default-периода фильтра)
 export function mskDate(now: Date, days = 0): string {
   const d = new Date(now.getTime() + days * 864e5)

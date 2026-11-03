@@ -58,7 +58,7 @@ async function disable(p: Promo) {
 }
 
 const marks = (p: Promo) =>
-  [promoUsage(p), promoUntil(p.validUntil), p.onlyNew && 'только новым', p.telegramId && (p.username ? '@' + p.username : `ID ${p.telegramId}`)]
+  [promoUsage(p), p.validUntil && promoUntil(p.validUntil), p.onlyNew && 'только новым', p.telegramId && (p.username ? '@' + p.username : `ID ${p.telegramId}`)]
     .filter(Boolean)
     .join(' · ')
 
@@ -103,9 +103,9 @@ async function create() {
         :options="[{ value: 'active', label: 'Активные' }, { value: 'all', label: 'Все' }]"
         @change="load"
       />
-      <p v-if="disableError" class="err" role="alert">Не удалось выключить</p>
-      <p v-if="loadError" class="err" role="alert">Не удалось загрузить</p>
-      <div v-else-if="!items" class="loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
+      <p v-if="disableError" class="tg-err" role="alert">Не удалось выключить</p>
+      <p v-if="loadError" class="tg-err" role="alert">Не удалось загрузить</p>
+      <div v-else-if="!items" class="tg-loading" role="status"><TgSpinner /><span class="tg-visually-hidden">Загрузка…</span></div>
       <TgPlaceholder v-else-if="!items.length" emoji="🎟" title="Промокодов нет" />
       <TgSection v-else>
         <template v-for="p in items" :key="p.id">
@@ -127,7 +127,7 @@ async function create() {
           </TgCell>
           <div v-if="open === p.id" class="acts">
             <TgSpinner v-if="acts === undefined" />
-            <p v-else-if="acts === null" class="err">Не удалось загрузить</p>
+            <p v-else-if="acts === null" class="tg-err">Не удалось загрузить</p>
             <p v-else-if="!acts.length" class="tg-sub">Ещё никто не активировал</p>
             <template v-else>
               <p v-for="a in acts" :key="a.id" class="tg-sub">
@@ -159,27 +159,26 @@ async function create() {
           <TgInput v-model="form.user" grouped placeholder="Только для юзера: @username или ID" />
         </div>
       </TgSection>
-      <p v-if="error" class="err" role="alert">{{ error }}</p>
-      <p v-if="created" class="ok" role="status">{{ created }}</p>
+      <p v-if="error" class="tg-err" role="alert">{{ error }}</p>
+      <p v-if="created" class="tg-ok" role="status">{{ created }}</p>
       <TgButton :loading="busy" @click="create">Создать</TgButton>
     </form>
   </div>
 </template>
 
 <style scoped>
-.grid { display: grid; gap: 24px; }
-@media (min-width: 1000px) { .grid { grid-template-columns: 1.3fr 1fr; align-items: start; } }
+/* одна колонка: контент не шире 720px, две колонки там тесные; minmax(0) — длинные строки не распирают страницу */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 .filter { margin-bottom: 16px; }
 .row { cursor: pointer; }
+/* подпись — вся информация о коде: переносим, не обрезаем */
+.row :deep(.tg-sub) { white-space: normal; }
 .acts { padding: 4px 16px 12px; }
 .acts p { margin: 4px 0; white-space: normal; }
 .code { display: flex; gap: 1px; background: var(--tg-sep); }
 .code > :deep(.tg-field) { flex: 1; min-width: 0; }
 .code > .tg-btn { background: var(--tg-bg); border-radius: 0; }
-.kinds { border: 0; margin: 0; padding: 12px; display: flex; flex-wrap: wrap; gap: 12px; }
+.kinds { border: 0; border-block: 1px solid var(--tg-sep); margin: 0; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; }
 .col { display: flex; flex-direction: column; gap: 1px; background: var(--tg-sep); }
-.check { background: var(--tg-bg); padding: 12px; }
-.loading { display: flex; justify-content: center; padding: 32px; color: var(--tg-hint-text); }
-.err { color: var(--tg-danger-text); }
-.ok { color: var(--tg-link); }
+.check { background: var(--tg-bg); padding: 12px 16px; }
 </style>
