@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { get } from '../api'
+import { snippet } from '../editor/serialize'
 import { formatDate, formatRub } from '../format'
-import type { UserDetail } from '../types'
-import { TgAvatar, TgCell, TgSection } from '../ui'
+import type { Broadcast, DirectMessage, UserDetail } from '../types'
+import { TgAvatar, TgButton, TgCell, TgPlaceholder, TgSection } from '../ui'
 import PaymentsTable from './PaymentsTable.vue'
+
+// tiptap — отдельным чанком
+const Composer = defineAsyncComponent(() => import('../compose/Composer.vue'))
 
 const route = useRoute()
 const d = ref<UserDetail>()
@@ -18,6 +22,16 @@ onMounted(async () => {
     error.value = String(e).includes('404') ? 'Юзер не найден' : 'Не удалось загрузить'
   }
 })
+
+const writing = ref(false)
+const sent = ref(false)
+const statusMark = { pending: '…', sent: '✓', failed: '✗' } as const
+
+function onSent(m: Broadcast | DirectMessage) {
+  d.value?.messages.unshift(m as DirectMessage)
+  writing.value = false
+  sent.value = true
+}
 </script>
 
 <template>
@@ -46,6 +60,23 @@ onMounted(async () => {
       <TgCell title="Последняя оплата" :after="d.stats.lastConfirmedAt ? formatDate(d.stats.lastConfirmedAt) : '—'" />
     </TgSection>
     <PaymentsTable header="Платежи" :items="d.payments" />
+    <TgSection header="Сообщения">
+      <div class="pad">
+        <Composer v-if="writing" mode="direct" :user-id="d.user.telegramId" @sent="onSent" />
+        <template v-else>
+          <TgButton mode="bezeled" @click="(writing = true), (sent = false)">Написать</TgButton>
+          <span v-if="sent" class="ok" role="status">Отправлено</span>
+        </template>
+      </div>
+      <TgPlaceholder v-if="!d.messages.length" emoji="✉️" title="Сообщений нет" />
+      <TgCell
+        v-for="m in d.messages"
+        :key="m.id"
+        :title="snippet(m.text, m.photo)"
+        :subtitle="formatDate(m.createdAt)"
+        :after="statusMark[m.status] ?? m.status"
+      />
+    </TgSection>
   </template>
 </template>
 
@@ -55,4 +86,7 @@ onMounted(async () => {
 h1 { margin: 0; font-size: 20px; }
 .id { color: var(--tg-hint-text); font-size: 13px; }
 .err { color: var(--tg-danger-text); }
+.pad { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.pad > :deep(.composer) { flex: 1; min-width: 0; }
+.ok { color: var(--tg-link); }
 </style>

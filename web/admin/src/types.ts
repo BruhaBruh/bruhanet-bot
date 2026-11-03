@@ -33,6 +33,7 @@ export interface UserDetail {
   }
   payments: Payment[]
   panel: { expireAt: string | null; status: string | null; error: 'panel_unavailable' | null }
+  messages: DirectMessage[]
 }
 
 export interface TextVar {
@@ -61,4 +62,24 @@ export interface Settings {
   supportUrl: string
   usingDefaults?: boolean
   problems?: string[]
+}
+
+export interface Broadcast {
+  id: string
+  text: string
+  photo?: string
+  total: number
+  sent: number
+  failed: number
+  createdAt: string
+  finishedAt: string | null
+}
+
+export interface DirectMessage {
+  id: number
+  telegramId: number
+  text: string
+  photo?: string
+  status: 'pending' | 'sent' | 'failed'
+  createdAt: string
 }

@@ -7,7 +7,7 @@ import { TgAvatar, TgButton, TgCell } from '../ui'
 const route = useRoute()
 const router = useRouter()
 const items = [
-  { to: '/broadcasts', emoji: '📣', label: 'Рассылки', sub: 'скоро', color: 1 },
+  { to: '/broadcasts', emoji: '📣', label: 'Рассылки', sub: 'отправка всем', color: 1 },
   { to: '/promos', emoji: '🎟', label: 'Промокоды', sub: 'скоро', color: 2 },
   { to: '/users', emoji: '👤', label: 'Юзеры', sub: 'поиск и карточки', color: 3 },
   { to: '/payments', emoji: '💳', label: 'Платежи', sub: 'история и выручка', color: 4 },

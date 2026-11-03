@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
-import { fromTelegramHtml, renderPlain, renderPreview, sanitize, toTelegramHtml } from './serialize'
+import { fromTelegramHtml, renderPlain, renderPreview, sanitize, snippet, toTelegramHtml, visibleLen } from './serialize'
 
 const p = (...content: JSONContent[]): JSONContent => (content.length ? { type: 'paragraph', content } : { type: 'paragraph' })
 const t = (text: string, ...marks: JSONContent['marks'] & {}): JSONContent => (marks.length ? { type: 'text', text, marks } : { type: 'text', text })
@@ -69,4 +69,18 @@ describe('sanitize', () => {
   it('keeps spoilers', () => {
     expect(sanitize('<span class="tg-spoiler">s</span><tg-spoiler>t</tg-spoiler>')).toBe('<tg-spoiler>s</tg-spoiler><tg-spoiler>t</tg-spoiler>')
   })
+})
+
+describe('visibleLen', () => {
+  it('counts visible UTF-16 text: tags dropped, entities decoded', () => {
+    expect(visibleLen('<b>ab</b> &amp; <a href="https://x.ru">c</a>')).toBe(6)
+    expect(visibleLen('😀\nя')).toBe(4)
+    expect(visibleLen('')).toBe(0)
+  })
+})
+
+it('snippet: plain start of text, photo mark, empty', () => {
+  expect(snippet('<b>Привет</b> &amp; всё', 'f')).toBe('🖼 Привет & всё')
+  expect(snippet('a'.repeat(61))).toBe('a'.repeat(60) + '…')
+  expect(snippet('', 'f')).toBe('🖼 без текста')
 })

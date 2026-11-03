@@ -186,3 +186,15 @@ export function sanitize(html: string): string {
 export function renderPlain(tpl: string, samples: Record<string, string>): string {
   return tpl.replace(placeholder, (_, path: string) => (path in samples ? samples[path] : path))
 }
+
+// Видимый текст сообщения: теги убраны, сущности раскрыты.
+export const visibleText = (html: string) => parseBody(html).textContent ?? ''
+
+// Как texts.VisibleLen: длина видимого текста в UTF-16 (JS-строки — уже UTF-16).
+export const visibleLen = (html: string) => visibleText(html).length
+
+// Начало текста для списков (рассылки, сообщения юзеру).
+export function snippet(html: string, photo?: string): string {
+  const t = visibleText(html).trim()
+  return (photo ? '🖼 ' : '') + (t ? (t.length > 60 ? t.slice(0, 60) + '…' : t) : 'без текста')
+}

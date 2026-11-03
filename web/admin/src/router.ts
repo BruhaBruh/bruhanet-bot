@@ -19,7 +19,8 @@ export const router = createRouter({
         { path: 'users', component: Users, meta: { title: 'Юзеры' } },
         { path: 'users/:id', component: UserCard, meta: { title: 'Юзеры' } },
         { path: 'payments', component: Payments, meta: { title: 'Платежи' } },
-        { path: 'broadcasts', component: Soon, meta: { title: 'Рассылки' } },
+        // tiptap — отдельным чанком
+        { path: 'broadcasts', component: () => import('./pages/Broadcasts.vue'), meta: { title: 'Рассылки' } },
         { path: 'promos', component: Soon, meta: { title: 'Промокоды' } },
         // tiptap — отдельным чанком
         { path: 'texts', component: () => import('./pages/Texts.vue'), meta: { title: 'Тексты' } },
