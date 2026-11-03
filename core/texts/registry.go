@@ -93,7 +93,7 @@ var registry = []Def{
 		Var{Name: "bank", Description: "Банк для перевода (PAYMENT_BANK)", Sample: "Т-Банк", Max: 64},
 		Var{
 			Name: "comments", Description: "Список комментариев к переводу, по строке «- <code>…</code>» на комментарий", Raw: true,
-			Max: maxComments * (64 + 4), // до 10 комментариев по 64 символа + «- » и перенос строки
+			Max:    maxComments * (64 + 4), // до 10 комментариев по 64 символа + «- » и перенос строки
 			Sample: "- <code>На кофе</code>\n- <code>Перекус</code>\n- <code>Одолжил</code>\n- <code>Вернул долг</code>",
 		}),
 	msg("payment.photo_sent", groupPayment, "Фото отправлено (без аванса)", photoSent),
