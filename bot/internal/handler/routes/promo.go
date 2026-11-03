@@ -107,7 +107,7 @@ func (h *handlers) menuPromoText(ctx context.Context, b *bot.Bot, u *models.Upda
 	from := tgupdate.User(u)
 	username := telegramUsername(from)
 	at := h.now()
-	var expireAt time.Time
+	var expireAt, oldExpireAt time.Time
 	p, err := h.pay.PromoByCode(ctx, u.Message.Text)
 	if err == nil {
 		// ошибка панели откатывает активацию: код можно ввести снова
@@ -116,10 +116,20 @@ func (h *handlers) menuPromoText(ctx context.Context, b *bot.Bot, u *models.Upda
 			if err != nil {
 				return err
 			}
-			expireAt = later(user.ExpireAt, at).Add(time.Duration(p.Value) * 24 * time.Hour)
-			_, err = h.rw.UpdateUser(ctx, from.ID, username, expireAt, h.cfg.Remnawave.InternalSquadId)
-			return err
+			newExpireAt := later(user.ExpireAt, at).Add(time.Duration(p.Value) * 24 * time.Hour)
+			if _, err = h.rw.UpdateUser(ctx, from.ID, username, newExpireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
+				return err
+			}
+			oldExpireAt, expireAt = user.ExpireAt, newExpireAt
+			return nil
 		})
+	}
+	if err != nil && !expireAt.IsZero() {
+		// панель продлена, а коммит не прошёл — возвращаем прежний срок
+		if _, cerr := h.rw.UpdateUser(context.WithoutCancel(ctx), from.ID, username, oldExpireAt,
+			h.cfg.Remnawave.InternalSquadId); cerr != nil {
+			stlog.Error(ctx, "failed to restore expire after days promo", "error", cerr, "expire_at", oldExpireAt)
+		}
 	}
 	if err != nil {
 		h.rejectPromo(ctx, b, u, err, promo.PlaceMenu, routeMenu)
@@ -142,7 +152,8 @@ func (h *handlers) buyPromo(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	// CAS-замок от двойного «Да»: второе нажатие, пока первое в работе, ничего не делает,
 	// а после него упрётся в «уже использовали» (активация пишется в ResolvePayment).
-	// ponytail: убитый посреди хендлера процесс оставит promo_paying — его сбросит обычная покупка.
+	// ponytail: убитый посреди хендлера процесс оставит promo_paying — его сбросит /start, меню или любое
+	// сообщение (leavePromo); живой замок они тоже снимут, повтор 0 ₽ тогда отсечёт БД.
 	if st == statePromoPaying {
 		return
 	}
@@ -221,7 +232,7 @@ func (h *handlers) payByPromo(ctx context.Context, b *bot.Bot, u *models.Update,
 		if cerr := h.pay.CancelPayment(context.WithoutCancel(ctx), pay.ID); cerr != nil && !errors.Is(cerr, store.ErrNotPending) {
 			stlog.Error(ctx, "failed to cancel promo payment", "error", cerr)
 		}
-		if errors.Is(err, promo.ErrAlreadyUsed) { // БД отклонила повтор, мимо FSM-замка
+		if promoErrorKey(err, promo.PlacePayment) != "" { // БД отклонила под блокировкой кода: повтор, лимит, …
 			h.rejectPromo(ctx, b, u, err, promo.PlacePayment, routePay)
 			return
 		}
@@ -306,7 +317,7 @@ func (h *handlers) escapePromo(ctx context.Context, b *bot.Bot, u *models.Update
 	return true
 }
 
-// leavePromo выходит из ожидания кода; стейт оплаты восстанавливается по pending-платежу.
+// leavePromo выходит из ожидания кода (и из promo_paying); стейт оплаты восстанавливается по pending-платежу.
 func (h *handlers) leavePromo(ctx context.Context, userID int64) {
 	f := fsm.For(h.fsm, userID)
 	st, err := f.State(ctx)
@@ -314,7 +325,8 @@ func (h *handlers) leavePromo(ctx context.Context, userID int64) {
 		stlog.Error(ctx, "failed to get fsm state", "error", err)
 		return
 	}
-	if !slices.Contains([]fsm.State{stateAwaitPromo, stateAwaitPromoDays}, st) {
+	// promo_paying — тоже: замок, оставленный упавшим процессом, иначе блокирует фото
+	if !slices.Contains([]fsm.State{stateAwaitPromo, stateAwaitPromoDays, statePromoPaying}, st) {
 		return
 	}
 	next := fsm.StateNone

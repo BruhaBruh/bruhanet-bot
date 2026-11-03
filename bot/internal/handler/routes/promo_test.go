@@ -500,3 +500,107 @@ func TestLeavePromoIgnoresFreePending(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 }
+
+// Последняя активация кода 100%: два юзера жмут «Да» одновременно — подписку получает один,
+// второй видит «активации закончились», а не общую ошибку.
+func TestPromoFreeLastActivationRace(t *testing.T) {
+	const other int64 = 43
+	for range 20 {
+		e := newEnv(t)
+		e.pay.AddPromo(model.Promo{Code: "FREE", Kind: model.PromoPercent, Value: 100, MaxActivations: ptr(1)})
+		var wg sync.WaitGroup
+		for _, id := range []int64{userID, other} {
+			wg.Go(func() { e.process(t, tgtest.Callback(id, "buyp:1:1")) })
+		}
+		wg.Wait()
+		var confirmed int
+		for _, p := range e.pay.All() {
+			switch p.Status {
+			case model.PaymentConfirmed:
+				confirmed++
+			case model.PaymentPending:
+				t.Fatalf("остался pending: %+v", p)
+			case model.PaymentDeclined, model.PaymentCancelled:
+			}
+		}
+		if confirmed != 1 || len(e.pay.Activations()) != 1 {
+			t.Fatalf("confirmed = %d, activations = %d", confirmed, len(e.pay.Activations()))
+		}
+		var exhausted int
+		for _, c := range e.srv.Calls("editMessageText") {
+			if strings.Contains(c.Params.Get("text"), "Активации этого промокода закончились") {
+				exhausted++
+			}
+		}
+		if exhausted != 1 {
+			t.Fatalf("отказов «закончились» = %d", exhausted)
+		}
+	}
+}
+
+// Дни при pending-платеже сдвигают его базу: подтверждение админом не затирает бонус.
+func TestDaysPromoShiftsPendingPayment(t *testing.T) {
+	e := newEnv(t)
+	expire := now.Add(10 * 24 * time.Hour)
+	e.rw.AddUser(userID, expire)
+	e.pay.AddPromo(model.Promo{Code: "WEEK", Kind: model.PromoDays, Value: 7})
+	e.process(t, tgtest.Callback(userID, "buy:1"))
+	e.process(t, tgtest.Callback(userID, "promo"))
+	e.process(t, tgtest.Message(userID, "week"))
+	if got, want := e.pending(t, userID).PrevExpireAt, expire.Add(7*24*time.Hour); !got.Equal(want) {
+		t.Fatalf("prev = %v, want %v", got, want)
+	}
+}
+
+// Сбой коммита после продления в панели: срок возвращается назад, активации нет.
+func TestDaysPromoCommitFailRestoresPanel(t *testing.T) {
+	e := newEnv(t)
+	expire := now.Add(5 * 24 * time.Hour)
+	e.rw.AddUser(userID, expire)
+	e.pay.AddPromo(model.Promo{Code: "WEEK", Kind: model.PromoDays, Value: 7})
+	e.pay.FailDaysCommitOnce()
+	e.process(t, tgtest.Callback(userID, "promo"))
+	e.process(t, tgtest.Message(userID, "week"))
+	if got := e.rw.ExpireAt(userID); !got.Equal(expire) {
+		t.Fatalf("expireAt = %v, want %v", got, expire)
+	}
+	if n := len(e.pay.Activations()); n != 0 {
+		t.Fatalf("activations = %d", n)
+	}
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
+		t.Fatalf("text = %s", text)
+	}
+}
+
+// Процесс упал посреди «Да»: promo_paying остался. Фото выводит в меню и чинит стейт по платежу,
+// следующее фото уходит админу.
+func TestStuckPromoPayingRecovers(t *testing.T) {
+	e := newEnv(t)
+	e.process(t, tgtest.Callback(userID, "buy:1"))
+	if err := fsm.Put(t.Context(), fsm.For(e.fsm, userID), "promo_paying", nil); err != nil {
+		t.Fatal(err)
+	}
+	e.process(t, tgtest.Photo(userID))
+	if st := e.state(t, userID); st != "await_photo" {
+		t.Fatalf("state = %q", st)
+	}
+	e.process(t, tgtest.Photo(userID))
+	if n := e.count("copyMessage"); n != 1 {
+		t.Fatalf("copyMessage = %d", n)
+	}
+}
+
+// Админу в сообщении проверки — сумма к оплате со скидкой и без.
+func TestPromoReviewShowsAmountDue(t *testing.T) {
+	e := newEnv(t)
+	e.pay.AddPromo(model.Promo{Code: "MINUS100", Kind: model.PromoRub, Value: 100})
+	enterPaymentPromo(t, e, "minus100")
+	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
+	e.process(t, tgtest.Photo(userID))
+	for _, c := range adminMessages(e) {
+		if strings.Contains(c.Params.Get("text"), "к оплате 50 ₽ (было 150 ₽)") {
+			return
+		}
+	}
+	t.Fatal("админу не показана сумма к оплате")
+}

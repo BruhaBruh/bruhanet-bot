@@ -22,6 +22,7 @@ type Payments struct {
 	failResolve    bool
 	failSubmitOnce bool
 	failAdvance    bool
+	failDaysOnce   bool
 	loginTokens    []LoginToken
 	promos         []model.Promo // индекс = ID-1
 	activations    []model.PromoActivation
@@ -42,6 +43,13 @@ func (p *Payments) FailResolveCommitOnce() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.failResolve = true
+}
+
+// FailDaysCommitOnce: следующий ActivateDaysPromo выполнит apply, затем вернёт ошибку без активации.
+func (p *Payments) FailDaysCommitOnce() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.failDaysOnce = true
 }
 
 // FailSubmitNotPendingOnce: следующий SubmitPayment вернёт store.ErrNotPending.
@@ -212,12 +220,19 @@ func (p *Payments) ResolvePayment(
 	if x.Status != model.PaymentPending {
 		return *x, store.ErrNotPending
 	}
-	// как в store: активация до apply; повтор у оплаченного — ON CONFLICT DO NOTHING, у цены 0 — ErrAlreadyUsed
+	// как в store: активация до apply; оплаченный — без проверки лимита, повтор — ON CONFLICT DO NOTHING;
+	// цена 0 — заново promo.Check (лимит, повтор → ErrAlreadyUsed)
 	activate := false
 	if status == model.PaymentConfirmed && x.PromoID != nil {
-		_, already := p.usage(*x.PromoID, x.TelegramID)
-		if already && x.Price == 0 {
-			return model.Payment{}, promo.ErrAlreadyUsed
+		used, already := p.usage(*x.PromoID, x.TelegramID)
+		if x.Price == 0 {
+			if *x.PromoID < 1 || *x.PromoID > int64(len(p.promos)) {
+				return model.Payment{}, errors.Join(promo.ErrNotFound, store.ErrNotFound)
+			}
+			if err := promo.Check(p.promos[*x.PromoID-1], used, x.TelegramID, p.hasConfirmed(x.TelegramID), already,
+				promo.PlacePayment, at); err != nil {
+				return model.Payment{}, err
+			}
 		}
 		activate = !already
 	}
@@ -332,6 +347,15 @@ func (p *Payments) ActivateDaysPromo(
 	if err := apply(pr); err != nil {
 		return err
 	}
+	if p.failDaysOnce {
+		p.failDaysOnce = false
+		return errCommit
+	}
+	// как в store: база pending-платежа сдвигается на те же дни
+	if i := p.pendingIdx(telegramID); i >= 0 {
+		x := &p.payments[i]
+		x.PrevExpireAt = later(x.PrevExpireAt, now).Add(time.Duration(pr.Value) * 24 * time.Hour)
+	}
 	p.activations = append(p.activations, model.PromoActivation{PromoID: promoID, TelegramID: telegramID})
 	return nil
 }
@@ -346,4 +370,11 @@ func (p *Payments) CancelPayment(_ context.Context, id int64) error {
 	at := time.Now()
 	x.Status, x.ResolvedAt = model.PaymentCancelled, &at
 	return nil
+}
+
+func later(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
 }

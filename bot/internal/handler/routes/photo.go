@@ -78,12 +78,16 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		return
 	}
 	var promoRows []string
+	if p.BasePrice != nil {
+		promoRows = append(promoRows, html.EscapeString(fmt.Sprintf("💳 к оплате %s ₽ (было %s ₽)",
+			groupThousands(p.Price), groupThousands(*p.BasePrice))))
+	}
 	if p.PromoID != nil {
 		pr, err := h.pay.PromoByID(ctx, *p.PromoID)
 		if err != nil {
 			stlog.Warn(ctx, "failed to load payment promo", "error", err)
 		} else {
-			promoRows = []string{promoLine(pr)}
+			promoRows = append([]string{promoLine(pr)}, promoRows...)
 		}
 	}
 	msg := send(ctx, b, admin, nil, slices.Concat([]string{
