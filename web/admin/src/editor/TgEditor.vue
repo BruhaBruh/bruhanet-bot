@@ -6,7 +6,7 @@ import { onBeforeUnmount, watch } from 'vue'
 import { TgButton } from '../ui'
 import { fromTelegramHtml, toTelegramHtml } from './serialize'
 
-const props = defineProps<{ modelValue: string }>()
+const props = defineProps<{ modelValue: string; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
 
 // Спойлер Telegram: <tg-spoiler> (и <span class="tg-spoiler"> при вставке).
@@ -41,6 +41,10 @@ watch(
     const e = editor.value
     if (e && v !== toTelegramHtml(e.getJSON())) e.commands.setContent(fromTelegramHtml(v), { emitUpdate: false })
   },
+)
+watch(
+  () => [props.disabled, editor.value] as const,
+  ([d, e]) => e?.setEditable(!d),
 )
 onBeforeUnmount(() => editor.value?.destroy())
 
@@ -84,9 +88,10 @@ defineExpose({ insert })
         :title="m.title"
         :aria-label="m.title"
         :aria-pressed="editor?.isActive(m.mark) ? 'true' : 'false'"
+        :disabled="disabled"
         @click="toggle(m.mark)"
       >{{ m.label }}</TgButton>
-      <TgButton mode="bezeled" size="s" title="Ссылка" aria-label="Ссылка" :aria-pressed="editor?.isActive('link') ? 'true' : 'false'" @click="link">🔗</TgButton>
+      <TgButton mode="bezeled" size="s" title="Ссылка" aria-label="Ссылка" :disabled="disabled" :aria-pressed="editor?.isActive('link') ? 'true' : 'false'" @click="link">🔗</TgButton>
     </div>
     <EditorContent :editor="editor" class="area" />
   </div>

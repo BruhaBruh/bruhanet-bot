@@ -142,7 +142,7 @@ groups:
         annotations:
           summary: Бот пропал
 
-      # p95 апдейта за 10m > 2 с при ≥ 20 апдейтах, без рассылки (message:broadcast, callback:bc_send).
+      # p95 апдейта за 10m > 2 с при ≥ 20 апдейтах.
       # Нет трафика или всё быстро → серий нет → OK.
       - uid: bot-slow
         title: bot-slow
@@ -156,9 +156,9 @@ groups:
               instant: true
               expr: >-
                 histogram_quantile(0.95, sum by (le) (rate(
-                bot_update_duration_seconds_bucket{route!~"message:broadcast|callback:bc_send"}[10m]))) > 2
+                bot_update_duration_seconds_bucket[10m]))) > 2
                 and on() sum(increase(
-                bot_update_duration_seconds_count{route!~"message:broadcast|callback:bc_send"}[10m])) >= 20
+                bot_update_duration_seconds_count[10m])) >= 20
           - refId: C
             datasourceUid: __expr__
             model:

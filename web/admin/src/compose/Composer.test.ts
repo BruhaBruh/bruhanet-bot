@@ -141,6 +141,49 @@ describe('Composer', () => {
     expect(b.attributes('disabled')).toBeDefined()
   })
 
+  it('zero recipients: broadcast disabled, label shows 0', async () => {
+    replies['GET /api/broadcasts/recipients'] = [json(200, { count: 0 })]
+    const { setText, btn } = await setup()
+    await setText('hi')
+    expect(btn('Разослать всем (0)')!.attributes('disabled')).toBeDefined()
+  })
+
+  it('failed recipients load can be retried', async () => {
+    replies['GET /api/broadcasts/recipients'] = [json(502, { error: 'panel_unavailable' }), json(200, { count: 3 })]
+    const { w, setText, btn } = await setup()
+    await setText('hi')
+    await btn('Повторить')!.trigger('click')
+    await flushPromises()
+    expect(btn('Повторить')).toBeUndefined()
+    expect(w.text()).not.toContain('количество получателей неизвестно')
+    expect(btn('Разослать всем (3)')!.attributes('disabled')).toBeUndefined()
+  })
+
+  it('panel down on send: explains that no broadcast was created', async () => {
+    replies['POST /api/broadcasts'] = [json(502, { error: 'panel_unavailable' })]
+    const { w, setText, btn } = await setup()
+    await setText('hi')
+    await btn('Разослать всем (3)')!.trigger('click')
+    await btn('Точно разослать 3 юзерам?')!.trigger('click')
+    await flushPromises()
+    expect(w.find('.err').text()).toBe('Панель недоступна, рассылка не создана')
+  })
+
+  it('editor and photo picker are locked while a send is in flight', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    replies['POST /api/broadcasts'] = [(() => gate.then(() => json(201, { broadcast: { id: 'b1' } })())) as unknown as () => Response]
+    const { w, setText, btn } = await setup()
+    await setText('hi')
+    await btn('Разослать всем (3)')!.trigger('click')
+    await btn('Точно разослать 3 юзерам?')!.trigger('click')
+    expect(w.findComponent(TgEditor).props('disabled')).toBe(true)
+    expect(w.findComponent(PhotoPicker).props('disabled')).toBe(true)
+    release()
+    await flushPromises()
+    expect(w.findComponent(TgEditor).props('disabled')).toBe(false)
+  })
+
   it('direct mode posts to the user without confirm', async () => {
     replies['POST /api/users/7/messages'] = [json(201, { id: 5 })]
     const { w, setText, btn } = await setup({ mode: 'direct', userId: 7 })

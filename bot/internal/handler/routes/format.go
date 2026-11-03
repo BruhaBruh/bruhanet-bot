@@ -51,13 +51,6 @@ func pluralMonths(n int) string {
 	return "месяцев"
 }
 
-func pluralPeople(n int) string {
-	if n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14) {
-		return "человека"
-	}
-	return "человек"
-}
-
 // tariffVars — переменные months («3 месяца») и price для текстов о тарифе.
 func tariffVars(month, price int) map[string]string {
 	return map[string]string{"months": fmt.Sprintf("%d %s", month, pluralMonths(month)), "price": strconv.Itoa(price)}

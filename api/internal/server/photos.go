@@ -7,6 +7,9 @@ import (
 	"mime"
 	"net/http"
 	"slices"
+	"strings"
+
+	"github.com/go-telegram/bot"
 
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
@@ -65,6 +68,11 @@ func (s *server) uploadPhoto(w http.ResponseWriter, r *http.Request) {
 		fileID, err := s.Telegram.SendPhoto(r.Context(), s.AdminID, bytes.NewReader(data), name, "Фото для рассылки")
 		if err != nil {
 			stlog.Warn(r.Context(), "upload photo to telegram", "error", err)
+			if errors.Is(err, bot.ErrorBadRequest) {
+				// описание Telegram (токен бывает только в URL, а он уже вычищен в telegram.Client)
+				writeInvalid(w, "Telegram не принял фото: "+strings.TrimPrefix(err.Error(), bot.ErrorBadRequest.Error()+", "))
+				return
+			}
 			writeError(w, http.StatusBadGateway, "telegram_unavailable")
 			return
 		}

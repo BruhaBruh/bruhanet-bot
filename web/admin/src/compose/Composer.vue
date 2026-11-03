@@ -24,14 +24,15 @@ const uploading = ref(false)
 // не создаст вторую рассылку, а правка даёт новый ключ (иначе сервер вернёт старую)
 let key = crypto.randomUUID()
 
-onMounted(async () => {
-  if (props.mode !== 'broadcast') return
+async function loadRecipients() {
+  recipients.value = null
   try {
     recipients.value = (await get<{ count: number }>('/api/broadcasts/recipients')).count
   } catch {
     recipients.value = undefined
   }
-})
+}
+onMounted(() => props.mode === 'broadcast' && loadRecipients())
 
 const len = computed(() => visibleLen(text.value))
 const limit = computed(() => (photo.value ? 1024 : 4096))
@@ -54,7 +55,12 @@ async function run(fn: () => Promise<void>) {
   try {
     await fn()
   } catch (e) {
-    error.value = e instanceof ApiError && e.body.message ? e.body.message : 'Не удалось отправить, попробуйте ещё раз'
+    error.value =
+      e instanceof ApiError && e.body.error === 'panel_unavailable'
+        ? 'Панель недоступна, рассылка не создана'
+        : e instanceof ApiError && e.body.message
+          ? e.body.message
+          : 'Не удалось отправить, попробуйте ещё раз'
   } finally {
     busy.value = false
   }
@@ -90,9 +96,9 @@ const direct = () =>
 
 <template>
   <div class="composer">
-    <TgEditor v-model="text" />
+    <TgEditor v-model="text" :disabled="busy" />
     <div class="row">
-      <PhotoPicker v-model="photo" @uploading="uploading = $event" />
+      <PhotoPicker v-model="photo" :disabled="busy" @uploading="uploading = $event" />
       <span class="count" :class="{ over: len > limit }">{{ len }} / {{ limit }}</span>
     </div>
 
@@ -103,7 +109,10 @@ const direct = () =>
       <div v-html="preview" />
     </div>
 
-    <p v-if="mode === 'broadcast' && recipients === undefined" class="err" role="alert">Панель недоступна, количество получателей неизвестно</p>
+    <p v-if="mode === 'broadcast' && recipients === undefined" class="err" role="alert">
+      Панель недоступна, количество получателей неизвестно
+      <TgButton mode="plain" size="s" @click="loadRecipients">Повторить</TgButton>
+    </p>
     <p v-if="error" class="err" role="alert">{{ error }}</p>
     <p v-if="testSent" class="ok" role="status">Отправлено в Telegram</p>
 
@@ -113,7 +122,7 @@ const direct = () =>
           <TgButton :loading="busy" :disabled="!valid" @click="broadcast">Точно разослать {{ recipients }} юзерам?</TgButton>
           <TgButton mode="plain" :disabled="busy" @click="confirming = false">Отмена</TgButton>
         </template>
-        <TgButton v-else :loading="busy" :disabled="!valid || recipients == null" @click="confirming = true">
+        <TgButton v-else :loading="busy" :disabled="!valid || !recipients" @click="confirming = true">
           Разослать всем{{ recipients != null ? ` (${recipients})` : '' }}
         </TgButton>
       </template>

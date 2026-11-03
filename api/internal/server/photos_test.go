@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-telegram/bot"
 )
 
 var pngHeader = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
@@ -59,6 +62,13 @@ func TestPhotoUpload(t *testing.T) {
 	}
 	if tg.calls != 1 || tg.chatID != adminID || tg.caption != "Фото для рассылки" || tg.name != "a.png" || !bytes.Equal(tg.data, img) {
 		t.Fatalf("tg = %d %d %q %q %d", tg.calls, tg.chatID, tg.caption, tg.name, len(tg.data))
+	}
+
+	tg.err = fmt.Errorf("%w, %s", bot.ErrorBadRequest, "Bad Request: PHOTO_INVALID_DIMENSIONS")
+	body, ct = multipartBody(t, "file", "a.png", img)
+	if w := upload(h, c, ct, body); w.Code != http.StatusBadRequest ||
+		strings.TrimSpace(w.Body.String()) != `{"error":"invalid","message":"Telegram не принял фото: Bad Request: PHOTO_INVALID_DIMENSIONS"}` {
+		t.Fatalf("telegram 400: %d %s", w.Code, w.Body)
 	}
 
 	tg.err = errors.New("boom")
