@@ -10,12 +10,16 @@ const status = ref('active')
 const items = ref<Promo[]>()
 const loadError = ref(false)
 
+let loadSeq = 0
 async function load() {
+  const seq = ++loadSeq // устаревший ответ при быстром переключении фильтра не перетирает новый
   try {
-    items.value = (await get<{ items: Promo[] }>(`/api/promos?status=${status.value}`)).items
+    const r = (await get<{ items: Promo[] }>(`/api/promos?status=${status.value}`)).items
+    if (seq !== loadSeq) return
+    items.value = r
     loadError.value = false
   } catch {
-    loadError.value = true
+    if (seq === loadSeq) loadError.value = true
   }
 }
 onMounted(load)
@@ -70,6 +74,7 @@ const error = ref('')
 const created = ref('')
 
 async function create() {
+  if (busy.value) return
   created.value = ''
   error.value = validatePromo(form)
   if (error.value) return
@@ -113,6 +118,7 @@ async function create() {
             :subtitle="`${promoGives(p)} · ${marks(p)}`"
             @click="toggle(p.id)"
             @keydown.enter.self="toggle(p.id)"
+            @keydown.space.self.prevent="toggle(p.id)"
           >
             <template #after>
               <span v-if="p.disabled" class="tg-sub">выключен</span>
@@ -123,9 +129,11 @@ async function create() {
             <TgSpinner v-if="acts === undefined" />
             <p v-else-if="acts === null" class="err">Не удалось загрузить</p>
             <p v-else-if="!acts.length" class="tg-sub">Ещё никто не активировал</p>
-            <p v-for="a in acts" v-else :key="a.id" class="tg-sub">
-              {{ a.username ? '@' + a.username : a.telegramId }} · {{ formatDate(a.createdAt) }}{{ a.paymentId ? ` · платёж #${a.paymentId}` : '' }}
-            </p>
+            <template v-else>
+              <p v-for="a in acts" :key="a.id" class="tg-sub">
+                {{ a.username ? '@' + a.username : a.telegramId }} · {{ formatDate(a.createdAt) }}{{ a.paymentId ? ` · платёж #${a.paymentId}` : '' }}
+              </p>
+            </template>
           </div>
         </template>
       </TgSection>
