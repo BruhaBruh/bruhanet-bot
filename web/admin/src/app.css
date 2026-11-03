@@ -1,5 +1,7 @@
 /* Только раскладка; цвета — переменные telegram-ui (кроме градиентов аватарок меню: в ките их нет). */
 body { margin: 0; }
+/* --tgui--font-family объявлен на AppRoot, но шрифт он не ставит — без этого всё вне типографики кита в serif. */
+.app-root { font-family: var(--tgui--font-family); }
 
 .layout { display: flex; min-height: 100vh; background: var(--tgui--secondary_bg_color); }
 
@@ -8,7 +10,11 @@ body { margin: 0; }
   padding: 12px 8px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
   background: var(--tgui--bg_color); border-right: 1px solid var(--tgui--divider);
 }
-.nav .brand { font-weight: 600; font-size: 20px; padding: 4px 8px 12px; color: var(--tgui--text_color); }
+.nav .brand { padding: 4px 8px 12px; }
+/* Компактно, как список чатов: List кит добавляет 12px между детьми, Cell — 16px сверху/снизу. */
+.nav .nav-list > * { margin-bottom: 0; }
+.nav .nav-cell { --tgui--cell--middle--padding: 10px 0; padding: 0 12px; gap: 12px; }
+.nav .nav-cell > :has(> .av) { flex: none; } /* аватар не сжимается в эллипс */
 .nav a { display: block; text-decoration: none; color: inherit; border-radius: 12px; }
 .nav a > * { border-radius: inherit; background: transparent; }
 .nav a:focus-visible { outline: 2px solid var(--tgui--link_color); outline-offset: -2px; }
@@ -39,8 +45,10 @@ body { margin: 0; }
   .nav .brand { display: none; }
   .nav .nav-list { display: flex; gap: 4px; }
   .nav a { flex: none; }
-  .nav .av { width: 28px !important; height: 28px !important; }
-  .nav .nav-sub { display: none; }
+  .nav .nav-cell { --tgui--cell--middle--padding: 8px 0; padding: 0 12px 0 8px; gap: 8px; }
+  .nav .av { width: 28px !important; height: 28px !important; flex: none; }
+  .nav .av * { font-size: 16px; line-height: 28px; }
+  .nav :has(> .nav-sub) { display: none; } /* подпись целиком, вместе с обёрткой кита */
   .nav .logout { margin-top: 0; margin-left: auto; flex: none; align-self: center; }
   .main { padding: 16px 12px; }
 }

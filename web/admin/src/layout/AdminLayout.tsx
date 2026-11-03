@@ -1,4 +1,4 @@
-import { Avatar, Button, Cell, List } from '@telegram-apps/telegram-ui'
+import { Avatar, Button, Cell, List, Title } from '@telegram-apps/telegram-ui'
 import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { post } from '../api'
@@ -30,12 +30,15 @@ export function AdminLayout() {
   return (
     <div className="layout">
       <nav ref={nav} className="nav" aria-label="Разделы">
-        <div className="brand">BruhaNet</div>
+        <Title className="brand" level="3" weight="1" Component="div">
+          BruhaNet
+        </Title>
         <List className="nav-list">
           {sections.map((s) => (
             // Cell не знает про `to` — ссылка снаружи, aria-current ставит NavLink
             <NavLink key={s.to} to={s.to}>
               <Cell
+                className="nav-cell"
                 subtitle={<span className="nav-sub">{s.sub}</span>}
                 before={<Avatar size={40} acronym={s.emoji} className={`av av-${s.color}`} aria-hidden="true" />}
               >

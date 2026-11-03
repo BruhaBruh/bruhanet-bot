@@ -32,7 +32,7 @@ export function App() {
   }, [pathname])
 
   return (
-    <AppRoot appearance={appearance} platform="base">
+    <AppRoot className="app-root" appearance={appearance} platform="base">
       <Suspense fallback={<Spinner size="m" />}>
         <Routes>
           <Route path="/login-required" element={<LoginRequired />} />
