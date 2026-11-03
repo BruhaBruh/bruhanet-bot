@@ -125,8 +125,14 @@ func (h *handlers) menuPromoText(ctx context.Context, b *bot.Bot, u *models.Upda
 		})
 	}
 	if err != nil && !expireAt.IsZero() {
-		// панель продлена, а коммит не прошёл — возвращаем прежний срок
-		if _, cerr := h.rw.UpdateUser(context.WithoutCancel(ctx), from.ID, username, oldExpireAt,
+		// панель продлена, а коммит не прошёл — возвращаем прежний срок,
+		// только если срок в панели всё ещё наш (иначе его успел поменять админ — не затираем).
+		// ponytail: GetUser→UpdateUser не атомарен; окно — миллисекунды после редкого сбоя коммита.
+		cctx := context.WithoutCancel(ctx)
+		if cur, gerr := h.rw.GetUser(cctx, from.ID); gerr != nil || !cur.ExpireAt.Equal(expireAt) {
+			stlog.Error(ctx, "days promo not restored: panel expire changed or unavailable",
+				"error", gerr, "expire_at", oldExpireAt)
+		} else if _, cerr := h.rw.UpdateUser(cctx, from.ID, username, oldExpireAt,
 			h.cfg.Remnawave.InternalSquadId); cerr != nil {
 			stlog.Error(ctx, "failed to restore expire after days promo", "error", cerr, "expire_at", oldExpireAt)
 		}
