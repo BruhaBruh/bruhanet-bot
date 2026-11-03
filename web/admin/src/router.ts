@@ -2,8 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AdminLayout from './layout/AdminLayout.vue'
 import LoginRequired from './pages/LoginRequired.vue'
 import Payments from './pages/Payments.vue'
+import Promos from './pages/Promos.vue'
 import Settings from './pages/Settings.vue'
-import Soon from './pages/Soon.vue'
 import UserCard from './pages/UserCard.vue'
 import Users from './pages/Users.vue'
 
@@ -21,7 +21,7 @@ export const router = createRouter({
         { path: 'payments', component: Payments, meta: { title: 'Платежи' } },
         // tiptap — отдельным чанком
         { path: 'broadcasts', component: () => import('./pages/Broadcasts.vue'), meta: { title: 'Рассылки' } },
-        { path: 'promos', component: Soon, meta: { title: 'Промокоды' } },
+        { path: 'promos', component: Promos, meta: { title: 'Промокоды' } },
         // tiptap — отдельным чанком
         { path: 'texts', component: () => import('./pages/Texts.vue'), meta: { title: 'Тексты' } },
         { path: 'settings', component: Settings, meta: { title: 'Настройки' } },

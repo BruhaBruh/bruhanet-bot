@@ -19,6 +19,8 @@ export interface Payment {
   createdAt: string
   submittedAt: string | null
   resolvedAt: string | null
+  promoId?: number | null
+  basePrice?: number | null
 }
 
 export interface UserDetail {
@@ -81,5 +83,29 @@ export interface DirectMessage {
   text: string
   photo?: string
   status: 'pending' | 'sent' | 'failed'
+  createdAt: string
+}
+
+export interface Promo {
+  id: number
+  code: string
+  kind: 'percent' | 'rub' | 'days'
+  value: number
+  maxActivations: number | null
+  used: number
+  validUntil: string | null // YYYY-MM-DD включительно, МСК
+  onlyNew: boolean
+  telegramId: number | null
+  username: string | null
+  disabled: boolean
+  createdAt: string
+}
+
+export interface PromoActivation {
+  id: number
+  promoId: number
+  telegramId: number
+  username: string
+  paymentId: number | null
   createdAt: string
 }
