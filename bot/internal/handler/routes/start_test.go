@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
+	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 
 func TestMainMenuForExistingUser(t *testing.T) {
@@ -56,5 +57,37 @@ func TestMenuCallbackEditsMessage(t *testing.T) {
 	}
 	if n := e.count("sendMessage"); n != 0 {
 		t.Fatalf("sendMessage calls = %d", n)
+	}
+}
+
+// /a удалена (рассылки в веб-админке): админ получает обычное меню, ничего не уходит в outbox.
+func TestAdminCommandAIsPlainMenu(t *testing.T) {
+	e := newEnv(t)
+	e.process(t, tgtest.Message(adminID, "/a"))
+	if kb := e.last(t, "sendMessage").Params.Get("reply_markup"); !strings.Contains(kb, `"callback_data":"pay"`) {
+		t.Fatalf("клавиатура = %s", kb)
+	}
+	if st := e.state(t, adminID); st != "" {
+		t.Fatalf("state = %q", st)
+	}
+	if n := len(e.pay.Outbox()); n != 0 {
+		t.Fatalf("outbox = %d", n)
+	}
+}
+
+// Стейты удалённой рассылки могли остаться в Redis: админ не должен застрять.
+func TestAdminStuckInLegacyBroadcastState(t *testing.T) {
+	for _, st := range []fsm.State{"await_broadcast", "confirm_broadcast"} {
+		e := newEnv(t)
+		if err := fsm.For(e.fsm, adminID).Set(t.Context(), st); err != nil {
+			t.Fatal(err)
+		}
+		e.process(t, tgtest.Message(adminID, "Привет"))
+		if kb := e.last(t, "sendMessage").Params.Get("reply_markup"); !strings.Contains(kb, `"callback_data":"pay"`) {
+			t.Fatalf("%s: клавиатура = %s", st, kb)
+		}
+		if n := len(e.pay.Outbox()); n != 0 {
+			t.Fatalf("%s: outbox = %d", st, n)
+		}
 	}
 }

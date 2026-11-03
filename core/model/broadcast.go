@@ -6,12 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// BroadcastCopy — сообщение админа, которое `/a` копирует получателям (удаляется вместе с `/a`).
-type BroadcastCopy struct {
-	ChatID    int64 `json:"chatId"`
-	MessageID int   `json:"messageId"`
-}
-
 // BroadcastDraft — рассылка из админки до записи в БД; Photo — file_id Telegram.
 type BroadcastDraft struct {
 	IdempotencyKey uuid.UUID

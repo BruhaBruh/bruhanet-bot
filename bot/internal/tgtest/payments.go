@@ -222,13 +222,6 @@ func (p *Payments) ResolvePayment(
 	return *x, nil
 }
 
-func (p *Payments) EnqueueMany(_ context.Context, ms []model.OutboxMessage) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.outbox = append(p.outbox, ms...)
-	return nil
-}
-
 func (p *Payments) CreateLoginToken(_ context.Context, hash []byte, expiresAt time.Time) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

@@ -46,7 +46,6 @@ type Payments interface {
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
 		apply func(model.Payment) (model.OutboxMessage, error)) (model.Payment, error)
-	EnqueueMany(ctx context.Context, ms []model.OutboxMessage) error
 	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
 }
 
@@ -82,15 +81,10 @@ func Register(r *router.Router, d Deps) {
 	r.Callback(routePay, h.tariffs)
 	r.Callback(priceRoute.Name(), h.price)
 	r.Callback(buyRoute.Name(), h.buy)
-	// Message-роуты матчатся в порядке регистрации: рассылка раньше оплаты.
-	r.Message("broadcast", h.broadcastMessage, router.InState(stateAwaitBroadcast))
-	r.Command("a", h.broadcastStart)
 	r.Command("login", h.login)
 	r.Photo("payment", h.photo, router.InState(stateAwaitPhoto, stateInReview))
 	adminOnly := middleware.AdminOnly(d.Config.Telegram.AdminID)
 	r.Callback(confirmRoute.Name(), h.confirm, adminOnly)
 	r.Callback(declineRoute.Name(), h.decline, adminOnly)
-	r.Callback(routeBroadcastSend, h.broadcastSend, adminOnly)
-	r.Callback(routeBroadcastCancel, h.broadcastCancel, adminOnly)
 	r.Default(h.start)
 }

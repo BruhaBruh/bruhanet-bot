@@ -13,9 +13,14 @@ import (
 	"github.com/bruhabruh/bruhanet/core/auth"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
+	"github.com/bruhabruh/bruhanet/pkg/tgupdate"
 )
 
 const loginTTL = 5 * time.Minute
+
+func (h *handlers) isAdmin(u *models.Update) bool {
+	return tgupdate.UserID(u) == h.cfg.Telegram.AdminID
+}
 
 func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 	if !h.isAdmin(u) {
