@@ -126,29 +126,45 @@ func hasConfirmed(ctx context.Context, q rowQuerier, telegramID int64) (has bool
 	return has, err
 }
 
+// checkPromoLocked блокирует строку кода (FOR UPDATE) и заново проверяет его (promo.Check).
+// Нет кода — promo.ErrNotFound; отказ — sentinel из promo.
+func checkPromoLocked(
+	ctx context.Context, tx pgx.Tx, promoID, telegramID int64, place promo.Place, now time.Time,
+) (model.Promo, error) {
+	p, err := scanPromo(tx.QueryRow(ctx, `SELECT `+promoCols+` FROM promo_codes WHERE id = $1 FOR UPDATE`, promoID))
+	if errors.Is(err, ErrNotFound) {
+		return p, errors.Join(promo.ErrNotFound, err)
+	}
+	if err != nil {
+		return p, err
+	}
+	used, already, err := promoUsage(ctx, tx, promoID, telegramID)
+	if err != nil {
+		return p, err
+	}
+	confirmed, err := hasConfirmed(ctx, tx, telegramID)
+	if err != nil {
+		return p, err
+	}
+	return p, promo.Check(p, used, telegramID, confirmed, already, place, now)
+}
+
 // ActivateDaysPromo под блокировкой кода заново проверяет его (promo.Check, PlaceMenu),
+// сдвигает базу pending-платежа юзера на те же дни (иначе подтверждение/отклонение затрёт бонус),
 // вызывает apply (продление в панели) и записывает активацию. Ошибка apply откатывает всё.
 // Нет кода — promo.ErrNotFound; отказ — sentinel из promo.
 func (s *Store) ActivateDaysPromo(
 	ctx context.Context, promoID, telegramID int64, now time.Time, apply func(p model.Promo) error,
 ) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
-		p, err := scanPromo(tx.QueryRow(ctx, `SELECT `+promoCols+` FROM promo_codes WHERE id = $1 FOR UPDATE`, promoID))
-		if errors.Is(err, ErrNotFound) {
-			return errors.Join(promo.ErrNotFound, err)
-		}
+		p, err := checkPromoLocked(ctx, tx, promoID, telegramID, promo.PlaceMenu, now)
 		if err != nil {
 			return err
 		}
-		used, already, err := promoUsage(ctx, tx, promoID, telegramID)
-		if err != nil {
-			return err
-		}
-		confirmed, err := hasConfirmed(ctx, tx, telegramID)
-		if err != nil {
-			return err
-		}
-		if err = promo.Check(p, used, telegramID, confirmed, already, promo.PlaceMenu, now); err != nil {
+		// как в панели: later(срок, now) + N дней
+		if _, err = tx.Exec(ctx,
+			`UPDATE payments SET prev_expire_at = greatest(prev_expire_at, $2) + make_interval(days => $3)
+			 WHERE telegram_id = $1 AND status = 'pending'`, telegramID, now, p.Value); err != nil {
 			return err
 		}
 		if err = apply(p); err != nil {

@@ -327,3 +327,94 @@ func TestCancelPayment(t *testing.T) {
 		t.Fatalf("нет платежа: %v", err)
 	}
 }
+
+// Последняя активация кода 100%: два юзера подтверждают 0 ₽ одновременно — успешен ровно один.
+func TestResolveFreePromoConcurrentLimit(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	pr := mustPromo(t, s, model.Promo{Code: "FREELAST", Kind: promo.KindPercent, Value: 100, MaxActivations: ptr(1)})
+	ids := make([]int64, 2)
+	for i := range ids {
+		p := newPay(int64(200+i), time.Now())
+		p.Price, p.PromoID, p.BasePrice = 0, &pr.ID, ptr(150)
+		created, _, err := s.CreatePayment(ctx, p, noRollback)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[i] = created.ID
+	}
+
+	var applied atomic.Int32
+	errs := make([]error, 2)
+	release := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range errs {
+		wg.Go(func() {
+			_, errs[i] = s.ResolvePayment(ctx, ids[i], model.PaymentConfirmed, time.Now(), func(p model.Payment) (model.OutboxMessage, error) {
+				applied.Add(1)
+				<-release // держим tx, пока второй не упрётся в блокировку кода
+				return okApply(p)
+			})
+		})
+	}
+	for applied.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	var ok, exhausted int
+	for _, e := range errs {
+		switch {
+		case e == nil:
+			ok++
+		case errors.Is(e, promo.ErrExhausted):
+			exhausted++
+		default:
+			t.Fatalf("unexpected: %v", e)
+		}
+	}
+	if ok != 1 || exhausted != 1 || applied.Load() != 1 {
+		t.Fatalf("ok=%d exhausted=%d applied=%d", ok, exhausted, applied.Load())
+	}
+}
+
+// Дни при pending-платеже сдвигают его базу: подтверждение и отклонение учитывают бонус.
+func TestActivateDaysPromoShiftsPending(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	now := time.Now().Truncate(time.Microsecond)
+	future := now.Add(10 * 24 * time.Hour)
+	pr := mustPromo(t, s, model.Promo{Code: "PLUS5", Kind: promo.KindDays, Value: 5})
+	bonus := 5 * 24 * time.Hour
+
+	for _, c := range []struct {
+		tg     int64
+		prev   time.Time
+		status model.PaymentStatus
+		want   time.Time
+	}{
+		{1, future, model.PaymentConfirmed, future.Add(bonus)},
+		{2, future, model.PaymentDeclined, future.Add(bonus)},
+		{3, now.Add(-48 * time.Hour), model.PaymentConfirmed, now.Add(bonus)}, // срок в прошлом — от now
+	} {
+		p, _, err := s.CreatePayment(ctx, newPay(c.tg, c.prev), noRollback)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = s.ActivateDaysPromo(ctx, pr.ID, c.tg, now, func(model.Promo) error { return nil }); err != nil {
+			t.Fatal(err)
+		}
+		var got time.Time
+		if _, err = s.ResolvePayment(ctx, p.ID, c.status, now, func(x model.Payment) (model.OutboxMessage, error) {
+			got = x.PrevExpireAt
+			return okApply(x)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if !got.Equal(c.want) {
+			t.Fatalf("tg %d: prev = %v, want %v", c.tg, got, c.want)
+		}
+	}
+}

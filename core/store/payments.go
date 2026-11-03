@@ -145,7 +145,7 @@ func (s *Store) ResolvePayment(
 		}
 		// Активация — до apply: повтор бесплатного платежа отклоняется раньше, чем тронута панель.
 		if status == model.PaymentConfirmed && p.PromoID != nil {
-			if err = activatePaymentPromo(ctx, tx, p); err != nil {
+			if err = activatePaymentPromo(ctx, tx, p, at); err != nil {
 				return err
 			}
 		}
@@ -167,12 +167,15 @@ func (s *Store) ResolvePayment(
 }
 
 // activatePaymentPromo засчитывает промокод подтверждённого платежа. Оплаченный (цена > 0) подтверждает
-// админ: повтор активации того же юзера — ON CONFLICT DO NOTHING. Цена 0 подтверждается без админа:
-// повтор — promo.ErrAlreadyUsed, транзакция откатывается.
-func activatePaymentPromo(ctx context.Context, tx pgx.Tx, p model.Payment) error {
+// админ: лимит не перепроверяется, повтор активации того же юзера — ON CONFLICT DO NOTHING.
+// Цена 0 подтверждается без админа: под блокировкой кода заново promo.Check (последняя активация
+// достаётся одному), отказ — sentinel из promo, транзакция откатывается.
+func activatePaymentPromo(ctx context.Context, tx pgx.Tx, p model.Payment, at time.Time) error {
 	q := `INSERT INTO promo_activations (promo_id, telegram_id, payment_id) VALUES ($1, $2, $3)`
 	if p.Price > 0 {
 		q += ` ON CONFLICT (promo_id, telegram_id) DO NOTHING`
+	} else if _, err := checkPromoLocked(ctx, tx, *p.PromoID, p.TelegramID, promo.PlacePayment, at); err != nil {
+		return err
 	}
 	_, err := tx.Exec(ctx, q, *p.PromoID, p.TelegramID, p.ID)
 	if pg, ok := errors.AsType[*pgconn.PgError](err); ok && pg.Code == "23505" {
