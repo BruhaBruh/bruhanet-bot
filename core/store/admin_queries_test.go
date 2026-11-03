@@ -125,3 +125,20 @@ func TestRevenue(t *testing.T) {
 		t.Fatalf("revenue = %d %v", got, err)
 	}
 }
+
+func TestUserByUsername(t *testing.T) {
+	s := testStore(t)
+	addUser(t, s, 1, "Alice")
+	addUser(t, s, 2, "alice_x")
+	for _, q := range []string{"alice", "@ALICE", " @Alice "} {
+		u, err := s.UserByUsername(t.Context(), q)
+		if err != nil || u.TelegramID != 1 {
+			t.Fatalf("%q: %+v %v", q, u, err)
+		}
+	}
+	for _, q := range []string{"ali", "", "@"} {
+		if _, err := s.UserByUsername(t.Context(), q); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("%q: want ErrNotFound, got %v", q, err)
+		}
+	}
+}

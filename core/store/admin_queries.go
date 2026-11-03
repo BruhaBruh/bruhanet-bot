@@ -59,6 +59,16 @@ func (s *Store) UserByID(ctx context.Context, id int64) (model.UserSummary, erro
 	return scanUserSummary(s.pool.QueryRow(ctx, userSummaryQuery+` WHERE u.telegram_id = $1 GROUP BY u.telegram_id`, id))
 }
 
+// UserByUsername — точное совпадение username без учёта регистра, ведущий @ срезается; нет — ErrNotFound.
+func (s *Store) UserByUsername(ctx context.Context, username string) (model.UserSummary, error) {
+	username = strings.TrimPrefix(strings.TrimSpace(username), "@")
+	if username == "" {
+		return model.UserSummary{}, ErrNotFound
+	}
+	return scanUserSummary(s.pool.QueryRow(ctx, userSummaryQuery+
+		` WHERE lower(u.username) = lower($1) GROUP BY u.telegram_id ORDER BY u.created_at DESC LIMIT 1`, username))
+}
+
 func collectPayments(rows pgx.Rows) ([]model.Payment, error) {
 	defer rows.Close()
 	out := []model.Payment{}

@@ -40,6 +40,12 @@ type Store interface {
 	ListBroadcasts(ctx context.Context, limit, offset int) ([]model.Broadcast, int, error)
 	CreateDirect(ctx context.Context, telegramID int64, text, photo string) (int64, error)
 	DirectMessages(ctx context.Context, telegramID int64) ([]model.DirectMessage, error)
+	UserByUsername(ctx context.Context, username string) (model.UserSummary, error)
+	CreatePromo(ctx context.Context, p model.Promo) (model.Promo, error)
+	PromoByID(ctx context.Context, id int64) (model.Promo, error)
+	ListPromos(ctx context.Context, activeOnly bool, now time.Time) ([]model.PromoWithUsage, error)
+	DisablePromo(ctx context.Context, id int64) error
+	PromoActivations(ctx context.Context, id int64) ([]model.PromoActivation, error)
 }
 
 // Panel — Remnawave (pkg/remnawave).
@@ -101,6 +107,10 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/broadcasts", s.createBroadcast)
 	apiMux.HandleFunc("GET /api/broadcasts", s.broadcasts)
 	apiMux.HandleFunc("POST /api/users/{id}/messages", s.directMessage)
+	apiMux.HandleFunc("GET /api/promos", s.promos)
+	apiMux.HandleFunc("POST /api/promos", s.createPromo)
+	apiMux.HandleFunc("POST /api/promos/{id}/disable", s.disablePromo)
+	apiMux.HandleFunc("GET /api/promos/{id}/activations", s.promoActivations)
 	apiMux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})

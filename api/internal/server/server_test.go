@@ -49,6 +49,9 @@ type fakeStore struct {
 
 	broadcasts []fakeBroadcast // по порядку создания
 	directs    []model.DirectMessage
+
+	promos []model.PromoWithUsage // по возрастанию id
+	acts   []model.PromoActivation
 }
 
 type fakeBroadcast struct {
