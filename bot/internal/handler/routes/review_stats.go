@@ -42,3 +42,12 @@ func groupThousands(n int) string {
 	}
 	return s
 }
+
+// promoLine — строка о промокоде платежа для админа; уже экранирована.
+func promoLine(p model.Promo) string {
+	discount := fmt.Sprintf("−%d%%", p.Value)
+	if p.Kind == model.PromoRub {
+		discount = "−" + groupThousands(p.Value) + " ₽"
+	}
+	return html.EscapeString("🎟 промокод " + p.Code + " (" + discount + ")")
+}

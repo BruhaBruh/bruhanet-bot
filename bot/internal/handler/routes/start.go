@@ -20,6 +20,7 @@ func (h *handlers) start(ctx context.Context, b *bot.Bot, u *models.Update) {
 	if tgupdate.ChatID(u) == 0 {
 		return
 	}
+	h.leavePromo(ctx, tgupdate.UserID(u))
 	show(ctx, b, u, h.mainKeyboard(ctx, tgupdate.UserID(u)), h.c.Text(ctx, "menu.greeting", map[string]string{"name": displayName(u)}))
 }
 
@@ -36,12 +37,13 @@ func isPrivate(u *models.Update) bool {
 
 func (h *handlers) mainKeyboard(ctx context.Context, telegramID int64) *models.InlineKeyboardMarkup {
 	support := keyboard.URL(h.c.Button(ctx, "button.support"), h.c.Settings(ctx).SupportURL).Style(keyboard.StyleDanger)
+	promoBtn := keyboard.Callback(h.c.Button(ctx, "button.promo"), routePromo)
 	user, err := h.rw.GetUser(ctx, telegramID)
 	switch {
 	case errors.Is(err, remnawave.ErrUserNotFound):
 		return keyboard.Inline(
 			keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.buy"), routePay).Style(keyboard.StyleSuccess)),
-			keyboard.Row(support),
+			keyboard.Row(promoBtn, support),
 		)
 	case err != nil:
 		stlog.Error(ctx, "failed to get remnawave user", "error", err)
@@ -56,5 +58,6 @@ func (h *handlers) mainKeyboard(ctx context.Context, telegramID int64) *models.I
 			keyboard.Copy(h.c.Button(ctx, "button.subscription"), user.SubscriptionUrl).Style(keyboard.StyleSuccess),
 			support,
 		),
+		keyboard.Row(promoBtn),
 	)
 }

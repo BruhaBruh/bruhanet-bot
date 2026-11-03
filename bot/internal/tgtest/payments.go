@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/promo"
 	"github.com/bruhabruh/bruhanet/core/store"
 )
 
@@ -22,6 +23,8 @@ type Payments struct {
 	failSubmitOnce bool
 	failAdvance    bool
 	loginTokens    []LoginToken
+	promos         []model.Promo // индекс = ID-1
+	activations    []model.PromoActivation
 }
 
 // LoginToken — токен входа, созданный через CreateLoginToken.
@@ -219,6 +222,13 @@ func (p *Payments) ResolvePayment(
 	}
 	x.Status, x.ResolvedAt = status, &at
 	p.outbox = append(p.outbox, msg)
+	// как в store: активация скидки при подтверждении, повтор — ON CONFLICT DO NOTHING
+	if status == model.PaymentConfirmed && x.PromoID != nil {
+		if _, already := p.usage(*x.PromoID, x.TelegramID); !already {
+			id := x.ID
+			p.activations = append(p.activations, model.PromoActivation{PromoID: *x.PromoID, TelegramID: x.TelegramID, PaymentID: &id})
+		}
+	}
 	return *x, nil
 }
 
@@ -233,4 +243,89 @@ func (p *Payments) LoginTokens() []LoginToken {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return slices.Clone(p.loginTokens)
+}
+
+// AddPromo заводит промокод (код нормализуется, как в store) и возвращает его с ID.
+func (p *Payments) AddPromo(pr model.Promo) model.Promo {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	pr.ID = int64(len(p.promos) + 1)
+	pr.Code = promo.Normalize(pr.Code)
+	p.promos = append(p.promos, pr)
+	return pr
+}
+
+func (p *Payments) Activations() []model.PromoActivation {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.activations)
+}
+
+func (p *Payments) PromoByCode(_ context.Context, code string) (model.Promo, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	i := slices.IndexFunc(p.promos, func(x model.Promo) bool { return x.Code == promo.Normalize(code) })
+	if i < 0 {
+		return model.Promo{}, store.ErrNotFound
+	}
+	return p.promos[i], nil
+}
+
+func (p *Payments) PromoByID(_ context.Context, id int64) (model.Promo, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if id < 1 || id > int64(len(p.promos)) {
+		return model.Promo{}, store.ErrNotFound
+	}
+	return p.promos[id-1], nil
+}
+
+func (p *Payments) usage(promoID, telegramID int64) (used int, already bool) {
+	for _, a := range p.activations {
+		if a.PromoID == promoID {
+			used++
+			already = already || a.TelegramID == telegramID
+		}
+	}
+	return used, already
+}
+
+func (p *Payments) PromoUsage(_ context.Context, promoID, telegramID int64) (int, bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	used, already := p.usage(promoID, telegramID)
+	return used, already, nil
+}
+
+func (p *Payments) hasConfirmed(telegramID int64) bool {
+	return slices.ContainsFunc(p.payments, func(x model.Payment) bool {
+		return x.TelegramID == telegramID && x.Status == model.PaymentConfirmed
+	})
+}
+
+func (p *Payments) HasConfirmed(_ context.Context, telegramID int64) (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.hasConfirmed(telegramID), nil
+}
+
+// ActivateDaysPromo — apply вызывается под мьютексом фейка: из него нельзя звать Payments.
+func (p *Payments) ActivateDaysPromo(
+	_ context.Context, promoID, telegramID int64, now time.Time, apply func(model.Promo) error,
+) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if promoID < 1 || promoID > int64(len(p.promos)) {
+		return errors.Join(promo.ErrNotFound, store.ErrNotFound)
+	}
+	pr := p.promos[promoID-1]
+	used, already := p.usage(promoID, telegramID)
+	if err := promo.Check(pr, used, telegramID, p.hasConfirmed(telegramID), already, promo.PlaceMenu, now); err != nil {
+		return err
+	}
+	if err := apply(pr); err != nil {
+		return err
+	}
+	p.activations = append(p.activations, model.PromoActivation{PromoID: promoID, TelegramID: telegramID})
+	return nil
 }

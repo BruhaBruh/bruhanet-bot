@@ -60,10 +60,7 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 		p, err = h.pay.ResolvePayment(ctx, id, status, at, func(p model.Payment) (model.OutboxMessage, error) {
 			expireAt := p.PrevExpireAt
 			if approve {
-				if at.After(expireAt) {
-					expireAt = at
-				}
-				expireAt = expireAt.Add(time.Duration(p.Month) * monthDuration)
+				expireAt = extendedExpire(p.PrevExpireAt, at, p.Month)
 			}
 			if _, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, expireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
 				return model.OutboxMessage{}, err

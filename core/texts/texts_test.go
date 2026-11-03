@@ -133,7 +133,7 @@ func TestValidate(t *testing.T) {
 }
 
 func TestRegistryDefaultsValid(t *testing.T) {
-	groups := []string{"Меню", "Оплата", "Напоминания", "Ошибки", "Кнопки"}
+	groups := []string{"Меню", "Оплата", "Промокоды", "Напоминания", "Ошибки", "Кнопки"}
 	seen := map[string]bool{}
 	lastGroup := 0
 	for _, d := range Registry() {

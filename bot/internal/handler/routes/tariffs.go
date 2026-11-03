@@ -57,10 +57,14 @@ func (h *handlers) price(ctx context.Context, b *bot.Bot, u *models.Update) {
 		h.tariffs(ctx, b, u)
 		return
 	}
-	show(ctx, b, u, keyboard.Inline(keyboard.Row(
-		keyboard.Callback(h.c.Button(ctx, "button.yes"), buyRoute.Data(month)).Style(keyboard.StyleSuccess),
-		keyboard.Callback(h.c.Button(ctx, "button.no"), routePay).Style(keyboard.StyleDanger),
-	)), h.c.Text(ctx, "payment.confirm", tariffVars(month, price)))
+	h.leavePromo(ctx, tgupdate.UserID(u)) // «Назад»/«Убрать промокод» из ожидания кода
+	show(ctx, b, u, keyboard.Inline(
+		keyboard.Row(
+			keyboard.Callback(h.c.Button(ctx, "button.yes"), buyRoute.Data(month)).Style(keyboard.StyleSuccess),
+			keyboard.Callback(h.c.Button(ctx, "button.no"), routePay).Style(keyboard.StyleDanger),
+		),
+		keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.have_promo"), havePromoRoute.Data(month))),
+	), h.c.Text(ctx, "payment.confirm", tariffVars(month, price)))
 }
 
 func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
@@ -69,6 +73,20 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 		h.tariffs(ctx, b, u)
 		return
 	}
+	if _, ok := h.createPayment(ctx, b, u, model.Payment{Month: month, Price: price}); !ok {
+		return
+	}
+	if err := fsm.Put(ctx, fsm.For(h.fsm, tgupdate.UserID(u)), stateAwaitPhoto, nil); err != nil {
+		stlog.Error(ctx, "failed to set payment state", "error", err)
+		h.showError(ctx, b, u)
+		return
+	}
+	h.showRequisites(ctx, b, u, month, price)
+}
+
+// createPayment заводит юзера в панели и pending-платёж np (тариф и цена — от вызывающего);
+// false — ошибка уже показана юзеру.
+func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Update, np model.Payment) (model.Payment, bool) {
 	from := tgupdate.User(u)
 	username := telegramUsername(from)
 
@@ -76,16 +94,11 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 	if err != nil {
 		stlog.Error(ctx, "failed to create remnawave user", "error", err)
 		h.showError(ctx, b, u)
-		return
+		return model.Payment{}, false
 	}
+	np.TelegramID, np.Username, np.PrevExpireAt = from.ID, username, user.ExpireAt
 	// Старый pending отменяется в той же транзакции; выданный по нему аванс откатываем в панели.
-	_, cancelled, err := h.pay.CreatePayment(ctx, model.Payment{
-		TelegramID:   from.ID,
-		Username:     username,
-		Month:        month,
-		Price:        price,
-		PrevExpireAt: user.ExpireAt,
-	}, func(old model.Payment) error {
+	p, cancelled, err := h.pay.CreatePayment(ctx, np, func(old model.Payment) error {
 		if !old.AdvanceGranted {
 			return nil
 		}
@@ -95,18 +108,16 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 	if err != nil {
 		stlog.Error(ctx, "failed to create payment", "error", err)
 		h.showError(ctx, b, u)
-		return
+		return model.Payment{}, false
 	}
 	if cancelled != nil {
 		h.closeAdminMessage(ctx, b, cancelled.AdminMessageID, "Отменён пользователем")
 	}
-	if err := fsm.Put(ctx, fsm.For(h.fsm, from.ID), stateAwaitPhoto, nil); err != nil {
-		stlog.Error(ctx, "failed to set payment state", "error", err)
-		h.showError(ctx, b, u)
-		return
-	}
-	observability.Payments.WithLabelValues("started", strconv.Itoa(month)).Inc()
+	observability.Payments.WithLabelValues("started", strconv.Itoa(np.Month)).Inc()
+	return p, true
+}
 
+func (h *handlers) showRequisites(ctx context.Context, b *bot.Bot, u *models.Update, month, price int) {
 	set := h.c.Settings(ctx)
 	vars := tariffVars(month, price)
 	vars["phone"] = set.Phone

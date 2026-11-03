@@ -77,6 +77,15 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		h.showError(ctx, b, u)
 		return
 	}
+	var promoRows []string
+	if p.PromoID != nil {
+		pr, err := h.pay.PromoByID(ctx, *p.PromoID)
+		if err != nil {
+			stlog.Warn(ctx, "failed to load payment promo", "error", err)
+		} else {
+			promoRows = []string{promoLine(pr)}
+		}
+	}
 	msg := send(ctx, b, admin, nil, slices.Concat([]string{
 		"<b>Покупка подписки BruhaNet</b>",
 		"",
@@ -88,8 +97,7 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 			p.Month,
 			pluralMonths(p.Month),
 		),
-		"",
-	}, formatStats(stats))...)
+	}, promoRows, []string{""}, formatStats(stats))...)
 	if msg == nil {
 		h.showError(ctx, b, u)
 		return

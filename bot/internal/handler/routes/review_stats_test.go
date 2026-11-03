@@ -57,3 +57,18 @@ func TestFormatStats(t *testing.T) {
 		})
 	}
 }
+
+func TestPromoLine(t *testing.T) {
+	for _, tc := range []struct {
+		p    model.Promo
+		want string
+	}{
+		{model.Promo{Code: "SUMMER25", Kind: model.PromoPercent, Value: 25}, "🎟 промокод SUMMER25 (−25%)"},
+		{model.Promo{Code: "MINUS100", Kind: model.PromoRub, Value: 100}, "🎟 промокод MINUS100 (−100 ₽)"},
+		{model.Promo{Code: "A<B", Kind: model.PromoRub, Value: 1500}, "🎟 промокод A&lt;B (−1 500 ₽)"},
+	} {
+		if got := promoLine(tc.p); got != tc.want {
+			t.Errorf("promoLine = %q, want %q", got, tc.want)
+		}
+	}
+}

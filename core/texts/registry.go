@@ -31,6 +31,7 @@ type Def struct {
 const (
 	groupMenu     = "Меню"
 	groupPayment  = "Оплата"
+	groupPromo    = "Промокоды"
 	groupReminder = "Напоминания"
 	groupError    = "Ошибки"
 	groupButton   = "Кнопки"
@@ -39,6 +40,7 @@ const (
 var (
 	varMonths   = Var{Name: "months", Description: "Срок тарифа с единицей: «3 месяца»", Sample: "3 месяца", Max: 16}
 	varPrice    = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500", Max: 8}
+	varCode     = Var{Name: "code", Description: "Промокод", Sample: "SUMMER25", Max: 32}
 	varExpireAt = Var{Name: "expireAt", Description: "Дата окончания подписки (МСК)", Sample: "2 ноября 2026 г. в 15:04, MSK", Max: 40}
 )
 
@@ -50,6 +52,7 @@ const (
 	reminderHead = "<b>Уведомление об окончании подписки</b>\n\n"
 	reminderTail = "\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}"
 	tariffHead   = "<b>Выбор тарифа</b>\n\n"
+	promoHead    = "<b>Промокод</b>\n\n"
 	infoHead     = "<b>Информация о подписке</b>\n\n<b>Статус</b>\n"
 )
 
@@ -104,6 +107,32 @@ var registry = []Def{
 	msg("payment.declined", groupPayment, "Платёж отклонён",
 		"<b>Администратор отклонил ваш платеж</b>\n\nВаша подписка была изменена на изначальную"),
 
+	msg("promo.enter_payment", groupPromo, "Ввод промокода при оплате", promoHead+"Отправьте промокод сообщением"),
+	msg("promo.enter_menu", groupPromo, "Ввод промокода из меню", promoHead+"Отправьте промокод сообщением"),
+	msg("promo.not_found", groupPromo, "Промокод не найден", promoHead+"Такого промокода нет — проверьте написание и отправьте ещё раз"),
+	msg("promo.disabled", groupPromo, "Промокод выключен", promoHead+"Этот промокод больше не действует"),
+	msg("promo.expired", groupPromo, "Срок промокода истёк", promoHead+"Срок действия этого промокода истёк"),
+	msg("promo.exhausted", groupPromo, "Активации закончились", promoHead+"Активации этого промокода закончились"),
+	msg("promo.not_yours", groupPromo, "Персональный промокод другого юзера", promoHead+"Этот промокод предназначен другому пользователю"),
+	msg("promo.only_new", groupPromo, "Промокод только для новых", promoHead+"Этот промокод только для новых пользователей"),
+	msg("promo.already_used", groupPromo, "Промокод уже использован", promoHead+"Вы уже использовали этот промокод"),
+	msg("promo.wrong_place_payment", groupPromo, "Код на дни введён при оплате",
+		promoHead+"Этот промокод даёт дни — введите его через кнопку «Промокод» в меню"),
+	msg("promo.wrong_place_menu", groupPromo, "Скидка введена из меню", promoHead+"Это скидка — введите её при оплате тарифа"),
+	msg("promo.confirm_discount", groupPromo, "Подтверждение тарифа со скидкой",
+		tariffHead+"Вы выбрали тариф на <b>{{.months}}</b> с промокодом <code>{{.code}}</code>\n\n"+
+			"Цена: <s>{{.base}} ₽</s> <b>{{.price}} ₽</b>\n\nВерно?",
+		varMonths,
+		Var{Name: "base", Description: "Цена тарифа без скидки в рублях", Sample: "500", Max: 8},
+		varPrice, varCode),
+	msg("promo.days_granted", groupPromo, "Дни по промокоду начислены",
+		"<b>Промокод активирован</b>\n\nДобавлено дней: <b>{{.days}}</b>\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}",
+		Var{Name: "days", Description: "Сколько дней дал промокод", Sample: "7", Max: 4},
+		varExpireAt),
+	msg("promo.paid_by_promo", groupPromo, "Тариф оплачен промокодом (цена 0)",
+		"<b>Подписка оплачена промокодом</b>\n\nТариф на <b>{{.months}}</b> активирован\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}",
+		varMonths, varExpireAt),
+
 	msg("reminder.week", groupReminder, "Подписка скоро закончится (≤ 7 дней)",
 		reminderHead+"Ваша подписка скоро закончится"+reminderTail, varExpireAt),
 	msg("reminder.day", groupReminder, "Подписка закончится в течение суток",
@@ -122,9 +151,12 @@ var registry = []Def{
 	btn("button.no", "Нет (к выбору тарифа)", "Нет"),
 	btn("button.tariff", "Тариф в списке", "{{.months}} за {{.price}} ₽", varMonths, varPrice),
 	btn("button.service_down", "Сервис не работает", "Сервис не работает"),
+	btn("button.promo", "Промокод (в меню)", "Промокод"),
+	btn("button.have_promo", "Есть промокод (при оплате)", "Есть промокод"),
+	btn("button.remove_promo", "Убрать промокод", "Убрать промокод"),
 }
 
-// Registry — все тексты по группам: Меню, Оплата, Напоминания, Ошибки, Кнопки.
+// Registry — все тексты по группам: Меню, Оплата, Промокоды, Напоминания, Ошибки, Кнопки.
 func Registry() []Def {
 	out := slices.Clone(registry)
 	for i := range out {

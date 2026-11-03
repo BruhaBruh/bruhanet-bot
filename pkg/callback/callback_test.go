@@ -72,3 +72,52 @@ func TestMaxDataFitsTelegramLimit(t *testing.T) {
 		t.Fatalf("data = %d байт, лимит 64", n)
 	}
 }
+
+func TestRoute2DataParse(t *testing.T) {
+	buy := callback.New2[int, int64]("buyp")
+	if buy.Name() != "buyp" {
+		t.Fatalf("Name = %q", buy.Name())
+	}
+	data := buy.Data(6, 9_000_000_000)
+	if data != "buyp:6:9000000000" {
+		t.Fatalf("Data = %q", data)
+	}
+	a, b, err := buy.Parse(data)
+	if err != nil || a != 6 || b != 9_000_000_000 {
+		t.Fatalf("Parse = %d, %d, %v", a, b, err)
+	}
+}
+
+func TestRoute2ParseErrors(t *testing.T) {
+	buy := callback.New2[int, int64]("buyp")
+	for _, data := range []string{"", "buyp", "buyp:6", "buyp:6:", "buyp::7", "buyp:a:7", "buyp:6:b", "buyp:6:7:8", "buy:6:7", "buypp:6:7"} {
+		t.Run(data, func(t *testing.T) {
+			if _, _, err := buy.Parse(data); !errors.Is(err, callback.ErrInvalidData) {
+				t.Fatalf("ожидался ErrInvalidData, получено %v", err)
+			}
+		})
+	}
+}
+
+func TestRoute2ArgOverflow(t *testing.T) {
+	r := callback.New2[int, int64]("buyp")
+	if _, _, err := r.Parse("buyp:6:99999999999999999999"); !errors.Is(err, callback.ErrInvalidData) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRoute2MaxDataFitsTelegramLimit(t *testing.T) {
+	r := callback.New2[int64, int64](strings.Repeat("a", 22))
+	if n := len(r.Data(math.MinInt64, math.MinInt64)); n > 64 {
+		t.Fatalf("data = %d байт, лимит 64", n)
+	}
+}
+
+func TestNew2PanicsOnLongName(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("ожидалась паника")
+		}
+	}()
+	callback.New2[int, int](strings.Repeat("a", 23))
+}

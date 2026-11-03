@@ -47,6 +47,12 @@ type Payments interface {
 	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
 		apply func(model.Payment) (model.OutboxMessage, error)) (model.Payment, error)
 	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
+	// Промокоды; PromoByCode нормализует ввод (trim + upper), нет кода — store.ErrNotFound.
+	PromoByCode(ctx context.Context, code string) (model.Promo, error)
+	PromoByID(ctx context.Context, id int64) (model.Promo, error)
+	PromoUsage(ctx context.Context, promoID, telegramID int64) (used int, alreadyActivated bool, err error)
+	HasConfirmed(ctx context.Context, telegramID int64) (bool, error)
+	ActivateDaysPromo(ctx context.Context, promoID, telegramID int64, now time.Time, apply func(p model.Promo) error) error
 }
 
 type Deps struct {
@@ -81,7 +87,13 @@ func Register(r *router.Router, d Deps) {
 	r.Callback(routePay, h.tariffs)
 	r.Callback(priceRoute.Name(), h.price)
 	r.Callback(buyRoute.Name(), h.buy)
+	r.Callback(havePromoRoute.Name(), h.havePromo)
+	r.Callback(buyPromoRoute.Name(), h.buyPromo)
+	r.Callback(routePromo, h.promoMenu)
 	r.Command("login", h.login)
+	// ожидание кода — до Photo и Default: любое сообщение в этих стейтах — код (команды и фото выходят сами)
+	r.Message("promo_payment", h.paymentPromoText, router.InState(stateAwaitPromo))
+	r.Message("promo_menu", h.menuPromoText, router.InState(stateAwaitPromoDays))
 	r.Photo("payment", h.photo, router.InState(stateAwaitPhoto, stateInReview))
 	adminOnly := middleware.AdminOnly(d.Config.Telegram.AdminID)
 	r.Callback(confirmRoute.Name(), h.confirm, adminOnly)
