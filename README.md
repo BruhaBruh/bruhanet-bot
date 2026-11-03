@@ -68,3 +68,5 @@ docker compose -f docker-compose.yaml --env-file .env exec -T postgres \
   pg_restore -U bruhanet -d bruhanet --clean --if-exists < bruhanet.dump
 docker compose -f docker-compose.yaml --env-file .env up -d
 ```
+
+Рассылки и личные сообщения: раздел «Рассылки» (текст, опционально фото, «Отправить себе» для проверки, подтверждение, история со счётчиками доставки) и кнопка «Написать» в карточке пользователя. Команды `/a` в боте больше нет. Фото заливается через бота, для этого `api` использует тот же `TELEGRAM_TOKEN`; подпись к фото — до 1024 символов, без фото — до 4096.
