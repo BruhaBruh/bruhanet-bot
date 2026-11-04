@@ -137,7 +137,7 @@ form > .tg-err, form > .tg-ok { margin: 16px 0 0; }
 .promo-filter { margin-bottom: 16px; }
 .promo-row { display: flex; align-items: center; min-width: 0; padding-right: 8px; }
 .promo-row > button:last-child, .promo-off { flex: none; }
-.promo-cell { flex: 1; min-width: 0; width: auto; border: 0; font: inherit; text-align: left; }
+.promo-cell { flex: 1; min-width: 0; width: auto; border: 0; font: inherit; text-align: left; background: transparent; color: var(--tgui--text_color); }
 .promo-cell:focus-visible { outline: 2px solid var(--tgui--link_color); outline-offset: -2px; }
 /* длинный код и подпись переносятся, не распирают 390px */
 .promo-cell * { overflow-wrap: anywhere; }
