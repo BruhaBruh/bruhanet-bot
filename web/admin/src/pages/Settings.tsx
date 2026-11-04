@@ -91,6 +91,7 @@ export default function Settings() {
 
   return (
     <form
+      noValidate
       onSubmit={(e) => {
         e.preventDefault()
         void save()

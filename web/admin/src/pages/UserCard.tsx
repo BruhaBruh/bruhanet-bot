@@ -13,8 +13,13 @@ const Composer = lazy(() => import('../compose/Composer').then((m) => ({ default
 
 const statusMark: Record<string, string> = { pending: '…', sent: '✓', failed: '✗' }
 
+// key по id: при переходе на другого юзера стейт (данные, композер) начинается заново
 export default function UserCard() {
   const { id } = useParams()
+  return <UserCardInner key={id} id={id} />
+}
+
+function UserCardInner({ id }: { id?: string }) {
   const [d, setD] = useState<UserDetail>()
   const [error, setError] = useState('')
   const [writing, setWriting] = useState(false)

@@ -1,7 +1,7 @@
 /* Только раскладка; цвета — переменные telegram-ui (кроме градиентов аватарок меню: в ките их нет). */
 body { margin: 0; }
 /* --tgui--font-family объявлен на AppRoot, но шрифт он не ставит — без этого всё вне типографики кита в serif. */
-.app-root { font-family: var(--tgui--font-family); }
+.app-root { font-family: var(--tgui--font-family); min-height: 100vh; background: var(--tgui--secondary_bg_color); }
 
 .layout { display: flex; min-height: 100vh; background: var(--tgui--secondary_bg_color); }
 
@@ -91,6 +91,9 @@ body { margin: 0; }
 /* Строка-ссылка (Cell внутри Link) */
 .row-link { display: block; text-decoration: none; color: inherit; }
 .row-link:focus-visible { outline: 2px solid var(--tgui--link_color); outline-offset: -2px; }
+
+/* after в строке (сумма, «N оплат») не сжимается и не переносится по буквам — ужимается заголовок */
+.keep-after > :last-child { flex: none; white-space: nowrap; }
 
 /* Аватарка юзера: буква на градиенте */
 .app-root .av-letter { color: var(--tgui--white); }

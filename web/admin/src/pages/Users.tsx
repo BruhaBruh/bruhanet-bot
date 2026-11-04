@@ -70,6 +70,7 @@ export default function Users() {
               return (
                 <RowLink key={u.telegramId} to={`/users/${u.telegramId}`}>
                   <Cell
+                    className="keep-after"
                     before={<UserAvatar name={name} />}
                     subtitle={`${u.telegramId} · с ${formatMonthYear(u.createdAt)}`}
                     after={

@@ -15,6 +15,7 @@ export function PaymentsTable({ items, showUser, header }: { items: Payment[]; s
           const cell = (
             <Cell
               key={p.id}
+              className="keep-after"
               subtitle={`${formatDate(p.createdAt)} · ${statusLabels[p.status] ?? p.status}`}
               after={showUser ? <Navigation>{formatRub(p.price)}</Navigation> : formatRub(p.price)}
             >

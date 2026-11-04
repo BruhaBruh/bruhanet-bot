@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useNavigate, type NavigateFunction } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
 
@@ -46,6 +46,28 @@ describe('UserCard', () => {
     stub({ '/api/users/7': () => json(404, { error: 'not_found' }) })
     await renderAt('/users/7')
     expect(screen.getByText('Юзер не найден')).toBeTruthy()
+  })
+
+  it('resets state when id changes', async () => {
+    // 7 — 404, 8 — ещё грузится: ошибка от 7 не должна остаться на карточке 8
+    vi.stubGlobal('fetch', (url: string) => (url.startsWith('/api/users/7') ? Promise.resolve(json(404, { error: 'not_found' })) : new Promise(() => {})))
+    let go!: NavigateFunction
+    const Grab = () => {
+      go = useNavigate()
+      return null
+    }
+    render(
+      <MemoryRouter initialEntries={['/users/7']}>
+        <Grab />
+        <App />
+      </MemoryRouter>,
+    )
+    await flush()
+    expect(screen.getByText('Юзер не найден')).toBeTruthy()
+    await act(async () => go('/users/8'))
+    await flush()
+    expect(screen.queryByText('Юзер не найден')).toBeNull()
+    expect(screen.getByText('Загрузка…')).toBeTruthy()
   })
 
   it('shows panel status in words', async () => {

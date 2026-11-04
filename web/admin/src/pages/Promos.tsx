@@ -35,6 +35,9 @@ export default function Promos() {
   const [items, setItems] = useState<Promo[]>()
   const [loadError, setLoadError] = useState(false)
   const seq = useRef(0)
+  // перезагрузка после действия — по фильтру на момент ответа, а не клика
+  const statusRef = useRef(status)
+  statusRef.current = status
 
   const load = useCallback(async (s: string) => {
     const n = ++seq.current // устаревший ответ при быстром переключении фильтра не перетирает новый
@@ -75,7 +78,7 @@ export default function Promos() {
     setDisableError(false)
     try {
       await post(`/api/promos/${p.id}/disable`)
-      await load(status)
+      await load(statusRef.current)
     } catch {
       setDisableError(true)
     } finally {
@@ -102,7 +105,7 @@ export default function Promos() {
       const { promo } = await post<{ promo: Promo }>('/api/promos', promoBody(form))
       setCreated(`Создан ${promo.code}`)
       setForm(empty())
-      await load(status)
+      await load(statusRef.current)
     } catch (e) {
       setError(e instanceof ApiError && e.body.message ? e.body.message : 'Не удалось создать, попробуйте ещё раз')
     } finally {
@@ -178,6 +181,7 @@ export default function Promos() {
 
       <form
         className="promo-form"
+        noValidate
         onSubmit={(e) => {
           e.preventDefault()
           void create()

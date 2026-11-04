@@ -1,5 +1,5 @@
-import { Avatar, Button, Cell, List, Title } from '@telegram-apps/telegram-ui'
-import { useEffect, useRef } from 'react'
+import { Avatar, Button, Cell, List, Spinner, Title, VisuallyHidden } from '@telegram-apps/telegram-ui'
+import { Suspense, useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { post } from '../api'
 
@@ -53,7 +53,17 @@ export function AdminLayout() {
       </nav>
       <main className="main">
         <div className="col">
-          <Outlet />
+          {/* ленивые страницы грузятся внутри колонки — меню остаётся на месте */}
+          <Suspense
+            fallback={
+              <div className="tg-loading" role="status">
+                <Spinner size="m" />
+                <VisuallyHidden>Загрузка…</VisuallyHidden>
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </div>
       </main>
     </div>

@@ -82,6 +82,27 @@ describe('Promos', () => {
     expect(screen.getByText('NEWER')).toBeTruthy()
   })
 
+  it('reload after disable uses the current filter', async () => {
+    replies['GET /api/promos?status=active'] = json(200, { items: [promo(1, 'ACTIVE')] })
+    replies['GET /api/promos?status=all'] = json(200, { items: [promo(1, 'ACTIVE'), promo(2, 'OLD', { disabled: true })] })
+    const disabled = deferred()
+    replies['POST /api/promos/1/disable'] = () => disabled.p
+    await show()
+    fireEvent.click(screen.getByText('Все'))
+    await flush()
+    expect(screen.getByText('OLD')).toBeTruthy()
+    fireEvent.click(screen.getByText('Выключить'))
+    await flush()
+    // фильтр сменили, пока POST в полёте
+    fireEvent.click(screen.getByText('Активные'))
+    await flush()
+    disabled.resolve(json(204)())
+    await flush()
+    expect(calls.at(-1)!.url).toBe('/api/promos?status=active')
+    expect(screen.queryByText('OLD')).toBeNull()
+    expect(screen.getByText('ACTIVE')).toBeTruthy()
+  })
+
   it('double click on create sends one POST', async () => {
     replies['GET /api/promos?status=active'] = json(200, { items: [] })
     const created = deferred()

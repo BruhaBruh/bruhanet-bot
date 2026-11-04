@@ -1,5 +1,5 @@
-import { AppRoot, Spinner } from '@telegram-apps/telegram-ui'
-import { lazy, Suspense, useEffect } from 'react'
+import { AppRoot } from '@telegram-apps/telegram-ui'
+import { lazy, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { setUnauthorizedHandler } from './api'
 import { AdminLayout, sections } from './layout/AdminLayout'
@@ -33,21 +33,19 @@ export function App() {
 
   return (
     <AppRoot className="app-root" appearance={appearance} platform="ios">
-      <Suspense fallback={<Spinner size="m" />}>
-        <Routes>
-          <Route path="/login-required" element={<LoginRequired />} />
-          <Route element={<AdminLayout />}>
-            <Route path="/users" element={<Users />} />
-            <Route path="/users/:id" element={<UserCard />} />
-            <Route path="/payments" element={<Payments />} />
-            <Route path="/broadcasts" element={<Broadcasts />} />
-            <Route path="/promos" element={<Promos />} />
-            <Route path="/texts" element={<Texts />} />
-            <Route path="/settings" element={<Settings />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/users" replace />} />
-        </Routes>
-      </Suspense>
+      <Routes>
+        <Route path="/login-required" element={<LoginRequired />} />
+        <Route element={<AdminLayout />}>
+          <Route path="/users" element={<Users />} />
+          <Route path="/users/:id" element={<UserCard />} />
+          <Route path="/payments" element={<Payments />} />
+          <Route path="/broadcasts" element={<Broadcasts />} />
+          <Route path="/promos" element={<Promos />} />
+          <Route path="/texts" element={<Texts />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/users" replace />} />
+      </Routes>
     </AppRoot>
   )
 }
