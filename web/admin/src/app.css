@@ -34,7 +34,41 @@ body { margin: 0; }
 .col { max-width: 720px; margin: 0 auto; }
 
 .login-box { max-width: 360px; margin: 20vh auto; }
-.login-emoji { font-size: 64px; line-height: 1; }
+.login-emoji, .ph-emoji { font-size: 64px; line-height: 1; }
+
+/* Общие состояния и отступы внутри Section. */
+.pad { padding: 12px 16px; }
+.tg-err { color: var(--tgui--destructive_text_color); }
+.tg-ok { color: var(--tgui--link_color); }
+.tg-loading { display: flex; justify-content: center; padding: 32px; color: var(--tgui--hint_color); }
+
+/* Сообщение как в Telegram: редактор и превью, отделены от фона секции. */
+.tg-msg { padding: 12px 16px; background: var(--tgui--secondary_bg_color); color: var(--tgui--text_color); border-radius: 12px;
+  white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.3em; }
+.tg-msg p { margin: 0; min-height: 1.3em; }
+.tg-msg pre, .tg-msg blockquote { margin: 0; }
+.tg-msg pre, .tg-msg code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tg-msg blockquote { border-left: 3px solid var(--tgui--link_color); padding-left: 8px; }
+.tg-msg a { color: var(--tgui--link_color); }
+.tg-msg tg-spoiler { background: var(--tgui--divider); border-radius: 4px; }
+
+/* Редактор */
+.tg-editor .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.tg-editor .toolbar [aria-pressed='true'] { background: var(--tgui--button_color); color: var(--tgui--button_text_color); }
+.tg-editor .ProseMirror { min-height: 120px; outline: none; }
+.tg-editor .ProseMirror:focus-visible { box-shadow: 0 0 0 2px var(--tgui--link_color); }
+
+/* Композер */
+.composer-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.composer .count { font-size: 13px; color: var(--tgui--hint_color); white-space: nowrap; }
+.composer .count.over { color: var(--tgui--destructive_text_color); }
+.composer-label { font-size: 13px; color: var(--tgui--hint_color); margin: 16px 0 6px; }
+.composer .ph { color: var(--tgui--hint_color); font-size: 13px; }
+.composer .tg-err, .composer .tg-ok { margin: 12px 0 0; }
+.composer-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+.photo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.photo img { max-width: 160px; max-height: 120px; border-radius: 8px; object-fit: cover; }
+.photo .tg-err { margin: 0; width: 100%; }
 
 @media (max-width: 719px) {
   .layout { flex-direction: column; }
