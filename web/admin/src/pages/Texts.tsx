@@ -1,4 +1,4 @@
-import { Button, Cell, Input, Placeholder, Section, Spinner, Title, VisuallyHidden } from '@telegram-apps/telegram-ui'
+import { Button, Cell, Input, Placeholder, Section, Spinner, VisuallyHidden } from '@telegram-apps/telegram-ui'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ApiError, del, get, post, put } from '../api'
@@ -149,42 +149,45 @@ export default function Texts() {
 
         {cur && (
           <div className="texts-edit">
-            <Title level="2" weight="2" Component="h2">
-              {cur.title}
-            </Title>
-            <p className="texts-meta">
-              {cur.overridden && <span>изменён</span>}
-              {isDirty(cur) && <span className="tg-ok">есть несохранённые изменения</span>}
-            </p>
-
-            {cur.kind === 'message' ? (
-              <TgEditor key={cur.key} ref={editor} value={draft} onChange={setDraft} disabled={busy} />
-            ) : (
-              <Section footer="Простой текст без разметки, до 64 символов.">
+            <Section
+              header={cur.title}
+              footer={
+                [cur.kind !== 'message' && 'Простой текст без разметки, до 64 символов.', cur.overridden && 'изменён', isDirty(cur) && 'есть несохранённые изменения']
+                  .filter(Boolean)
+                  .join(' · ') || undefined
+              }
+            >
+              {cur.kind === 'message' ? (
+                <div className="pad">
+                  <TgEditor key={cur.key} ref={editor} value={draft} onChange={setDraft} disabled={busy} />
+                </div>
+              ) : (
                 <Input ref={plain} aria-label={cur.title} placeholder={cur.title} maxLength={64} value={draft} onChange={(e) => setDraft(e.target.value)} />
-              </Section>
-            )}
+              )}
+            </Section>
 
             {cur.vars.length > 0 && (
-              <>
-                <div className="composer-label">Переменные (клик — вставить)</div>
-                <div className="texts-row">
+              <Section header="Переменные (клик — вставить)">
+                <div className="pad texts-row">
                   {cur.vars.map((v) => (
                     <Button key={v.name} mode="bezeled" size="s" title={v.description} onClick={() => insertVar(v.name)}>
                       {varLabel(v.name)}
                     </Button>
                   ))}
                 </div>
-              </>
+              </Section>
             )}
 
-            <div className="composer-label">Превью</div>
-            {cur.kind === 'message' ? (
-              // только разрешённые теги после sanitize
-              <div className="tg-msg" dangerouslySetInnerHTML={{ __html: sanitize(renderPreview(draft, samples, raw)) }} />
-            ) : (
-              <div className="tg-msg">{renderPlain(draft, samples)}</div>
-            )}
+            <Section header="Превью">
+              <div className="pad">
+                {cur.kind === 'message' ? (
+                  // только разрешённые теги после sanitize
+                  <div className="tg-msg" dangerouslySetInnerHTML={{ __html: sanitize(renderPreview(draft, samples, raw)) }} />
+                ) : (
+                  <div className="tg-msg">{renderPlain(draft, samples)}</div>
+                )}
+              </div>
+            </Section>
 
             {error && (
               <p className="tg-err" role="alert">

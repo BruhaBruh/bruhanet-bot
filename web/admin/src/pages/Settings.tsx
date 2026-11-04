@@ -112,8 +112,8 @@ export default function Settings() {
       <Section header="Тарифы" footer="Месяцев и цена в рублях. Хотя бы один тариф.">
         {tariffs.map((t, i) => (
           <div key={i} className="field-row">
-            <Input type="number" min={1} placeholder="Месяцев" aria-label="Месяцев" value={t.months} onChange={(e) => setTariff(i, { months: e.target.value })} />
-            <Input type="number" min={1} placeholder="Цена, ₽" aria-label="Цена, ₽" value={t.price} onChange={(e) => setTariff(i, { price: e.target.value })} />
+            <Input type="number" min={1} placeholder="Месяцев" aria-label="Месяцев" after="мес" value={t.months} onChange={(e) => setTariff(i, { months: e.target.value })} />
+            <Input type="number" min={1} placeholder="Цена" aria-label="Цена, ₽" after="₽" value={t.price} onChange={(e) => setTariff(i, { price: e.target.value })} />
             <Button type="button" mode="plain" disabled={tariffs.length <= 1} aria-label="Удалить тариф" onClick={() => setTariffs((ts) => ts.filter((_, j) => j !== i))}>
               ✕
             </Button>
@@ -165,7 +165,7 @@ export default function Settings() {
           Сохранено
         </p>
       )}
-      <Button type="submit" loading={busy}>
+      <Button className="settings-save" type="submit" loading={busy}>
         Сохранить
       </Button>
     </form>
