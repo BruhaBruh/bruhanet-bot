@@ -46,7 +46,7 @@ body { margin: 0; }
   .nav .nav-list { display: flex; gap: 4px; }
   .nav a { flex: none; }
   .nav .nav-cell { --tgui--cell--middle--padding: 8px 0; padding: 0 12px 0 8px; gap: 8px; }
-  .nav .av { width: 28px !important; height: 28px !important; flex: none; }
+  .nav .av { width: 28px !important; min-width: 28px !important; height: 28px !important; flex: none; } /* у Avatar inline width/min-width по size */
   .nav .av * { font-size: 16px; line-height: 28px; }
   .nav :has(> .nav-sub) { display: none; } /* подпись целиком, вместе с обёрткой кита */
   .nav .logout { margin-top: 0; margin-left: auto; flex: none; align-self: center; }
