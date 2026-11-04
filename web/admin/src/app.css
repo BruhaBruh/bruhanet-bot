@@ -12,6 +12,7 @@ body { margin: 0; }
 }
 .nav .brand { padding: 4px 8px 12px; }
 /* Компактно, как список чатов: List кит добавляет 12px между детьми, Cell — 16px сверху/снизу. */
+.nav .nav-list { padding: 0; }
 .nav .nav-list > * { margin-bottom: 0; }
 .nav .nav-cell { --tgui--cell--middle--padding: 10px 0; padding: 0 12px; gap: 12px; }
 .nav .nav-cell > :has(> .av) { flex: none; } /* аватар не сжимается в эллипс */
