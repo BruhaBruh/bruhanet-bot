@@ -1,7 +1,7 @@
 /* Только раскладка; цвета — переменные telegram-ui (кроме градиентов аватарок меню: в ките их нет). */
 body { margin: 0; }
 /* --tgui--font-family объявлен на AppRoot, но шрифт он не ставит — без этого всё вне типографики кита в serif. */
-.app-root { font-family: var(--tgui--font-family); min-height: 100vh; background: var(--tgui--secondary_bg_color); }
+.app-root { font-family: var(--tgui--font-family); min-height: 100vh; display: flow-root; /* margin .login-box не схлопывается наружу */ background: var(--tgui--secondary_bg_color); }
 
 .layout { display: flex; min-height: 100vh; background: var(--tgui--secondary_bg_color); }
 
