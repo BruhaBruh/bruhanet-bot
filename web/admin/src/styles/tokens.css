@@ -1,0 +1,378 @@
+/* Сгенерировано scripts/gen-tokens.mjs из design/tokens.json. Не править руками: pnpm tokens. */
+:root,
+[data-theme="light"] {
+  --brand: #2aabee;
+  --page-bg: var(--tg-theme-secondary-bg-color, #efeff4);
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --surface: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #ffffff));
+  --surface-elevated: var(--tg-theme-section-bg-color, #ffffff);
+  --header-bg: var(--tg-theme-header-bg-color, #f7f7f7f0);
+  --bottom-bar-bg: var(--tg-theme-bottom-bar-bg-color, #f7f7f7f0);
+  --cell-highlight: #d9d9d9;
+  --fill-tertiary: #7676801f;
+  --chat-bg: #d6e1c7;
+  --overlay: #00000066;
+  --text: var(--tg-theme-text-color, #000000);
+  --text-secondary: var(--tg-theme-subtitle-text-color, #68686e);
+  --text-hint: var(--tg-theme-hint-color, #8e8e93);
+  --section-header: var(--tg-theme-section-header-text-color, #68686e);
+  --link: var(--tg-theme-link-color, #007aff);
+  --accent: var(--tg-theme-button-color, #007aff);
+  --on-accent: var(--tg-theme-button-text-color, #ffffff);
+  --accent-text: var(--tg-theme-accent-text-color, #007aff);
+  --accent-strong: #0062cc;
+  --accent-tint: color-mix(in srgb, var(--tg-theme-button-color, #007aff) 12%, transparent);
+  --destructive: var(--tg-theme-destructive-text-color, #ff3b30);
+  --destructive-strong: #d70015;
+  --destructive-tint: #ff3b301f;
+  --success: #34c759;
+  --success-strong: #1f7a37;
+  --success-tint: #34c7591f;
+  --warning: #ff9500;
+  --warning-strong: #a84700;
+  --warning-tint: #ff95001f;
+  --separator: var(--tg-theme-section-separator-color, #c8c7cc);
+  --switch-off: #949499;
+  --switch-on: var(--success);
+  --toast-bg: #2c2c2ef2;
+  --on-toast: #ffffff;
+  --bubble-in: #ffffff;
+  --bubble-out: #e1ffc7;
+  --bubble-meta: #4a7a3d;
+  --keyboard-btn-bg: #ffffffcc;
+  --on-accent-strong: #ffffff;
+  --on-success-strong: #ffffff;
+  --on-destructive-strong: #ffffff;
+  --avatar-red-top: #ff885e;
+  --avatar-red: #ff516a;
+  --avatar-orange-top: #ffcd6a;
+  --avatar-orange: #ffa85c;
+  --avatar-violet-top: #82b1ff;
+  --avatar-violet: #665fff;
+  --avatar-green-top: #a0de7e;
+  --avatar-green: #54cb68;
+  --avatar-cyan-top: #53edd6;
+  --avatar-cyan: #28c9b7;
+  --avatar-blue-top: #72d5fd;
+  --avatar-blue: #2a9ef1;
+  --avatar-pink-top: #e0a2f3;
+  --avatar-pink: #d669ed;
+  --icon-blue: #007aff;
+  --icon-green: #34c759;
+  --icon-orange: #ff9500;
+  --icon-red: #ff3b30;
+  --icon-purple: #af52de;
+  --icon-gray: #8e8e93;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-popover: 0 8px 32px rgba(0, 0, 0, 0.16);
+  --shadow-thumb: 0 3px 8px rgba(0, 0, 0, 0.12), 0 3px 1px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] {
+  --brand: #2aabee;
+  --page-bg: var(--tg-theme-secondary-bg-color, #1c1c1d);
+  --bg: var(--tg-theme-bg-color, #000000);
+  --surface: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #2c2c2e));
+  --surface-elevated: var(--tg-theme-section-bg-color, #2c2c2e);
+  --header-bg: var(--tg-theme-header-bg-color, #1a1a1af0);
+  --bottom-bar-bg: var(--tg-theme-bottom-bar-bg-color, #1a1a1af0);
+  --cell-highlight: #3a3a3c;
+  --fill-tertiary: #7676803d;
+  --chat-bg: #0e1621;
+  --overlay: #00000099;
+  --text: var(--tg-theme-text-color, #ffffff);
+  --text-secondary: var(--tg-theme-subtitle-text-color, #98989e);
+  --text-hint: var(--tg-theme-hint-color, #8d8e93);
+  --section-header: var(--tg-theme-section-header-text-color, #8d8e93);
+  --link: var(--tg-theme-link-color, #3e88f7);
+  --accent: var(--tg-theme-button-color, #3e88f7);
+  --on-accent: var(--tg-theme-button-text-color, #ffffff);
+  --accent-text: var(--tg-theme-accent-text-color, #3e88f7);
+  --accent-strong: #7cb3ff;
+  --accent-tint: color-mix(in srgb, var(--tg-theme-button-color, #3e88f7) 20%, transparent);
+  --destructive: var(--tg-theme-destructive-text-color, #eb5545);
+  --destructive-strong: #ff8a84;
+  --destructive-tint: #eb554533;
+  --success: #30d158;
+  --success-strong: #30d158;
+  --success-tint: #30d15829;
+  --warning: #ff9f0a;
+  --warning-strong: #ffb340;
+  --warning-tint: #ff9f0a29;
+  --separator: var(--tg-theme-section-separator-color, #3d3d3f);
+  --switch-off: #7c7c82;
+  --switch-on: var(--success);
+  --toast-bg: #3a3a3cf2;
+  --on-toast: #ffffff;
+  --bubble-in: #182533;
+  --bubble-out: #2b5278;
+  --bubble-meta: #a8c6e6;
+  --keyboard-btn-bg: #182533cc;
+  --on-accent-strong: #000000;
+  --on-success-strong: #000000;
+  --on-destructive-strong: #000000;
+  --avatar-red-top: #ff885e;
+  --avatar-red: #ff516a;
+  --avatar-orange-top: #ffcd6a;
+  --avatar-orange: #ffa85c;
+  --avatar-violet-top: #82b1ff;
+  --avatar-violet: #665fff;
+  --avatar-green-top: #a0de7e;
+  --avatar-green: #54cb68;
+  --avatar-cyan-top: #53edd6;
+  --avatar-cyan: #28c9b7;
+  --avatar-blue-top: #72d5fd;
+  --avatar-blue: #2a9ef1;
+  --avatar-pink-top: #e0a2f3;
+  --avatar-pink: #d669ed;
+  --icon-blue: #007aff;
+  --icon-green: #34c759;
+  --icon-orange: #ff9500;
+  --icon-red: #ff3b30;
+  --icon-purple: #af52de;
+  --icon-gray: #8e8e93;
+  --shadow-card: none;
+  --shadow-popover: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow-thumb: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+:root {
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-sheet: 16px;
+  --radius-bubble: 18px;
+  --radius-full: 9999px;
+  --size-nav-bar: 44px;
+  --size-tab-bar: 49px;
+  --size-cell: 44px;
+  --size-cell-subtitle: 58px;
+  --size-main-button: 50px;
+  --size-button-md: 40px;
+  --size-button-sm: 30px;
+  --size-avatar: 40px;
+  --size-icon-tile: 29px;
+  --size-sidebar: 248px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
+}
+
+/* Палитра и шкалы Tailwind по умолчанию выключены: в классах только токены. */
+@theme inline {
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --text-*: initial;
+  --color-brand: var(--brand);
+  --color-page-bg: var(--page-bg);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-header-bg: var(--header-bg);
+  --color-bottom-bar-bg: var(--bottom-bar-bg);
+  --color-cell-highlight: var(--cell-highlight);
+  --color-fill-tertiary: var(--fill-tertiary);
+  --color-chat-bg: var(--chat-bg);
+  --color-overlay: var(--overlay);
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-hint: var(--text-hint);
+  --color-section-header: var(--section-header);
+  --color-link: var(--link);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-tint: var(--accent-tint);
+  --color-destructive: var(--destructive);
+  --color-destructive-strong: var(--destructive-strong);
+  --color-destructive-tint: var(--destructive-tint);
+  --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-strong: var(--warning-strong);
+  --color-warning-tint: var(--warning-tint);
+  --color-separator: var(--separator);
+  --color-switch-off: var(--switch-off);
+  --color-switch-on: var(--switch-on);
+  --color-toast-bg: var(--toast-bg);
+  --color-on-toast: var(--on-toast);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-meta: var(--bubble-meta);
+  --color-keyboard-btn-bg: var(--keyboard-btn-bg);
+  --color-on-accent-strong: var(--on-accent-strong);
+  --color-on-success-strong: var(--on-success-strong);
+  --color-on-destructive-strong: var(--on-destructive-strong);
+  --color-avatar-red-top: var(--avatar-red-top);
+  --color-avatar-red: var(--avatar-red);
+  --color-avatar-orange-top: var(--avatar-orange-top);
+  --color-avatar-orange: var(--avatar-orange);
+  --color-avatar-violet-top: var(--avatar-violet-top);
+  --color-avatar-violet: var(--avatar-violet);
+  --color-avatar-green-top: var(--avatar-green-top);
+  --color-avatar-green: var(--avatar-green);
+  --color-avatar-cyan-top: var(--avatar-cyan-top);
+  --color-avatar-cyan: var(--avatar-cyan);
+  --color-avatar-blue-top: var(--avatar-blue-top);
+  --color-avatar-blue: var(--avatar-blue);
+  --color-avatar-pink-top: var(--avatar-pink-top);
+  --color-avatar-pink: var(--avatar-pink);
+  --color-icon-blue: var(--icon-blue);
+  --color-icon-green: var(--icon-green);
+  --color-icon-orange: var(--icon-orange);
+  --color-icon-red: var(--icon-red);
+  --color-icon-purple: var(--icon-purple);
+  --color-icon-gray: var(--icon-gray);
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-sheet: var(--radius-sheet);
+  --radius-bubble: var(--radius-bubble);
+  --radius-full: var(--radius-full);
+  --shadow-card: var(--shadow-card);
+  --shadow-popover: var(--shadow-popover);
+  --shadow-thumb: var(--shadow-thumb);
+}
+
+@utility large-title {
+  font-family: var(--font-sans);
+  font-size: 34px;
+  line-height: 41px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+@utility title-1 {
+  font-family: var(--font-sans);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+}
+
+@utility title-2 {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+}
+
+@utility title-3 {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  line-height: 25px;
+  font-weight: 600;
+}
+
+@utility headline {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+
+@utility body {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 400;
+  letter-spacing: -0.4px;
+}
+
+@utility callout {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 21px;
+  font-weight: 400;
+  letter-spacing: -0.3px;
+}
+
+@utility subheadline {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 400;
+  letter-spacing: -0.2px;
+}
+
+@utility footnote {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  letter-spacing: -0.1px;
+}
+
+@utility caption-1 {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+@utility caption-2 {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+}
+
+@utility admin-page-title {
+  font-family: var(--font-sans);
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 700;
+}
+
+@utility admin-body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 400;
+}
+
+@utility admin-table {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+}
+
+@utility admin-label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+}
+
+@utility admin-stat {
+  font-family: var(--font-sans);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+}

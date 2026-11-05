@@ -1,0 +1,90 @@
+/* legacy — между preflight и utilities: см. конец файла. */
+@layer theme, base, legacy, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './tokens.css';
+
+/* dark: идёт за атрибутом на <html>, а не за системной темой. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* Шаг 4px: p-4 = --space-4. Цвета shadcn — алиасы токенов; --destructive и --accent совпадают по имени с DS. */
+@theme inline {
+  --spacing: var(--space-1);
+
+  --color-background: var(--page-bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface-elevated);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--on-accent);
+  --color-secondary: var(--fill-tertiary);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--fill-tertiary);
+  --color-muted-foreground: var(--text-secondary);
+  --color-accent-foreground: var(--on-accent);
+  --color-border: var(--separator);
+  --color-input: var(--separator);
+  --color-ring: var(--accent);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--separator);
+  }
+}
+
+/*
+ * ponytail: старые экраны живут без preflight. Стили кита и app.css вне слоёв и и так сильнее,
+ * но там, где кит полагается на дефолты браузера (box-sizing, margin, list-style), preflight их сбросил бы.
+ * Список свойств, а не all: revert — all снёс бы атрибуты fill/stroke у SVG-иконок кита.
+ * Утилиты выше этого слоя и работают. Удалить вместе с telegram-ui.
+ */
+@layer legacy {
+  :where(.app-root, .app-root *),
+  :where(.app-root, .app-root *)::before,
+  :where(.app-root, .app-root *)::after,
+  :where(.app-root *)::file-selector-button {
+    box-sizing: revert;
+    margin: revert;
+    padding: revert;
+    border: revert;
+    border-radius: revert;
+    border-collapse: revert;
+    font: revert;
+    font-feature-settings: revert;
+    font-variation-settings: revert;
+    letter-spacing: revert;
+    color: revert;
+    background-color: revert;
+    text-decoration: revert;
+    text-indent: revert;
+    list-style: revert;
+    display: revert;
+    vertical-align: revert;
+    appearance: revert;
+    resize: revert;
+  }
+
+  :where(.app-root *)::placeholder {
+    color: revert;
+    opacity: revert;
+  }
+
+  :where(.app-root img, .app-root video, .app-root hr) {
+    max-width: revert;
+    height: revert;
+  }
+
+  /* Наследуется от html из preflight, revert не помогает. */
+  .app-root {
+    line-height: normal;
+  }
+}

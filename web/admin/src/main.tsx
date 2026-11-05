@@ -1,3 +1,4 @@
+import './styles/index.css'
 import '@telegram-apps/telegram-ui/dist/styles.css'
 import './app.css'
 import { StrictMode } from 'react'

@@ -8,6 +8,12 @@
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
+    "allowJs": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
     "lib": [
       "ES2022",
       "DOM"
@@ -20,6 +26,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
+    "scripts/**/*.ts",
     "vite.config.ts"
   ]
 }

@@ -15,7 +15,7 @@ export function formatDate(iso: string): string {
 
 // 2 350 ₽ (неразрывные пробелы)
 export function formatRub(n: number): string {
-  return `${new Intl.NumberFormat('ru-RU').format(n)} ₽`
+  return `${new Intl.NumberFormat('ru-RU').format(n)}\u00a0₽`
 }
 
 export const statusLabels: Record<string, string> = {
