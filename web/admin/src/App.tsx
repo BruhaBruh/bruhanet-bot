@@ -21,7 +21,7 @@ const Broadcasts = lazy(() => import('./pages/Broadcasts'))
 const Texts = lazy(() => import('./pages/Texts'))
 
 const title = (pathname: string) =>
-  `${pathname === '/login-required' ? 'Нужен вход' : sectionOf(pathname).label} — BruhaNet`
+  `${pathname === '/login-required' ? 'Вход в админ-панель' : sectionOf(pathname).label} — BruhaNet`
 
 export function App() {
   const { theme } = useTheme()
@@ -36,14 +36,7 @@ export function App() {
   return (
     <ToastProvider>
       <Routes>
-        <Route
-          path="/login-required"
-          element={
-            <AppRoot className="app-root" appearance={theme} platform="ios">
-              <LoginRequired />
-            </AppRoot>
-          }
-        />
+        <Route path="/login-required" element={<LoginRequired />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Overview />} />
           <Route path="/broadcasts/new" element={<BroadcastNew />} />

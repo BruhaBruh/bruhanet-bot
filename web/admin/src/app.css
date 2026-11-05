@@ -1,7 +1,7 @@
 /* Только раскладка; цвета — переменные telegram-ui (кроме градиентов аватарок: в ките их нет). */
 body { margin: 0; }
 /* --tgui--font-family объявлен на AppRoot, но шрифт он не ставит — без этого всё вне типографики кита в serif. */
-.app-root { font-family: var(--tgui--font-family); min-height: 100vh; display: flow-root; /* margin .login-box не схлопывается наружу */ background: var(--tgui--secondary_bg_color); }
+.app-root { font-family: var(--tgui--font-family); min-height: 100vh; display: flow-root; background: var(--tgui--secondary_bg_color); }
 
 /* Старый экран внутри AppShell: высоту и фон даёт оболочка. */
 .app-root.in-shell { min-height: 0; background: transparent; }
@@ -16,8 +16,7 @@ body { margin: 0; }
 
 .col { max-width: 720px; margin: 0 auto; }
 
-.login-box { max-width: 360px; margin: 20vh auto; }
-.login-emoji, .ph-emoji { font-size: 64px; line-height: 1; }
+.ph-emoji { font-size: 64px; line-height: 1; }
 
 /* Общие состояния и отступы внутри Section. */
 .pad { padding: 12px 16px; }

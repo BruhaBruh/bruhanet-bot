@@ -119,7 +119,7 @@ describe('AppShell', () => {
     fireEvent.click(sidebar().getByRole('button', { name: 'Выйти' }))
     await flush()
     expect(fetchMock.mock.calls.map(([u]) => u)).toContain('/api/logout')
-    expect(screen.getByText('Нужен вход')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Войдите через Telegram' })).toBeTruthy()
   })
 
   it('sends any 401 to /login-required', async () => {
@@ -128,8 +128,8 @@ describe('AppShell', () => {
     await act(async () => {
       await expect(get('/api/payments')).rejects.toThrow('unauthorized')
     })
-    expect(screen.getByText('Нужен вход')).toBeTruthy()
-    expect(document.querySelector('aside')).toBeNull()
-    expect(document.title).toBe('Нужен вход — BruhaNet')
+    expect(screen.getByRole('heading', { level: 1, name: 'Войдите через Telegram' })).toBeTruthy()
+    expect(document.querySelector('aside nav')).toBeNull()
+    expect(document.title).toBe('Вход в админ-панель — BruhaNet')
   })
 })
