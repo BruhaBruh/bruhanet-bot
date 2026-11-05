@@ -1,5 +1,6 @@
 import { Avatar, Cell, Info, Input, Navigation, Placeholder, Section, Spinner, VisuallyHidden } from '@telegram-apps/telegram-ui'
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { get } from '../api'
 import { formatMonthYear, formatRub, plural } from '../format'
 import { RowLink } from '../layout/RowLink'
@@ -13,7 +14,14 @@ export function UserAvatar({ name, size = 40 }: { name: string; size?: 40 | 48 }
 }
 
 export default function Users() {
-  const [q, setQ] = useState('')
+  // ?q= приходит из поиска в шапке: новый запрос — новая загрузка
+  const [params] = useSearchParams()
+  const initial = params.get('q') ?? ''
+  return <UsersInner key={initial} initial={initial} />
+}
+
+function UsersInner({ initial }: { initial: string }) {
+  const [q, setQ] = useState(initial)
   const [items, setItems] = useState<UserSummary[]>()
   const [error, setError] = useState(false)
   const seq = useRef(0)

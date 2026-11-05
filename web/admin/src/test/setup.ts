@@ -10,3 +10,8 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 }
+
+// Node >= 22 держит свой localStorage (без --localstorage-file он undefined), и vitest не перекрывает его jsdom-овским.
+// jsdom нет в тестах с окружением node (gen-tokens).
+const { jsdom } = globalThis as unknown as { jsdom?: { window: Window } }
+if (jsdom) Object.defineProperty(globalThis, 'localStorage', { value: jsdom.window.localStorage, configurable: true })

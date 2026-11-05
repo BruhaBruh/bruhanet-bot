@@ -17,11 +17,6 @@ export default defineConfig([
   },
   // Легаси: файлы переписываются целиком, правила снимаются точечно и уходят вместе с ними.
   {
-    // до замены в Task 3
-    files: ['src/layout/AdminLayout.tsx'],
-    rules: { 'react-refresh/only-export-components': 'off' },
-  },
-  {
     // до замены в Task 6 (Broadcasts, Composer, PhotoPicker), Task 7 (Promos), Task 10 (Texts)
     files: [
       'src/pages/Broadcasts.tsx',
