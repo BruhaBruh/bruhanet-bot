@@ -45,6 +45,7 @@ export function App() {
           <Route path="/promos/new" element={<PromoNew />} />
           <Route path="/users" element={<Users />} />
           <Route path="/users/:id" element={<UserCard />} />
+          <Route path="/payments" element={<Payments />} />
           {/* Старые экраны на telegram-ui: при замене экран переезжает из этого блока выше. */}
           <Route
             element={
@@ -55,7 +56,6 @@ export function App() {
               </AppRoot>
             }
           >
-            <Route path="/payments" element={<Payments />} />
             <Route path="/texts" element={<Texts />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

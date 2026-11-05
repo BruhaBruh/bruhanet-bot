@@ -55,13 +55,6 @@ export function formatDelta(current: number, previous: number): string | undefin
   return `${percent > 0 ? '+' : ''}${percent}%`
 }
 
-export const statusLabels: Record<string, string> = {
-  pending: 'ожидает',
-  confirmed: 'подтверждён',
-  declined: 'отклонён',
-  cancelled: 'отменён',
-}
-
 // статус юзера в Remnawave (+ not_found от api)
 export const panelStatusLabels: Record<string, string> = {
   ACTIVE: 'активна',

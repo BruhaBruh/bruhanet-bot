@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { Avatar, RowAction, StatusTag, toast, type CellProps, type DataTableColumn, type Tone } from '@/ui'
 import { formatRub, formatShortDate } from '../format'
 import { userLabel } from '../promo'
@@ -30,13 +31,14 @@ const userColumn: Column = {
   maxWidth: 240,
   truncate: true,
   render: (p) => (
-    <span className="flex items-center gap-2.5">
+    // stopPropagation: клик по строке ведёт туда же, вторая запись в истории не нужна.
+    <Link to={`/users/${p.telegramId}`} className="focus-ring flex items-center gap-2.5 text-inherit" onClick={(e) => e.stopPropagation()}>
       <Avatar name={userLabel(p)} id={p.telegramId} size={28} />
       <span className="flex min-w-0 flex-col">
         <span className="truncate">{userLabel(p)}</span>
         {p.username && <span className="caption-1 truncate text-text-secondary">{p.telegramId}</span>}
       </span>
-    </span>
+    </Link>
   ),
 }
 // Способа оплаты нет в API: «Перевод» не выдумываем.
@@ -46,6 +48,16 @@ const statusColumn: Column = { key: 'status', title: 'Статус', width: 140,
 const dateColumn: Column = { key: 'date', title: 'Дата', secondary: true, width: 150, render: (p) => formatShortDate(p.createdAt) }
 
 export const paymentColumns: Column[] = [idColumn, userColumn, priceColumn, statusColumn, dateColumn]
+
+export const paymentPageColumns: Column[] = [
+  { ...idColumn, sortable: true, sortValue: (p) => Number(p.id) },
+  { ...userColumn, sortable: true, sortValue: userLabel },
+  { key: 'plan', title: 'Тариф', render: planLabel },
+  methodColumn,
+  { ...priceColumn, sortable: true },
+  statusColumn,
+  dateColumn,
+]
 
 // Платежи в карточке юзера: сам юзер уже в шапке.
 export const userPayColumns: Column[] = [
@@ -62,6 +74,12 @@ export const paymentMobileRow = (p: Payment): CellProps => ({
   subtitle: formatShortDate(p.createdAt),
   value: formatRub(p.price),
   after: statusTag(p.status),
+})
+
+export const paymentPageMobileRow = (p: Payment): CellProps => ({
+  ...paymentMobileRow(p),
+  subtitle: `${planLabel(p)} · ${formatShortDate(p.createdAt)}`,
+  chevron: true,
 })
 
 export const userPayMobileRow = (p: Payment): CellProps => ({ ...paymentMobileRow(p), title: planLabel(p) })
