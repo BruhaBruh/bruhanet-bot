@@ -19,12 +19,12 @@ export function SegmentedControl({ options, value, onChange, block, className }:
       onValueChange={(next) => {
         if (next) onChange?.(next)
       }}
-      className={cn(block && 'flex', className)}
+      className={cn('max-w-full overflow-x-auto', block && 'flex', className)}
     >
       {options.map((option) => {
         const { value: v, label } = typeof option === 'string' ? { value: option, label: option } : option
         return (
-          <ToggleGroupItem key={v} value={v} className={cn(block && 'flex-1')}>
+          <ToggleGroupItem key={v} value={v} className={cn('flex-none whitespace-nowrap', block && 'flex-1')}>
             {label}
           </ToggleGroupItem>
         )
