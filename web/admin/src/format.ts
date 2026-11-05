@@ -18,6 +18,35 @@ export function formatRub(n: number): string {
   return `${new Intl.NumberFormat('ru-RU').format(n)}\u00a0₽`
 }
 
+// 3 214 (неразрывный пробел)
+export function formatCount(n: number): string {
+  return new Intl.NumberFormat('ru-RU').format(n)
+}
+
+// Как в макете: Intl даёт «мар.», «июн.», «июл.»
+const SHORT_MONTHS = ['янв.', 'февр.', 'марта', 'апр.', 'мая', 'июня', 'июля', 'авг.', 'сент.', 'окт.', 'нояб.', 'дек.']
+
+const timeFmt = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+
+// «сегодня, 14:32», «вчера, 21:47», «4 нояб., 14:32», другой год — «4 нояб. 2025, 14:32» (МСК)
+export function formatShortDate(iso: string, now = new Date()): string {
+  const d = new Date(iso)
+  const day = mskDate(d)
+  const time = timeFmt.format(d)
+  if (day === mskDate(now)) return `сегодня, ${time}`
+  if (day === mskDate(now, -1)) return `вчера, ${time}`
+  const [year, month, date] = day.split('-')
+  const label = `${Number(date)} ${SHORT_MONTHS[Number(month) - 1]}`
+  return `${year === mskDate(now).slice(0, 4) ? label : `${label} ${year}`}, ${time}`
+}
+
+// Изменение к прошлому периоду: «+12%», «-4%»; без базы сравнивать не с чем
+export function formatDelta(current: number, previous: number): string | undefined {
+  if (previous === 0) return undefined
+  const percent = Math.round(((current - previous) / previous) * 100)
+  return `${percent > 0 ? '+' : ''}${percent}%`
+}
+
 export const statusLabels: Record<string, string> = {
   pending: 'ожидает',
   confirmed: 'подтверждён',

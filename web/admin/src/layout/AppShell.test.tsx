@@ -83,8 +83,7 @@ describe('AppShell', () => {
     const fetchMock = stubFetch(3)
     await renderAt('/')
     expect(sidebar().getByRole('button', { name: /Платежи/ }).textContent).toBe('Платежи3')
-    const url = fetchMock.mock.calls.map(([u]) => u).find((u) => u.startsWith('/api/payments'))!
-    expect(new URLSearchParams(url.split('?')[1]).get('status')).toBe('pending')
+    const url = fetchMock.mock.calls.map(([u]) => u).find((u) => u.startsWith('/api/payments?status=pending'))!
     expect(new URLSearchParams(url.split('?')[1]).get('from')).toBeTruthy()
   })
 
