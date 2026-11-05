@@ -18,6 +18,7 @@ export interface CellProps {
   /** Внутренний путь (`/users/5`) — Link роутера, остальное — обычная ссылка. */
   href?: string
   className?: string
+  'aria-expanded'?: boolean
 }
 
 const isInternal = (href: string) => href.startsWith('/') && !href.startsWith('//')
@@ -42,6 +43,7 @@ export function Cell({
   onClick,
   href,
   className,
+  'aria-expanded': expanded,
 }: CellProps) {
   const root = cn(
     'group body flex min-h-(--size-cell) w-full items-center bg-surface pl-4 text-left text-text no-underline',
@@ -88,7 +90,7 @@ export function Cell({
   }
   if (onClick) {
     return (
-      <button type="button" className={root} onClick={onClick}>
+      <button type="button" className={root} onClick={onClick} aria-expanded={expanded}>
         {content}
       </button>
     )

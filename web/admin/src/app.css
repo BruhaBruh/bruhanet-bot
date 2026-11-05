@@ -100,15 +100,3 @@ body { margin: 0; }
 form > .tg-err, form > .tg-ok { margin: 16px 0 0; }
 .settings-banner { margin-bottom: 16px; }
 
-/* Промокоды: строка = раскрывающая кнопка-ячейка + «Выключить» рядом (не внутри) */
-.promo-filter { margin-bottom: 16px; }
-.promo-row { display: flex; align-items: center; min-width: 0; padding-right: 8px; }
-.promo-row > button:last-child, .promo-off { flex: none; }
-.promo-cell { flex: 1; min-width: 0; width: auto; border: 0; font: inherit; text-align: left; background: transparent; color: var(--tgui--text_color); }
-.promo-cell:focus-visible { outline: 2px solid var(--tgui--link_color); outline-offset: -2px; }
-/* длинный код и подпись переносятся, не распирают 390px */
-.promo-cell * { overflow-wrap: anywhere; }
-.promo-off { color: var(--tgui--hint_color); font-size: 13px; padding: 0 8px; }
-.promo-acts { padding: 0 16px 12px; color: var(--tgui--hint_color); font-size: 13px; overflow-wrap: anywhere; }
-.promo-acts p { margin: 4px 0; }
-.promo-form { margin-top: 24px; }

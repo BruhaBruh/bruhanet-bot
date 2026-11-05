@@ -1,17 +1,25 @@
 import { expect, test } from 'vitest'
-import { generateCode, promoBody, promoGives, promoUntil, promoUsage, validatePromo, type PromoForm } from './promo'
+import { generateCode, promoBody, promoStatus, promoUntil, promoValue, validatePromo, type PromoForm } from './promo'
 
-test('promoGives formats each kind', () => {
-  expect(promoGives({ kind: 'percent', value: 25 })).toBe('−25% к оплате')
-  expect(promoGives({ kind: 'rub', value: 1500 })).toBe('−1 500 ₽')
-  expect(promoGives({ kind: 'days', value: 7 })).toBe('+7 дней')
-  expect(promoGives({ kind: 'days', value: 1 })).toBe('+1 день')
-  expect(promoGives({ kind: 'days', value: 3 })).toBe('+3 дня')
+test('promoValue formats each kind', () => {
+  expect(promoValue({ kind: 'percent', value: 25 })).toBe('−25%')
+  expect(promoValue({ kind: 'rub', value: 1500 })).toBe('−1\u00a0500\u00a0₽')
+  expect(promoValue({ kind: 'days', value: 7 })).toBe('+7\u00a0дн.')
 })
 
-test('promoUsage shows ∞ without limit', () => {
-  expect(promoUsage({ used: 3, maxActivations: null })).toBe('использовано 3 / ∞')
-  expect(promoUsage({ used: 17, maxActivations: 50 })).toBe('использовано 17 / 50')
+test('promoStatus: disabled, then expired, then limit', () => {
+  const base = { disabled: false, validUntil: null, used: 0, maxActivations: null }
+  const now = new Date('2026-11-06T12:00:00Z')
+  expect(promoStatus(base, now)).toBe('active')
+  expect(promoStatus({ ...base, maxActivations: 2, used: 1 }, now)).toBe('active')
+  expect(promoStatus({ ...base, maxActivations: 2, used: 2 }, now)).toBe('limit')
+  // validUntil включительно
+  expect(promoStatus({ ...base, validUntil: '2026-11-06' }, now)).toBe('active')
+  expect(promoStatus({ ...base, validUntil: '2026-11-05' }, now)).toBe('expired')
+  // полночь по МСК наступает раньше, чем по UTC
+  expect(promoStatus({ ...base, validUntil: '2026-11-06' }, new Date('2026-11-06T21:30:00Z'))).toBe('expired')
+  expect(promoStatus({ ...base, validUntil: '2026-11-05', maxActivations: 1, used: 1 }, now)).toBe('expired')
+  expect(promoStatus({ disabled: true, validUntil: '2026-11-05', maxActivations: 1, used: 1 }, now)).toBe('disabled')
 })
 
 test('promoUntil', () => {

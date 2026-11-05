@@ -158,7 +158,7 @@ export default function Texts() {
               }
             >
               {cur.kind === 'message' ? (
-                <div className="pad">
+                <div className="pad [--field-bg:var(--page-bg)]">
                   <TgEditor key={cur.key} ref={editor} value={draft} onChange={setDraft} disabled={busy} />
                 </div>
               ) : (

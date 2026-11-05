@@ -1,56 +1,96 @@
-import { Button, Cell, Checkbox, Input, Placeholder, Radio, Section, SegmentedControl, Spinner, VisuallyHidden } from '@telegram-apps/telegram-ui'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, get, post } from '../api'
-import { formatDate } from '../format'
-import { generateCode, promoBody, promoGives, promoUntil, promoUsage, validatePromo, type PromoForm } from '../promo'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
+import { notWired } from '@/lib/not-wired'
+import { Button, DataTable, Dialog, RowAction, RowMenu, SegmentedControl, Spinner, StatusTag, toast, type DataTableColumn, type Tone } from '@/ui'
+import { get, post } from '../api'
+import { formatCount, formatDay, formatShortDate } from '../format'
+import { kindLabels, promoStatus, promoUntil, promoValue, userLabel, type PromoStatus } from '../promo'
 import type { Promo, PromoActivation } from '../types'
 
-const filters = [
-  { value: 'active', label: 'Активные' },
+const SEGMENTS = [
   { value: 'all', label: 'Все' },
-] as const
+  { value: 'active', label: 'Активные' },
+  { value: 'draft', label: 'Черновики' },
+  { value: 'expired', label: 'Истёкшие' },
+]
+const EMPTY: Record<string, string> = {
+  all: 'Промокодов ещё нет',
+  active: 'Активных промокодов нет',
+  draft: 'Черновиков нет',
+  expired: 'Истёкших промокодов нет',
+}
 
-const kinds = [
-  { value: 'percent', label: 'скидка %', unit: '%' },
-  { value: 'rub', label: 'скидка ₽', unit: '₽' },
-  { value: 'days', label: 'бонусные дни', unit: 'дн' },
-] as const
+const STATUS: Record<PromoStatus, [Tone, string]> = {
+  active: ['success', 'Активен'],
+  expired: ['neutral', 'Истёк'],
+  limit: ['warning', 'Лимит исчерпан'],
+  disabled: ['neutral', 'Выключен'],
+}
 
-const empty = (): PromoForm => ({ code: '', kind: 'percent', value: '', maxActivations: '', validUntil: '', onlyNew: false, user: '' })
+const statusTag = (p: Promo) => {
+  const [tone, label] = STATUS[promoStatus(p)]
+  return <StatusTag tone={tone}>{label}</StatusTag>
+}
 
-const marks = (p: Promo) =>
-  [promoUsage(p), p.validUntil && promoUntil(p.validUntil), p.onlyNew && 'только новым', p.telegramId && (p.username ? '@' + p.username : `ID ${p.telegramId}`)]
-    .filter(Boolean)
-    .join(' · ')
+const target = (p: Promo) =>
+  p.telegramId ? userLabel({ username: p.username, telegramId: p.telegramId }) : p.onlyNew ? 'Новые пользователи' : 'Все'
 
-const Loading = () => (
-  <div className="tg-loading" role="status">
-    <Spinner size="m" />
-    <VisuallyHidden>Загрузка…</VisuallyHidden>
-  </div>
-)
+const limitOf = (p: Promo) => (p.maxActivations == null ? '∞' : formatCount(p.maxActivations))
+
+const columns: DataTableColumn<Promo>[] = [
+  { key: 'code', title: 'Код', mono: true, strong: true, sortable: true, truncate: true, maxWidth: 240 },
+  { key: 'kind', title: 'Тип', secondary: true, render: (p) => kindLabels[p.kind] },
+  { key: 'value', title: 'Значение', numeric: true, width: 110, render: promoValue },
+  { key: 'target', title: 'Для кого', truncate: true, maxWidth: 200, render: target },
+  {
+    key: 'used',
+    title: 'Активации',
+    numeric: true,
+    sortable: true,
+    width: 130,
+    render: (p) => (
+      <span>
+        {formatCount(p.used)}
+        <span className="text-text-secondary"> / {limitOf(p)}</span>
+      </span>
+    ),
+  },
+  { key: 'until', title: 'Действует до', secondary: true, width: 130, render: (p) => (p.validUntil ? formatDay(p.validUntil, new Date()) : 'бессрочно') },
+  { key: 'status', title: 'Статус', width: 150, render: statusTag },
+]
+
+async function copyCode(code: string) {
+  try {
+    await navigator.clipboard.writeText(code)
+    toast(`Код ${code} скопирован`, { icon: 'check' })
+  } catch {
+    toast('Не удалось скопировать код')
+  }
+}
 
 export default function Promos() {
-  const [status, setStatus] = useState<'active' | 'all'>('active')
-  const [items, setItems] = useState<Promo[]>()
-  const [loadError, setLoadError] = useState(false)
-  const seq = useRef(0)
-  // перезагрузка после действия — по фильтру на момент ответа, а не клика
-  const statusRef = useRef(status)
-  statusRef.current = status
+  const navigate = useNavigate()
+  const [segment, setSegment] = useState('all')
+  const apiStatus = segment === 'active' ? 'active' : 'all'
+  const [reloads, setReloads] = useState(0)
+  // Ответ привязан к статусу: при смене фильтра старый список не показывается, items нет — ошибка загрузки.
+  const [data, setData] = useState<{ status: string; items?: Promo[] }>()
 
-  const load = useCallback(async (s: string) => {
-    const n = ++seq.current // устаревший ответ при быстром переключении фильтра не перетирает новый
-    try {
-      const r = (await get<{ items: Promo[] }>(`/api/promos?status=${s}`)).items
-      if (n !== seq.current) return
-      setItems(r)
-      setLoadError(false)
-    } catch {
-      if (n === seq.current) setLoadError(true)
+  // Устаревший ответ при быстром переключении не перетирает новый; после «Выключить» — текущий фильтр.
+  useEffect(() => {
+    let stale = false
+    get<{ items: Promo[] }>(`/api/promos?status=${apiStatus}`).then(
+      (r) => {
+        if (!stale) setData({ status: apiStatus, items: r.items })
+      },
+      () => {
+        if (!stale) setData({ status: apiStatus })
+      },
+    )
+    return () => {
+      stale = true
     }
-  }, [])
-  useEffect(() => void load(status), [load, status])
+  }, [apiStatus, reloads])
 
   // раскрытая строка → её активации (undefined — грузятся, null — ошибка)
   const [open, setOpen] = useState<number | null>(null)
@@ -70,169 +110,117 @@ export default function Promos() {
     }
   }
 
-  const [disabling, setDisabling] = useState<number | null>(null)
-  const [disableError, setDisableError] = useState(false)
+  const [confirming, setConfirming] = useState<Promo>()
+  const disabling = useRef(false)
   async function disable(p: Promo) {
-    if (disabling !== null) return
-    setDisabling(p.id)
-    setDisableError(false)
+    setConfirming(undefined)
+    if (disabling.current) return
+    disabling.current = true
     try {
       await post(`/api/promos/${p.id}/disable`)
-      await load(statusRef.current)
+      toast(`Промокод ${p.code} выключен`, { icon: 'check' })
+      setReloads((n) => n + 1)
     } catch {
-      setDisableError(true)
+      toast('Не удалось выключить промокод')
     } finally {
-      setDisabling(null)
+      disabling.current = false
     }
   }
 
-  const [form, setForm] = useState(empty)
-  const set = (p: Partial<PromoForm>) => setForm((f) => ({ ...f, ...p }))
-  const [busy, setBusy] = useState(false)
-  const inFlight = useRef(false)
-  const [error, setError] = useState('')
-  const [created, setCreated] = useState('')
+  const loaded = data?.status === apiStatus ? data : undefined
+  const items = loaded?.items ?? []
+  // ponytail: «Истёкшие» фильтруются на клиенте, у API только status=active|all; «Черновиков» нет в API и БД.
+  const rows = segment === 'draft' ? [] : segment === 'expired' ? items.filter((p) => promoStatus(p) === 'expired') : items
 
-  async function create() {
-    if (inFlight.current) return
-    setCreated('')
-    const msg = validatePromo(form)
-    setError(msg)
-    if (msg) return
-    inFlight.current = true
-    setBusy(true)
-    try {
-      const { promo } = await post<{ promo: Promo }>('/api/promos', promoBody(form))
-      setCreated(`Создан ${promo.code}`)
-      setForm(empty())
-      await load(statusRef.current)
-    } catch (e) {
-      setError(e instanceof ApiError && e.body.message ? e.body.message : 'Не удалось создать, попробуйте ещё раз')
-    } finally {
-      inFlight.current = false
-      setBusy(false)
-    }
-  }
+  const empty = segment === 'draft' ? EMPTY.draft : !loaded ? 'Загрузка…' : !loaded.items ? 'Не удалось загрузить промокоды' : EMPTY[segment]
+
+  const expanded = (p: Promo) =>
+    open !== p.id ? null : (
+      <div className="admin-table flex flex-col gap-2 bg-[color-mix(in_srgb,var(--page-bg)_55%,var(--surface))] px-5 py-3 whitespace-normal">
+        {/* На телефоне в строке нет кнопок (кнопка в кнопке): действия и «Для кого» здесь. */}
+        <div className="flex flex-col gap-2 md:hidden">
+          <span>Для кого: {target(p)}</span>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="gray" size="sm" icon="copy" onClick={() => void copyCode(p.code)}>
+              Скопировать код
+            </Button>
+            {!p.disabled && (
+              <Button variant="destructive" size="sm" onClick={() => setConfirming(p)}>
+                Выключить
+              </Button>
+            )}
+          </div>
+        </div>
+        <h3 className="admin-label text-text-secondary">Активации</h3>
+        {acts === undefined ? (
+          <Spinner size={20} />
+        ) : acts === null ? (
+          <p className="text-destructive-strong">Не удалось загрузить активации</p>
+        ) : !acts.length ? (
+          <p className="text-text-secondary">Ещё никто не активировал</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {acts.map((a) => (
+              <li key={a.id} className="break-words">
+                {userLabel(a)} · {formatShortDate(a.createdAt)}
+                {a.paymentId ? ` · платёж #${a.paymentId}` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
 
   return (
     <>
-      <VisuallyHidden Component="h1">Промокоды</VisuallyHidden>
-      <SegmentedControl className="promo-filter" aria-label="Фильтр">
-        {filters.map((f) => (
-          <SegmentedControl.Item key={f.value} selected={status === f.value} aria-selected={status === f.value} onClick={() => setStatus(f.value)}>
-            {f.label}
-          </SegmentedControl.Item>
-        ))}
-      </SegmentedControl>
-      {disableError && (
-        <p className="tg-err pad" role="alert">
-          Не удалось выключить
-        </p>
-      )}
-      {loadError ? (
-        <p className="tg-err pad" role="alert">
-          Не удалось загрузить
-        </p>
-      ) : !items ? (
-        <Loading />
-      ) : !items.length ? (
-        <Placeholder header="Промокодов нет">
-          <span className="ph-emoji">🎟</span>
-        </Placeholder>
-      ) : (
-        <Section>
-          {items.map((p) => (
-            <div key={p.id}>
-              {/* строка и «Выключить» — соседи: кнопка не вложена в кнопку */}
-              <div className="promo-row">
-                <Cell Component="button" className="promo-cell" multiline aria-expanded={open === p.id} subtitle={`${promoGives(p)} · ${marks(p)}`} onClick={() => void toggle(p.id)}>
-                  {p.code}
-                </Cell>
-                {p.disabled ? (
-                  <span className="promo-off">выключен</span>
-                ) : (
-                  <Button mode="plain" size="s" loading={disabling === p.id} onClick={() => void disable(p)}>
-                    Выключить
-                  </Button>
-                )}
-              </div>
-              {open === p.id && (
-                <div className="promo-acts">
-                  {acts === undefined ? (
-                    <Spinner size="s" />
-                  ) : acts === null ? (
-                    <p className="tg-err">Не удалось загрузить</p>
-                  ) : !acts.length ? (
-                    <p>Ещё никто не активировал</p>
-                  ) : (
-                    acts.map((a) => (
-                      <p key={a.id}>
-                        {a.username ? '@' + a.username : a.telegramId} · {formatDate(a.createdAt)}
-                        {a.paymentId ? ` · платёж #${a.paymentId}` : ''}
-                      </p>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </Section>
-      )}
-
-      <form
-        className="promo-form"
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault()
-          void create()
-        }}
-      >
-        <Section header="Новый промокод" footer="Пустой код сгенерирует сервер.">
-          <div className="field-row">
-            <Input placeholder="Код, например SUMMER25" aria-label="Код" value={form.code} onChange={(e) => set({ code: e.target.value })} />
-            <Button type="button" mode="plain" aria-label="Сгенерировать код" onClick={() => set({ code: generateCode() })}>
-              🎲
-            </Button>
-          </div>
-          <div role="radiogroup" aria-label="Тип">
-            {kinds.map((k) => (
-              <Cell key={k.value} Component="label" before={<Radio name="kind" value={k.value} checked={form.kind === k.value} onChange={() => set({ kind: k.value })} />}>
-                {k.label}
-              </Cell>
-            ))}
-          </div>
-          <Input
-            type="number"
-            min={1}
-            placeholder="Значение"
-            aria-label="Значение"
-            after={kinds.find((k) => k.value === form.kind)!.unit}
-            value={form.value}
-            onChange={(e) => set({ value: e.target.value })}
-          />
-        </Section>
-        <Section header="Ограничения (необязательно)">
-          <Input type="number" min={1} placeholder="Макс. активаций" aria-label="Макс. активаций" value={form.maxActivations} onChange={(e) => set({ maxActivations: e.target.value })} />
-          <Input type="date" before="до" aria-label="Действует до (включительно)" value={form.validUntil} onChange={(e) => set({ validUntil: e.target.value })} />
-          <Cell Component="label" multiline before={<Checkbox checked={form.onlyNew} onChange={(e) => set({ onlyNew: e.target.checked })} />}>
-            только новым (ни одной оплаты)
-          </Cell>
-          <Input placeholder="Только для юзера: @username или ID" aria-label="Только для юзера" value={form.user} onChange={(e) => set({ user: e.target.value })} />
-        </Section>
-        {error && (
-          <p className="tg-err pad" role="alert">
-            {error}
-          </p>
-        )}
-        {created && (
-          <p className="tg-ok pad" role="status">
-            {created}
-          </p>
-        )}
-        <Button className="settings-save" type="submit" loading={busy}>
-          Создать
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="max-w-full overflow-x-auto">
+          <SegmentedControl options={SEGMENTS} value={segment} onChange={setSegment} />
+        </div>
+        <div className="grow" />
+        <Button variant="gray" icon="filter" onClick={notWired}>
+          Фильтры
         </Button>
-      </form>
+        <Button icon="plus" onClick={() => navigate('/promos/new')}>
+          Создать промокод
+        </Button>
+      </div>
+      <div className="overflow-x-auto">
+        <DataTable
+          columns={columns}
+          rows={rows}
+          empty={empty}
+          onRowClick={(p) => void toggle(p.id)}
+          expandedRow={expanded}
+          // У API нет страниц: весь список — одна страница.
+          pagination={loaded?.items && segment !== 'draft' ? { page: 1, pages: 1, from: rows.length ? 1 : 0, to: rows.length, total: formatCount(rows.length) } : undefined}
+          rowActions={(p) => (
+            <span className="inline-flex gap-0.5">
+              <RowAction icon="copy" label="Скопировать код" onClick={() => void copyCode(p.code)} />
+              <RowMenu
+                label="Действия с промокодом"
+                items={[{ label: 'Выключить', destructive: true, disabled: p.disabled, onSelect: () => setConfirming(p) }]}
+              />
+            </span>
+          )}
+          mobileRow={(p) => ({
+            title: <span className="font-mono font-semibold">{p.code}</span>,
+            subtitle: [promoValue(p), `${formatCount(p.used)} / ${limitOf(p)}`, p.validUntil && promoUntil(p.validUntil)].filter(Boolean).join(' · '),
+            after: statusTag(p),
+            chevron: true,
+          })}
+        />
+      </div>
+      {confirming && (
+        <Dialog
+          title="Выключить промокод?"
+          message={`Код ${confirming.code} перестанет работать. Включить его снова нельзя.`}
+          actions={[
+            { label: 'Отмена', style: 'cancel', onClick: () => setConfirming(undefined) },
+            { label: 'Выключить', style: 'destructive', onClick: () => void disable(confirming) },
+          ]}
+        />
+      )}
     </>
   )
 }

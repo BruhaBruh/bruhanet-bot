@@ -1,19 +1,29 @@
 import type { Promo } from './types'
-import { formatRub, plural } from './format'
+import { formatRub, mskDate } from './format'
 
 export type PromoKind = Promo['kind']
 
-// «−25% к оплате» / «−100 ₽» / «+7 дней»
-export function promoGives(p: Pick<Promo, 'kind' | 'value'>): string {
-  if (p.kind === 'percent') return `−${p.value}% к оплате`
+export const kindLabels: Record<PromoKind, string> = { percent: 'Скидка в %', rub: 'Скидка в рублях', days: 'Бонусные дни' }
+
+// «−25%» / «−100 ₽» / «+7 дн.»
+export function promoValue(p: Pick<Promo, 'kind' | 'value'>): string {
+  if (p.kind === 'percent') return `−${p.value}%`
   if (p.kind === 'rub') return `−${formatRub(p.value)}`
-  return `+${p.value} ${plural(p.value, ['день', 'дня', 'дней'])}`
+  return `+${p.value}\u00a0дн.`
 }
 
-// «использовано 3 / ∞»
-export function promoUsage(p: Pick<Promo, 'used' | 'maxActivations'>): string {
-  return `использовано ${p.used} / ${p.maxActivations ?? '∞'}`
+export type PromoStatus = 'active' | 'expired' | 'limit' | 'disabled'
+
+// Порядок причин как у promo.Check на сервере; validUntil — включительная дата МСК.
+export function promoStatus(p: Pick<Promo, 'disabled' | 'validUntil' | 'used' | 'maxActivations'>, now = new Date()): PromoStatus {
+  if (p.disabled) return 'disabled'
+  if (p.validUntil && p.validUntil < mskDate(now)) return 'expired'
+  if (p.maxActivations != null && p.used >= p.maxActivations) return 'limit'
+  return 'active'
 }
+
+// «@ann», «ID 7»: username есть не у всех
+export const userLabel = (u: { username?: string | null; telegramId: number }) => (u.username ? `@${u.username}` : `ID ${u.telegramId}`)
 
 // «до 31.08» / «—» (validUntil — YYYY-MM-DD)
 export function promoUntil(validUntil: string | null): string {

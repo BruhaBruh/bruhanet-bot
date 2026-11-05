@@ -1,6 +1,7 @@
 export { Avatar, type AvatarProps } from './avatar'
 export { Badge, type BadgeProps } from './badge'
 export { Button, type ButtonProps } from './button'
+export { Card, type CardProps } from './card'
 export { Cell, type CellProps } from './cell'
 export { Checkbox, type CheckboxProps } from './checkbox'
 export {
@@ -15,6 +16,7 @@ export { Icon, IconTile, type IconName, type IconProps, type IconTileColor, type
 export { Input, type InputProps } from './input'
 export { MessageBubble, type KeyboardButton, type MessageBubbleProps } from './message-bubble'
 export { RowAction, type RowActionProps } from './row-action'
+export { RowMenu, type RowMenuItem, type RowMenuProps } from './row-menu'
 export { NavBar, type NavBarProps } from './nav-bar'
 export { SearchField, type SearchFieldProps } from './search-field'
 export { Section, type SectionProps } from './section'

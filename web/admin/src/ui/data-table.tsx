@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { Cell, type CellProps } from './cell'
 import { Icon } from './icon'
@@ -50,6 +50,8 @@ export interface DataTableProps<R = unknown> {
   onRowClick?: (row: R) => void
   /** Ниже 768px вместо таблицы — Section из Cell. Без onClick и href строка получает onRowClick. */
   mobileRow?: (row: R) => CellProps
+  /** Содержимое под строкой; null — строка свёрнута. Какая раскрыта, решает вызывающий (обычно в onRowClick). */
+  expandedRow?: (row: R) => ReactNode
   className?: string
 }
 
@@ -99,6 +101,7 @@ export function DataTable<R>({
   empty = 'Нет данных',
   onRowClick,
   mobileRow,
+  expandedRow,
   className,
 }: DataTableProps<R>) {
   const [sort, setSort] = useState<Sort | null>(defaultSort ?? null)
@@ -201,50 +204,62 @@ export function DataTable<R>({
           </TableHeader>
           <TableBody>
             {sorted.length ? (
-              sorted.map((row, i) => (
-                <TableRow
-                  key={rowKey(row, i)}
-                  className={cn(
-                    'group/row',
-                    onRowClick &&
-                      'cursor-pointer -outline-offset-2 outline-accent hover:[&>td]:bg-[color-mix(in_srgb,var(--cell-highlight)_35%,var(--surface))] focus-visible:outline-2',
-                  )}
-                  tabIndex={onRowClick ? 0 : undefined}
-                  onClick={onRowClick && (() => onRowClick(row))}
-                  onKeyDown={
-                    onRowClick &&
-                    ((e) => {
-                      if (e.key === 'Enter' && e.target === e.currentTarget) onRowClick(row)
-                    })
-                  }
-                >
-                  {columns.map((c) => (
-                    <TableCell
-                      key={c.key}
-                      style={{ maxWidth: c.maxWidth }}
+              sorted.map((row, i) => {
+                const expanded = expandedRow?.(row)
+                return (
+                  <Fragment key={rowKey(row, i)}>
+                    <TableRow
+                      aria-expanded={expandedRow ? expanded != null : undefined}
                       className={cn(
-                        align(c),
-                        c.numeric && 'tabular-nums',
-                        c.mono && 'font-mono text-[13px] tracking-normal',
-                        c.secondary && 'text-text-secondary',
-                        c.strong && 'font-semibold',
-                        c.wrap && !c.numeric ? 'whitespace-normal' : 'whitespace-nowrap',
-                        c.truncate && 'truncate',
+                        'group/row',
+                        onRowClick &&
+                          'cursor-pointer -outline-offset-2 outline-accent hover:[&>td]:bg-[color-mix(in_srgb,var(--cell-highlight)_35%,var(--surface))] focus-visible:outline-2',
                       )}
+                      tabIndex={onRowClick ? 0 : undefined}
+                      onClick={onRowClick && (() => onRowClick(row))}
+                      onKeyDown={
+                        onRowClick &&
+                        ((e) => {
+                          if (e.key === 'Enter' && e.target === e.currentTarget) onRowClick(row)
+                        })
+                      }
                     >
-                      {c.render ? c.render(row) : (field(row, c.key) as ReactNode)}
-                    </TableCell>
-                  ))}
-                  {rowActions && (
-                    <TableCell
-                      className="w-[1%] pl-0 text-right whitespace-nowrap group-hover/row:[&>*]:opacity-100 [&>*]:opacity-55 [&>*]:transition-opacity [&>*]:duration-150 [&>*:focus-visible]:opacity-100"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {rowActions(row)}
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))
+                      {columns.map((c) => (
+                        <TableCell
+                          key={c.key}
+                          style={{ maxWidth: c.maxWidth }}
+                          className={cn(
+                            align(c),
+                            c.numeric && 'tabular-nums',
+                            c.mono && 'font-mono text-[13px] tracking-normal',
+                            c.secondary && 'text-text-secondary',
+                            c.strong && 'font-semibold',
+                            c.wrap && !c.numeric ? 'whitespace-normal' : 'whitespace-nowrap',
+                            c.truncate && 'truncate',
+                          )}
+                        >
+                          {c.render ? c.render(row) : (field(row, c.key) as ReactNode)}
+                        </TableCell>
+                      ))}
+                      {rowActions && (
+                        <TableCell
+                          className="w-[1%] pl-0 text-right whitespace-nowrap group-hover/row:[&>*]:opacity-100 [&>*]:opacity-55 [&>*]:transition-opacity [&>*]:duration-150 [&>*:focus-visible]:opacity-100"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {rowActions(row)}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                    {expanded != null && (
+                      <TableRow>
+                        <TableCell colSpan={columns.length + (rowActions ? 1 : 0)} className="h-auto p-0 first:pl-0 last:pr-0">
+                          {expanded}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                )
+              })
             ) : (
               <TableRow>
                 <TableCell
@@ -263,12 +278,16 @@ export function DataTable<R>({
           {sorted.length ? (
             sorted.map((row, i) => {
               const props = mobileRow(row)
+              const expanded = expandedRow?.(row)
               return (
-                <Cell
-                  key={rowKey(row, i)}
-                  onClick={!props.onClick && !props.href && onRowClick ? () => onRowClick(row) : undefined}
-                  {...props}
-                />
+                <Fragment key={rowKey(row, i)}>
+                  <Cell
+                    onClick={!props.onClick && !props.href && onRowClick ? () => onRowClick(row) : undefined}
+                    aria-expanded={expandedRow ? expanded != null : undefined}
+                    {...props}
+                  />
+                  {expanded}
+                </Fragment>
               )
             })
           ) : (

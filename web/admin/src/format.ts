@@ -35,9 +35,14 @@ export function formatShortDate(iso: string, now = new Date()): string {
   const time = timeFmt.format(d)
   if (day === mskDate(now)) return `сегодня, ${time}`
   if (day === mskDate(now, -1)) return `вчера, ${time}`
-  const [year, month, date] = day.split('-')
+  return `${formatDay(day, now)}, ${time}`
+}
+
+// ГГГГ-ММ-ДД → «30 нояб. 2026»; с now год только если он не текущий
+export function formatDay(ymd: string, now?: Date): string {
+  const [year, month, date] = ymd.split('-')
   const label = `${Number(date)} ${SHORT_MONTHS[Number(month) - 1]}`
-  return `${year === mskDate(now).slice(0, 4) ? label : `${label} ${year}`}, ${time}`
+  return now && year === mskDate(now).slice(0, 4) ? label : `${label} ${year}`
 }
 
 // Изменение к прошлому периоду: «+12%», «-4%»; без базы сравнивать не с чем

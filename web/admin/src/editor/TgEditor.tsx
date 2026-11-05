@@ -119,11 +119,10 @@ export const TgEditor = forwardRef<TgEditorHandle, TgEditorProps>(function TgEdi
         right={right}
       />
       <Field id={id} hint={hint} error={error}>
-        {/* ponytail: bg-page-bg, а не bg-surface как у Textarea: редактор лежит на карточке, иначе поля не видно. */}
         <div
           className={cn(
             fieldBox,
-            'relative cursor-text bg-page-bg pt-2.75 pb-2',
+            'relative cursor-text pt-2.75 pb-2',
             error && 'border-destructive focus-within:border-destructive',
             disabled && 'opacity-60',
           )}

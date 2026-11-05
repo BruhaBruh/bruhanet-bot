@@ -41,6 +41,7 @@ export function App() {
           <Route path="/" element={<Overview />} />
           <Route path="/broadcasts" element={<Broadcasts />} />
           <Route path="/broadcasts/new" element={<BroadcastNew />} />
+          <Route path="/promos" element={<Promos />} />
           <Route path="/promos/new" element={<PromoNew />} />
           {/* Старые экраны на telegram-ui: при замене экран переезжает из этого блока выше. */}
           <Route
@@ -55,7 +56,6 @@ export function App() {
             <Route path="/users" element={<Users />} />
             <Route path="/users/:id" element={<UserCard />} />
             <Route path="/payments" element={<Payments />} />
-            <Route path="/promos" element={<Promos />} />
             <Route path="/texts" element={<Texts />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

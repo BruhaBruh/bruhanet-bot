@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BOT_NAME, OWNER_USERNAME } from '@/brand'
 import { cn } from '@/lib/utils'
 import { NOT_WIRED } from '@/lib/not-wired'
-import { Avatar, Button, Checkbox, Dialog, Icon, Input, MessageBubble, Switch, toast } from '@/ui'
+import { Avatar, Button, Card, Checkbox, Dialog, Icon, Input, MessageBubble, Switch, toast } from '@/ui'
 import { ApiError, get, post } from '../api'
 import { sanitize, visibleLen, visibleText } from '../editor/serialize'
 import { TgEditor } from '../editor/TgEditor'
@@ -30,21 +30,8 @@ const BUTTON_STYLES = [
   { label: 'Опасная (красная)', className: 'bg-destructive-strong' },
 ]
 
-const card = 'flex flex-col rounded-lg bg-surface shadow-card'
 const note = 'footnote text-text-secondary'
 const separator = 'shadow-[inset_0_-0.5px_0_var(--separator)]'
-
-function Card({ title, aside, children }: { title: string; aside?: string; children: ReactNode }) {
-  return (
-    <section className={cn(card, 'gap-3 p-5')}>
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="headline">{title}</h2>
-        {aside && <span className={note}>{aside}</span>}
-      </div>
-      {children}
-    </section>
-  )
-}
 
 const NotWiredHint = () => <p className={cn(note, 'py-2')}>{NOT_WIRED}</p>
 
@@ -279,7 +266,7 @@ export function Composer(props: ComposerProps) {
 
   if (!isBroadcast) {
     return (
-      <div className="ds-root admin-body flex flex-col gap-4 text-text">
+      <div className="ds-root admin-body flex flex-col gap-4 text-text [--field-bg:var(--page-bg)]">
         {picker}
         {editor}
         {preview}
@@ -340,24 +327,25 @@ export function Composer(props: ComposerProps) {
           <p className={note}>{NOT_WIRED}</p>
         </Card>
 
-        <section className={cn(card, 'px-5 pt-5 pb-2')}>
-          <h2 className="headline mb-2">Получатели</h2>
-          {[AUDIENCE, ...OTHER_AUDIENCES].map((label) => (
-            <div key={label} className={cn('flex min-h-11 items-center gap-3', separator)} title={NOT_WIRED}>
-              <Checkbox disabled checked={label === AUDIENCE} label={label} className="grow" />
-              <span className="text-text-secondary tabular-nums">
-                {label === AUDIENCE && recipients != null ? formatCount(recipients) : '—'}
-              </span>
-            </div>
-          ))}
-          <NotWiredHint />
-        </section>
+        <Card title="Получатели" className="gap-2 px-5 pt-5 pb-2">
+          <div className="flex flex-col">
+            {[AUDIENCE, ...OTHER_AUDIENCES].map((label) => (
+              <div key={label} className={cn('flex min-h-11 items-center gap-3', separator)} title={NOT_WIRED}>
+                <Checkbox disabled checked={label === AUDIENCE} label={label} className="grow" />
+                <span className="text-text-secondary tabular-nums">
+                  {label === AUDIENCE && recipients != null ? formatCount(recipients) : '—'}
+                </span>
+              </div>
+            ))}
+            <NotWiredHint />
+          </div>
+        </Card>
 
-        <section className={cn(card, 'px-5 py-1')}>
+        <Card className="gap-0 px-5 py-1">
           <Toggle title="Отправить позже" subtitle="по времени Екатеринбурга (UTC+5)" />
           <Toggle title="Без звука" subtitle="сообщение придёт без уведомления" last />
           <NotWiredHint />
-        </section>
+        </Card>
 
         {messages}
 
