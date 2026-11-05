@@ -182,6 +182,12 @@ export function sanitize(html: string): string {
   return Array.from(parseBody(html).childNodes, clean).join('')
 }
 
+// Блоки Telegram отделены одним "\n": при pre-wrap он дал бы лишнюю пустую строку рядом с блоком.
+export const previewHtml = (text: string) =>
+  sanitize(text)
+    .replace(/\n(<(?:pre|blockquote)>)/g, '$1')
+    .replace(/(<\/(?:pre|blockquote)>)\n/g, '$1')
+
 // Как texts.RenderPlain: для кнопок и простых текстов, без экранирования.
 export function renderPlain(tpl: string, samples: Record<string, string>): string {
   return tpl.replace(placeholder, (_, path: string) => (path in samples ? samples[path] : path))

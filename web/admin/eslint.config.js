@@ -15,15 +15,4 @@ export default defineConfig([
     files: ['src/**/*.tsx'],
     extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
   },
-  // Легаси: файлы переписываются целиком, правила снимаются точечно и уходят вместе с ними.
-  {
-    // до замены в Task 10 (Texts)
-    files: ['src/pages/Texts.tsx'],
-    rules: { 'react-hooks/refs': 'off', 'react-hooks/set-state-in-effect': 'off' },
-  },
-  {
-    // до замены в Task 10 (texts.test)
-    files: ['src/pages/texts.test.tsx'],
-    rules: { '@typescript-eslint/no-explicit-any': 'off', '@typescript-eslint/no-unused-vars': 'off' },
-  },
 ])

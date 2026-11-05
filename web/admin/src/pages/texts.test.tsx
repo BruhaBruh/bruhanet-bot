@@ -1,108 +1,214 @@
-import { AppRoot } from '@telegram-apps/telegram-ui'
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import type { Ref } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import Settings from './Settings'
+import { NOT_WIRED } from '@/lib/not-wired'
+import { ToastProvider } from '@/ui'
+import type { TgEditorHandle, TgEditorProps } from '../editor/TgEditor'
+import type { TextItem } from '../types'
 import Texts from './Texts'
 
 // Редактор подменён: тест читает value и правит через onChange.
-const kids = vi.hoisted(() => ({ editor: {} as any }))
+const kids = vi.hoisted(() => ({ editor: {} as TgEditorProps, inserted: [] as string[] }))
 vi.mock('../editor/TgEditor', async () => {
-  const { forwardRef } = await import('react')
+  const { forwardRef: fr, useImperativeHandle: uih } = await import('react')
   return {
-    TgEditor: forwardRef((p: any, _ref) => {
+    TgEditor: fr(function Fake(p: TgEditorProps, ref: Ref<TgEditorHandle>) {
+      uih(ref, () => ({ insert: (t: string) => kids.inserted.push(t) }))
       kids.editor = p
       return null
     }),
   }
 })
 
-type Call = { url: string; method: string; body: any }
+type Call = { url: string; method: string; body: unknown }
 let calls: Call[]
 let replies: Record<string, () => Response | Promise<Response>>
 
 const json = (status: number, body?: unknown) => () =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
+const text = (key: string, title: string, body: string, over: Partial<TextItem> = {}): TextItem => ({
+  key,
+  group: 'Меню',
+  title,
+  kind: 'message',
+  default: body,
+  body,
+  overridden: false,
+  vars: [],
+  ...over,
+})
+
 beforeEach(() => {
   calls = []
   replies = {}
+  kids.inserted = []
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     const method = init.method ?? 'GET'
     calls.push({ url, method, body: init.body ? JSON.parse(String(init.body)) : undefined })
     return (replies[`${method} ${url}`] ?? json(500))()
   })
+  replies['GET /api/texts'] = json(200, {
+    items: [
+      text('a', 'Текст A', 'тело A'),
+      text('b', 'Текст B', 'тело B'),
+      text('c', 'Текст C', 'своё', { default: 'станд', overridden: true }),
+      text('v', 'С переменной', 'Привет, {{.name}}! <i>x</i>', {
+        vars: [
+          { name: 'name', description: 'Имя', sample: 'Иван', raw: false },
+          { name: 'html', description: 'Разметка', sample: '<b>жир</b>', raw: true },
+        ],
+      }),
+      text('btn', 'Кнопка', 'Оплатить', { kind: 'button', group: 'Кнопки' }),
+    ],
+  })
 })
 afterEach(() => vi.unstubAllGlobals())
 
 const flush = () => act(() => new Promise((r) => setTimeout(r, 0)))
-const wrap = (path: string) =>
-  function W({ children }: { children: ReactNode }) {
-    return (
-      <AppRoot>
-        <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
-      </AppRoot>
-    )
-  }
-const btn = (label: string) => screen.getAllByRole('button').find((b) => b.textContent === label)!
+const wait = (ms: number) => act(() => new Promise((r) => setTimeout(r, ms)))
+const open = async (path: string) => {
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <ToastProvider>
+        <Texts />
+      </ToastProvider>
+    </MemoryRouter>,
+  )
+  await flush()
+}
+const btn = (name: string) => screen.getByRole('button', { name })
+const list = () => within(screen.getByRole('navigation', { name: 'Сообщения бота' }))
+const preview = () => screen.getByRole('complementary', { name: 'Превью сообщения' })
 const puts = () => calls.filter((c) => c.method === 'PUT')
 
-const text = (key: string, title: string, body: string) => ({ key, group: 'Меню', title, kind: 'message', default: body, body, overridden: false, vars: [] })
-
 describe('Texts', () => {
-  beforeEach(() => {
-    replies['GET /api/texts'] = json(200, { items: [text('a', 'Текст A', 'тело A'), text('b', 'Текст B', 'тело B')] })
-    replies['PUT /api/texts/b'] = () => new Promise((r) => setTimeout(() => r(json(204)()), 10))
-  })
-
   it('switching keys replaces editor content, unsaved edits do not leak', async () => {
-    const { container } = render(<Texts />, { wrapper: wrap('/texts?key=a') })
-    await flush()
+    await open('/texts?key=a')
     expect(kids.editor.value).toBe('тело A')
     act(() => kids.editor.onChange('правка A'))
-    await flush()
-    expect(container.querySelector('.tg-msg')!.textContent).toBe('правка A')
+    expect(preview().textContent).toContain('правка A')
 
-    fireEvent.click(screen.getByText('Текст B'))
+    fireEvent.click(list().getByText('Текст B'))
     await flush()
     expect(kids.editor.value).toBe('тело B')
-    expect(container.querySelector('.tg-msg')!.textContent).toBe('тело B')
-    expect(container.textContent).not.toContain('правка A')
+    expect(preview().textContent).toContain('тело B')
+    expect(preview().textContent).not.toContain('правка A')
     expect(puts()).toHaveLength(0)
+
+    // черновик A жив, пока не сохранён
+    fireEvent.click(list().getByText('Текст A'))
+    await flush()
+    expect(kids.editor.value).toBe('правка A')
   })
 
-  it('double «Сохранить» sends one PUT', async () => {
-    render(<Texts />, { wrapper: wrap('/texts?key=b') })
-    await flush()
+  it('double «Сохранить» sends one PUT; pristine text cannot be saved', async () => {
+    replies['PUT /api/texts/b'] = () => new Promise((r) => setTimeout(() => r(json(204)()), 10))
+    await open('/texts?key=b')
+    const save = btn('Сохранить') as HTMLButtonElement
+    expect(save.disabled).toBe(true)
     act(() => kids.editor.onChange('новое B'))
-    await flush()
-    fireEvent.click(btn('Сохранить'))
-    fireEvent.click(btn('Сохранить'))
-    await act(() => new Promise((r) => setTimeout(r, 30)))
+    expect(save.disabled).toBe(false)
+    fireEvent.click(save)
+    fireEvent.click(save)
+    await wait(30)
     expect(puts()).toEqual([{ url: '/api/texts/b', method: 'PUT', body: { body: 'новое B' } }])
-  })
-})
-
-describe('Settings', () => {
-  const s = { prices: { '1': 150, '3': 400 }, phone: '+7900', bank: 'Банк', comments: ['На кофе'], supportUrl: 'https://t.me/x' }
-
-  it('shows stored problems banner', async () => {
-    replies['GET /api/settings'] = json(200, { ...s, usingDefaults: true, problems: ['нет тарифов'] })
-    const { container } = render(<Settings />, { wrapper: wrap('/settings') })
-    await flush()
-    expect(container.textContent).toContain('нет тарифов')
+    expect((btn('Сохранить') as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('double «Сохранить» sends one PUT with the whole object', async () => {
-    replies['GET /api/settings'] = json(200, s)
-    replies['PUT /api/settings'] = () => new Promise((r) => setTimeout(() => r(json(204)()), 10))
-    render(<Settings />, { wrapper: wrap('/settings') })
+  it('«Вернуть стандартный текст» sends DELETE and restores the default', async () => {
+    replies['DELETE /api/texts/c'] = json(204)
+    await open('/texts?key=c')
+    expect(list().getByRole('img', { name: 'Изменено' })).toBeTruthy()
+    fireEvent.click(btn('Вернуть стандартный текст'))
     await flush()
+    expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/api/texts/c'])
+    expect(kids.editor.value).toBe('станд')
+    expect(list().queryByRole('img', { name: 'Изменено' })).toBeNull()
+    expect((btn('Вернуть стандартный текст') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('reset is disabled when the text is not overridden', async () => {
+    await open('/texts?key=a')
+    expect((btn('Вернуть стандартный текст') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('server error is shown for its key only', async () => {
+    replies['PUT /api/texts/a'] = json(400, { message: 'неизвестная переменная x' })
+    await open('/texts?key=a')
+    act(() => kids.editor.onChange('{{.x}}'))
     fireEvent.click(btn('Сохранить'))
-    fireEvent.click(btn('Сохранить'))
-    await act(() => new Promise((r) => setTimeout(r, 30)))
-    expect(puts()).toEqual([{ url: '/api/settings', method: 'PUT', body: s }])
-    expect(screen.getByText('Сохранено')).toBeTruthy()
+    await flush()
+    expect(screen.getByRole('alert').textContent).toBe('неизвестная переменная x')
+    fireEvent.click(list().getByText('Текст B'))
+    await flush()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('«Отправить себе» posts the current draft', async () => {
+    replies['POST /api/texts/a/test'] = json(204)
+    await open('/texts?key=a')
+    act(() => kids.editor.onChange('черновик'))
+    fireEvent.click(btn('Отправить себе'))
+    await flush()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([{ url: '/api/texts/a/test', method: 'POST', body: { body: 'черновик' } }])
+  })
+
+  it('variables: chip inserts the token, preview fills samples, table shows used ones', async () => {
+    await open('/texts?key=v')
+    fireEvent.click(btn('{{.html}}'))
+    expect(kids.inserted).toEqual(['{{.html}}'])
+    expect(btn('{{.name}}').title).toBe('Имя — например, Иван')
+
+    const p = within(preview())
+    expect(preview().querySelector('i')!.textContent).toBe('x')
+    expect(preview().textContent).toContain('Привет, Иван!')
+    expect(p.getByText('{{.name}}')).toBeTruthy()
+    expect(p.getByText('Иван')).toBeTruthy()
+    expect(p.queryByText('{{.html}}')).toBeNull()
+  })
+
+  it('preview drops tags outside the Telegram allow-list', async () => {
+    await open('/texts?key=a')
+    act(() => kids.editor.onChange('<img src=x onerror=alert(1)><b>ok</b>'))
+    expect(preview().querySelector('img')).toBeNull()
+    expect(preview().querySelector('b')!.textContent).toBe('ok')
+  })
+
+  it('button text is a plain input limited to 64 with a counter', async () => {
+    await open('/texts?key=btn')
+    const input = screen.getByRole('textbox', { name: 'Кнопка' }) as HTMLInputElement
+    expect(input.maxLength).toBe(64)
+    expect(input.value).toBe('Оплатить')
+    fireEvent.change(input, { target: { value: 'Купить' } })
+    expect(preview().textContent).toContain('Купить')
+    expect(screen.getByText(/^6 \/ 64$/)).toBeTruthy()
+  })
+
+  it('search filters by title, key and text; current item is marked', async () => {
+    await open('/texts?key=b')
+    expect(list().getByText('Текст B').closest('button')!.getAttribute('aria-current')).toBe('page')
+    expect(list().getByText('Текст A').closest('button')!.getAttribute('aria-current')).toBeNull()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'станд' } })
+    expect(list().queryByText('Текст C')).toBeNull()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'своё' } })
+    expect(list().getByText('Текст C')).toBeTruthy()
+    expect(list().queryByText('Текст A')).toBeNull()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'нет такого' } })
+    expect(list().getByText('Ничего не найдено')).toBeTruthy()
+  })
+
+  it('buttons card is drawn disabled', async () => {
+    await open('/texts?key=a')
+    expect((screen.getByRole('textbox', { name: 'Текст кнопки' }) as HTMLInputElement).disabled).toBe(true)
+    for (const radio of screen.getAllByRole('radio')) expect((radio as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(NOT_WIRED)).toBeTruthy()
+  })
+
+  it('load failure is reported', async () => {
+    replies['GET /api/texts'] = json(500)
+    await open('/texts')
+    expect(screen.getByRole('alert').textContent).toBe('Не удалось загрузить')
   })
 })

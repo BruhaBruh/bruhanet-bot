@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { NOT_WIRED } from '@/lib/not-wired'
 import { Avatar, Button, Card, Checkbox, Dialog, Icon, Input, MessageBubble, Switch, toast } from '@/ui'
 import { ApiError, get, post } from '../api'
-import { sanitize, visibleLen, visibleText } from '../editor/serialize'
+import { previewHtml, visibleLen, visibleText } from '../editor/serialize'
 import { TgEditor } from '../editor/TgEditor'
 import { formatCount, plural } from '../format'
 import type { Broadcast, DirectMessage } from '../types'
@@ -46,12 +46,6 @@ function Toggle({ title, subtitle, last }: { title: string; subtitle: string; la
     </div>
   )
 }
-
-// Блоки Telegram отделены одним "\n": при pre-wrap он дал бы лишнюю пустую строку рядом с блоком.
-const previewHtml = (text: string) =>
-  sanitize(text)
-    .replace(/\n(<(?:pre|blockquote)>)/g, '$1')
-    .replace(/(<\/(?:pre|blockquote)>)\n/g, '$1')
 
 // undefined — панель недоступна
 const fetchRecipients = () =>
