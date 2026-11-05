@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.4",
-    "@telegram-apps/telegram-ui": "~2.1.13",
     "@tiptap/core": "^3.32.2",
     "@tiptap/pm": "^3.32.2",
     "@tiptap/react": "^3.32.2",

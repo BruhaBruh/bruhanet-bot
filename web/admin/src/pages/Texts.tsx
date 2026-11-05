@@ -223,7 +223,7 @@ export default function Texts() {
                       type="button"
                       title={`${v.description} — например, ${v.sample}`}
                       disabled={!!busy}
-                      className="footnote focus-ring inline-flex h-7 max-w-full cursor-pointer items-center rounded-full bg-accent-tint px-2.5 font-mono font-semibold text-accent-strong disabled:cursor-default disabled:opacity-40"
+                      className="mono focus-ring inline-flex h-7 max-w-full cursor-pointer items-center rounded-full bg-accent-tint px-2.5 font-semibold text-accent-strong disabled:cursor-default disabled:opacity-40"
                       onClick={() => insertVar(v.name)}
                     >
                       <span className="truncate">{varLabel(v.name)}</span>

@@ -74,7 +74,7 @@ export function ToastProvider({ children }: { children?: ReactNode }) {
     <>
       {children}
       {createPortal(
-        // Над TabBar на мобильном. Порталом в body: вне .app-root и над модальными окнами.
+        // Над TabBar на мобильном. Порталом в body: над модальными окнами.
         <div className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--size-tab-bar)+var(--space-4))] z-60 flex justify-center md:bottom-6">
           {item && (
             <Toast

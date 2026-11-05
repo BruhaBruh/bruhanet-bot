@@ -131,7 +131,7 @@ function UserCardInner({ id }: { id?: string }) {
               </a>
             )}
             <span>
-              ID <code className="font-mono text-[13px] text-text">{user.telegramId}</code>
+              ID <code className="mono text-text">{user.telegramId}</code>
             </span>
             <span>с нами с {formatFullDay(user.createdAt)}</span>
             <span>язык: {DASH}</span>

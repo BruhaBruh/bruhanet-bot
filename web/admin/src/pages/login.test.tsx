@@ -48,7 +48,6 @@ describe('LoginRequired', () => {
       `https://t.me/${OWNER_USERNAME}`,
     )
     expect(screen.getByText(new RegExp(`^Привет, @${OWNER_USERNAME}!`))).toBeTruthy()
-    expect(document.querySelector('.app-root')).toBeNull()
   })
 
   it('opens the bot in a new tab: this one keeps polling', () => {

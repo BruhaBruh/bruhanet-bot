@@ -231,7 +231,7 @@ export function DataTable<R>({
                           className={cn(
                             align(c),
                             c.numeric && 'tabular-nums',
-                            c.mono && 'font-mono text-[13px] tracking-normal',
+                            c.mono && 'mono tracking-normal',
                             c.secondary && 'text-text-secondary',
                             c.strong && 'font-semibold',
                             c.wrap && !c.numeric ? 'whitespace-normal' : 'whitespace-nowrap',

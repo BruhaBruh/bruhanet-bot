@@ -195,7 +195,7 @@ describe('Dialog', () => {
   it('рисует заголовок и сообщение в body, действия вызывают onClick', () => {
     const { onCancel, onDelete } = setup()
     const dialog = screen.getByRole('alertdialog', { name: 'Удалить промокод?' })
-    expect(dialog.closest('.app-root')).toBeNull()
+    expect(dialog).toBeTruthy()
     expect(screen.getByText('Отменить нельзя')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
     expect(onDelete).toHaveBeenCalledOnce()
@@ -370,14 +370,14 @@ describe('Toast', () => {
   it('toast() показывает в body с role=status и скрывает через ~2,5 с', () => {
     vi.useFakeTimers()
     render(
-      <div className="app-root">
+      <div data-testid="host">
         <ToastProvider />
       </div>,
     )
     act(() => toast('Промокод скопирован'))
     const node = screen.getByRole('status')
     expect(node.textContent).toBe('Промокод скопирован')
-    expect(node.closest('.app-root')).toBeNull()
+    expect(node.closest('[data-testid=host]')).toBeNull()
     act(() => {
       vi.advanceTimersByTime(2400)
     })

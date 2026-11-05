@@ -1,5 +1,4 @@
-/* legacy — между preflight и utilities: см. конец файла. */
-@layer theme, base, legacy, components, utilities;
+@layer theme, base, components, utilities;
 
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/preflight.css' layer(base);
@@ -61,54 +60,5 @@
   ::backdrop,
   ::file-selector-button {
     border-color: var(--separator);
-  }
-}
-
-/*
- * ponytail: старые экраны живут без preflight. Стили кита и app.css вне слоёв и и так сильнее,
- * но там, где кит полагается на дефолты браузера (box-sizing, margin, list-style), preflight их сбросил бы.
- * Список свойств, а не all: revert — all снёс бы атрибуты fill/stroke у SVG-иконок кита.
- * Утилиты выше этого слоя и работают. .ds-root — кусок DS на старом экране (редактор в текстах):
- * ему нужен preflight. Удалить вместе с telegram-ui.
- */
-@layer legacy {
-  :where(.app-root, .app-root *):not(:where(.ds-root, .ds-root *)),
-  :where(.app-root, .app-root *):not(:where(.ds-root, .ds-root *))::before,
-  :where(.app-root, .app-root *):not(:where(.ds-root, .ds-root *))::after,
-  :where(.app-root *):not(:where(.ds-root, .ds-root *))::file-selector-button {
-    box-sizing: revert;
-    margin: revert;
-    padding: revert;
-    border: revert;
-    border-radius: revert;
-    border-collapse: revert;
-    font: revert;
-    font-feature-settings: revert;
-    font-variation-settings: revert;
-    letter-spacing: revert;
-    color: revert;
-    background-color: revert;
-    text-decoration: revert;
-    text-indent: revert;
-    list-style: revert;
-    display: revert;
-    vertical-align: revert;
-    appearance: revert;
-    resize: revert;
-  }
-
-  :where(.app-root *)::placeholder {
-    color: revert;
-    opacity: revert;
-  }
-
-  :where(.app-root img, .app-root video, .app-root hr) {
-    max-width: revert;
-    height: revert;
-  }
-
-  /* Наследуется от html из preflight, revert не помогает. */
-  .app-root {
-    line-height: normal;
   }
 }

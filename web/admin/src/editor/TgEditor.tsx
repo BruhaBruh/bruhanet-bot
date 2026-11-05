@@ -111,7 +111,7 @@ export const TgEditor = forwardRef<TgEditorHandle, TgEditorProps>(function TgEdi
   }
 
   return (
-    <div className="ds-root flex flex-col gap-3 text-text">
+    <div className="flex flex-col gap-3 text-text">
       <FormatBar
         active={FORMATS.filter((f) => editor?.isActive(NODES[f]))}
         disabled={disabled}
