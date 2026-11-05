@@ -1,4 +1,3 @@
-import { AppRoot } from '@telegram-apps/telegram-ui'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/ui'
@@ -292,13 +291,6 @@ describe('Composer', () => {
     await click('Отправить')
     expect(calls.at(-1)).toMatchObject({ url: '/api/users/7/messages', method: 'POST', body: { text: 'hi' } })
     expect(onSent.mock.calls[0]?.[0]).toMatchObject({ id: 5, text: 'hi', status: 'pending', telegramId: 7 })
-  })
-
-  it('direct mode renders inside the legacy AppRoot with preflight back on', async () => {
-    render(<Composer mode="direct" userId={7} />, { wrapper: AppRoot })
-    await flush()
-    const send = screen.getByRole('button', { name: 'Отправить' })
-    expect(send.closest('.ds-root')).toBeTruthy()
   })
 
   it('double click on «Отправить себе» sends one request', async () => {

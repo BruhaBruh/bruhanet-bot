@@ -1,102 +1,132 @@
-import { Avatar, Cell, Info, Input, Navigation, Placeholder, Section, Spinner, VisuallyHidden } from '@telegram-apps/telegram-ui'
-import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router'
+import { notWired } from '@/lib/not-wired'
+import { Avatar, Button, DataTable, RowAction, SearchField, SegmentedControl, type DataTableColumn } from '@/ui'
 import { get } from '../api'
-import { formatMonthYear, formatRub, plural } from '../format'
-import { RowLink } from '../layout/RowLink'
+import { formatCount, formatFullDay, formatRub } from '../format'
+import { userLabel } from '../promo'
 import type { UserSummary } from '../types'
 
-// Буква и цвет аватарки детерминированно по имени (как Telegram — по id).
-export function UserAvatar({ name, size = 40 }: { name: string; size?: 40 | 48 }) {
-  let h = 0
-  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0
-  return <Avatar size={size} acronym={name.replace(/^@/, '').slice(0, 1).toUpperCase()} className={`av av-letter av-${(h % 6) + 1}`} aria-hidden="true" />
+const DEBOUNCE_MS = 300
+const DASH = '—'
+
+const SEGMENTS = [
+  { value: 'all', label: 'Все' },
+  { value: 'active', label: 'Активные' },
+  { value: 'trial', label: 'Пробный период' },
+  { value: 'blocked', label: 'Заблокировали' },
+]
+// Статуса подписки в /api/users нет: сегменты кроме «Все» всегда пустые.
+const EMPTY: Record<string, string> = {
+  active: 'Активных пользователей нет',
+  trial: 'Пользователей на пробном периоде нет',
+  blocked: 'Заблокировавших бота нет',
 }
+
+const columns: DataTableColumn<UserSummary>[] = [
+  {
+    key: 'user',
+    title: 'Пользователь',
+    sortable: true,
+    sortValue: userLabel,
+    truncate: true,
+    maxWidth: 240,
+    render: (u) => (
+      <span className="flex items-center gap-2.5">
+        <Avatar name={userLabel(u)} id={u.telegramId} size={28} />
+        <span className="truncate">{userLabel(u)}</span>
+      </span>
+    ),
+  },
+  { key: 'telegramId', title: 'Telegram ID', mono: true, width: 120 },
+  { key: 'plan', title: 'Тариф', render: () => DASH },
+  { key: 'confirmed', title: 'Платежей', numeric: true, sortable: true, width: 110, render: (u) => formatCount(u.confirmed) },
+  { key: 'confirmedSum', title: 'Оплачено всего', numeric: true, sortable: true, width: 150, render: (u) => formatRub(u.confirmedSum) },
+  { key: 'joined', title: 'С нами с', secondary: true, width: 140, render: (u) => formatFullDay(u.createdAt) },
+  { key: 'status', title: 'Статус', width: 170, render: () => DASH },
+]
 
 export default function Users() {
-  // ?q= приходит из поиска в шапке: новый запрос — новая загрузка
-  const [params] = useSearchParams()
-  const initial = params.get('q') ?? ''
-  return <UsersInner key={initial} initial={initial} />
-}
+  const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const urlQuery = params.get('q') ?? ''
+  const query = urlQuery.trim()
+  const [segment, setSegment] = useState('all')
 
-function UsersInner({ initial }: { initial: string }) {
-  const [q, setQ] = useState(initial)
-  const [items, setItems] = useState<UserSummary[]>()
-  const [error, setError] = useState(false)
-  const seq = useRef(0)
-  const first = useRef(true)
+  // Поле живёт своим стейтом, URL догоняет его с задержкой; ?q= извне (поиск в шапке, «назад») перезаписывает поле.
+  const [text, setText] = useState(urlQuery)
+  const [seenQuery, setSeenQuery] = useState(urlQuery)
+  if (seenQuery !== urlQuery) {
+    setSeenQuery(urlQuery)
+    setText(urlQuery)
+  }
 
   useEffect(() => {
-    const load = async () => {
-      const n = ++seq.current
-      try {
-        const r = await get<{ items: UserSummary[] }>(`/api/users?q=${encodeURIComponent(q.trim())}`)
-        if (n === seq.current) {
-          setItems(r.items)
-          setError(false)
-        }
-      } catch {
-        if (n === seq.current) setError(true)
-      }
+    if (text === urlQuery) return
+    const timer = setTimeout(() => setParams(text ? { q: text } : {}, { replace: true }), DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [text, urlQuery, setParams])
+
+  // Прежний список виден, пока грузится новый; items нет — ошибка загрузки.
+  const [data, setData] = useState<{ items?: UserSummary[] }>()
+  useEffect(() => {
+    let stale = false
+    get<{ items: UserSummary[] }>(`/api/users?q=${encodeURIComponent(query)}`).then(
+      (r) => {
+        if (!stale) setData({ items: r.items })
+      },
+      () => {
+        if (!stale) setData({})
+      },
+    )
+    return () => {
+      stale = true
     }
-    // первая загрузка сразу, поиск — с debounce 300 мс
-    if (first.current) {
-      first.current = false
-      void load()
-      return
-    }
-    const t = setTimeout(load, 300)
-    return () => clearTimeout(t)
-  }, [q])
+  }, [query])
+
+  const open = (u: UserSummary) => navigate(`/users/${u.telegramId}`)
+
+  const isAll = segment === 'all'
+  const rows = isAll ? (data?.items ?? []) : []
+  const empty = !isAll ? EMPTY[segment] : !data ? 'Загрузка…' : !data.items ? 'Не удалось загрузить пользователей' : query ? 'Ничего не найдено' : 'Пользователей пока нет'
 
   return (
     <>
-      <VisuallyHidden Component="h1">Юзеры</VisuallyHidden>
-      <Section>
-        <Input before="🔍" placeholder="ID или @username" aria-label="Поиск" value={q} onChange={(e) => setQ(e.target.value)} />
-      </Section>
-      {error && (
-        <p className="tg-err pad" role="alert">
-          Не удалось загрузить
-        </p>
-      )}
-      {!items && !error ? (
-        <div className="tg-loading" role="status">
-          <Spinner size="m" />
-          <VisuallyHidden>Загрузка…</VisuallyHidden>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="max-w-full overflow-x-auto">
+          <SegmentedControl options={SEGMENTS} value={segment} onChange={setSegment} />
         </div>
-      ) : items && !items.length && !error ? (
-        <Placeholder header="Никого нет">
-          <span className="ph-emoji">🔍</span>
-        </Placeholder>
-      ) : (
-        items && (
-          <Section header={`Найдено: ${items.length}`}>
-            {items.map((u) => {
-              const name = u.username ? '@' + u.username : String(u.telegramId)
-              return (
-                <RowLink key={u.telegramId} to={`/users/${u.telegramId}`}>
-                  <Cell
-                    className="keep-after"
-                    before={<UserAvatar name={name} />}
-                    subtitle={`${u.telegramId} · с ${formatMonthYear(u.createdAt)}`}
-                    after={
-                      <Navigation>
-                        <Info type="text" subtitle={`${u.confirmed} ${plural(u.confirmed, ['оплата', 'оплаты', 'оплат'])}`}>
-                          {formatRub(u.confirmedSum)}
-                        </Info>
-                      </Navigation>
-                    }
-                  >
-                    {name}
-                  </Cell>
-                </RowLink>
-              )
-            })}
-          </Section>
-        )
-      )}
+        <div className="grow" />
+        <SearchField
+          className="w-full md:w-70"
+          placeholder="ID или @username"
+          aria-label="Поиск пользователей"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onClear={() => setText('')}
+        />
+        <Button variant="gray" icon="filter" onClick={notWired}>
+          Фильтры
+        </Button>
+      </div>
+      <div className="overflow-x-auto">
+        <DataTable
+          columns={columns}
+          rows={rows}
+          empty={empty}
+          onRowClick={open}
+          // У API нет страниц: весь ответ — одна страница.
+          pagination={isAll && data?.items ? { page: 1, pages: 1, from: rows.length ? 1 : 0, to: rows.length, total: formatCount(rows.length) } : undefined}
+          rowActions={(u) => <RowAction icon="more" label="Действия с пользователем" onClick={() => open(u)} />}
+          mobileRow={(u) => ({
+            before: <Avatar name={userLabel(u)} id={u.telegramId} size={40} />,
+            title: <span className="block truncate">{userLabel(u)}</span>,
+            subtitle: `с нами с ${formatFullDay(u.createdAt)}`,
+            value: formatRub(u.confirmedSum),
+            chevron: true,
+          })}
+        />
+      </div>
     </>
   )
 }

@@ -1,6 +1,9 @@
-import { Avatar, StatusTag, type CellProps, type DataTableColumn, type Tone } from '@/ui'
+import { Avatar, RowAction, StatusTag, toast, type CellProps, type DataTableColumn, type Tone } from '@/ui'
 import { formatRub, formatShortDate } from '../format'
+import { userLabel } from '../promo'
 import type { Payment } from '../types'
+
+type Column = DataTableColumn<Payment>
 
 const STATUS: Record<string, [Tone, string]> = {
   confirmed: ['success', 'Оплачено'],
@@ -18,28 +21,40 @@ export function statusTag(status: string) {
   )
 }
 
-const userLabel = (p: Payment) => (p.username ? `@${p.username}` : String(p.telegramId))
+const planLabel = (p: Payment) => `${p.month}\u00a0мес.`
 
-export const paymentColumns: DataTableColumn<Payment>[] = [
-  { key: 'id', title: 'ID', mono: true, width: 120 },
-  {
-    key: 'user',
-    title: 'Пользователь',
-    maxWidth: 240,
-    truncate: true,
-    render: (p) => (
-      <span className="flex items-center gap-2.5">
-        <Avatar name={userLabel(p)} id={p.telegramId} size={28} />
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate">{userLabel(p)}</span>
-          {p.username && <span className="caption-1 truncate text-text-secondary">{p.telegramId}</span>}
-        </span>
+const idColumn: Column = { key: 'id', title: 'ID', mono: true, width: 120 }
+const userColumn: Column = {
+  key: 'user',
+  title: 'Пользователь',
+  maxWidth: 240,
+  truncate: true,
+  render: (p) => (
+    <span className="flex items-center gap-2.5">
+      <Avatar name={userLabel(p)} id={p.telegramId} size={28} />
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate">{userLabel(p)}</span>
+        {p.username && <span className="caption-1 truncate text-text-secondary">{p.telegramId}</span>}
       </span>
-    ),
-  },
-  { key: 'price', title: 'Сумма', numeric: true, width: 120, render: (p) => formatRub(p.price) },
-  { key: 'status', title: 'Статус', width: 140, render: (p) => statusTag(p.status) },
-  { key: 'date', title: 'Дата', secondary: true, width: 150, render: (p) => formatShortDate(p.createdAt) },
+    </span>
+  ),
+}
+// Способа оплаты нет в API: «Перевод» не выдумываем.
+const methodColumn: Column = { key: 'method', title: 'Способ', secondary: true, render: () => '—' }
+const priceColumn: Column = { key: 'price', title: 'Сумма', numeric: true, width: 120, render: (p) => formatRub(p.price) }
+const statusColumn: Column = { key: 'status', title: 'Статус', width: 140, render: (p) => statusTag(p.status) }
+const dateColumn: Column = { key: 'date', title: 'Дата', secondary: true, width: 150, render: (p) => formatShortDate(p.createdAt) }
+
+export const paymentColumns: Column[] = [idColumn, userColumn, priceColumn, statusColumn, dateColumn]
+
+// Платежи в карточке юзера: сам юзер уже в шапке.
+export const userPayColumns: Column[] = [
+  idColumn,
+  { key: 'plan', title: 'Что оплачено', render: planLabel },
+  methodColumn,
+  { ...priceColumn, sortable: true },
+  statusColumn,
+  dateColumn,
 ]
 
 export const paymentMobileRow = (p: Payment): CellProps => ({
@@ -48,3 +63,16 @@ export const paymentMobileRow = (p: Payment): CellProps => ({
   value: formatRub(p.price),
   after: statusTag(p.status),
 })
+
+export const userPayMobileRow = (p: Payment): CellProps => ({ ...paymentMobileRow(p), title: planLabel(p) })
+
+async function copyId(id: Payment['id']) {
+  try {
+    await navigator.clipboard.writeText(String(id))
+    toast(`ID ${id} скопирован`, { icon: 'check' })
+  } catch {
+    toast('Не удалось скопировать ID')
+  }
+}
+
+export const payActions = (p: Payment) => <RowAction icon="copy" label="Скопировать ID платежа" onClick={() => void copyId(p.id)} />

@@ -45,6 +45,9 @@ export function formatDay(ymd: string, now?: Date): string {
   return now && year === mskDate(now).slice(0, 4) ? label : `${label} ${year}`
 }
 
+// «12 сент. 2026» (МСК) — дата без времени, год всегда
+export const formatFullDay = (iso: string) => formatDay(mskDate(new Date(iso)))
+
 // Изменение к прошлому периоду: «+12%», «-4%»; без базы сравнивать не с чем
 export function formatDelta(current: number, previous: number): string | undefined {
   if (previous === 0) return undefined
@@ -82,11 +85,4 @@ export function plural(n: number, forms: [string, string, string]): string {
   if (b === 1) return forms[0]
   if (b >= 2 && b <= 4) return forms[1]
   return forms[2]
-}
-
-// «сентябрь 2026» (МСК)
-// Месяц в родительном падеже («с ноября 2026»): с day Intl отдаёт «ноября», без day — «ноябрь».
-export function formatMonthYear(iso: string): string {
-  const p = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(new Date(iso))
-  return `${p.find((x) => x.type === 'month')?.value} ${p.find((x) => x.type === 'year')?.value}`
 }

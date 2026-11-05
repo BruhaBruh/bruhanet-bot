@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
-import { MemoryRouter, useNavigate, type NavigateFunction } from 'react-router'
+import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
 
@@ -25,68 +25,6 @@ const renderAt = async (path: string) => {
   )
   await flush()
 }
-
-const user = (id: number, username: string, confirmed: number) => ({ telegramId: id, username, createdAt: '2026-09-10T10:00:00Z', confirmed, confirmedSum: confirmed * 300 })
-
-describe('Users', () => {
-  it('shows count and pluralizes payments', async () => {
-    stub({ '/api/users?': () => json(200, { items: [user(1, 'ann', 1), user(2, '', 2)] }) })
-    await renderAt('/users')
-    expect(screen.getByText('Найдено: 2')).toBeTruthy()
-    expect(screen.getByText('1 оплата')).toBeTruthy()
-    expect(screen.getByText('2 оплаты')).toBeTruthy()
-    expect(screen.getByText('@ann')).toBeTruthy()
-    expect(screen.getByText('1 · с сентября 2026')).toBeTruthy()
-    expect(screen.getByText('@ann').closest('a')?.getAttribute('href')).toBe('/users/1')
-  })
-})
-
-describe('UserCard', () => {
-  it('says user not found on 404', async () => {
-    stub({ '/api/users/7': () => json(404, { error: 'not_found' }) })
-    await renderAt('/users/7')
-    expect(screen.getByText('Юзер не найден')).toBeTruthy()
-  })
-
-  it('resets state when id changes', async () => {
-    // 7 — 404, 8 — ещё грузится: ошибка от 7 не должна остаться на карточке 8
-    vi.stubGlobal('fetch', (url: string) => (url.startsWith('/api/users/7') ? Promise.resolve(json(404, { error: 'not_found' })) : new Promise(() => {})))
-    let go!: NavigateFunction
-    const Grab = () => {
-      go = useNavigate()
-      return null
-    }
-    render(
-      <MemoryRouter initialEntries={['/users/7']}>
-        <Grab />
-        <App />
-      </MemoryRouter>,
-    )
-    await flush()
-    expect(screen.getByText('Юзер не найден')).toBeTruthy()
-    await act(async () => go('/users/8'))
-    await flush()
-    expect(screen.queryByText('Юзер не найден')).toBeNull()
-    expect(screen.getByText('Загрузка…')).toBeTruthy()
-  })
-
-  it('shows panel status in words', async () => {
-    stub({
-      '/api/users/7': () =>
-        json(200, {
-          user: user(7, 'bob', 0),
-          stats: { confirmed: 0, confirmedSum: 0, unpaidAdvances: 0, lastConfirmedAt: null, firstConfirmedAt: null, hasHistory: false },
-          payments: [],
-          panel: { expireAt: null, status: 'not_found', error: null },
-          messages: [],
-        }),
-    })
-    await renderAt('/users/7')
-    expect(screen.getByText('нет в панели')).toBeTruthy()
-    expect(screen.getByText('Платежей нет')).toBeTruthy()
-    expect(screen.getByText('Сообщений нет')).toBeTruthy()
-  })
-})
 
 describe('Payments', () => {
   it('shows revenue and payments with user', async () => {

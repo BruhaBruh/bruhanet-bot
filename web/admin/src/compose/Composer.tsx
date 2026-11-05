@@ -266,7 +266,7 @@ export function Composer(props: ComposerProps) {
 
   if (!isBroadcast) {
     return (
-      <div className="ds-root admin-body flex flex-col gap-4 text-text [--field-bg:var(--page-bg)]">
+      <div className="admin-body flex flex-col gap-4 text-text">
         {picker}
         {editor}
         {preview}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { formatCount, formatDate, formatDelta, formatMonthYear, formatRub, formatShortDate, mskDate, plural } from './format'
+import { formatCount, formatDate, formatDelta, formatFullDay, formatRub, formatShortDate, mskDate, plural } from './format'
 
 test('formatRub uses ru-RU grouping', () => {
   expect(formatRub(2350)).toBe('2\u00a0350\u00a0₽')
@@ -22,9 +22,8 @@ test('plural picks russian forms', () => {
   ])
 })
 
-test('formatMonthYear is genitive Moscow month (for «с … года»)', () => {
-  expect(formatMonthYear('2026-09-12T09:30:00Z')).toBe('сентября 2026')
-  expect(formatMonthYear('2026-10-31T22:30:00Z')).toBe('ноября 2026')
+test('formatFullDay keeps the year and uses the Moscow date', () => {
+  expect(formatFullDay('2026-10-31T22:30:00Z')).toBe('1 нояб. 2026')
 })
 
 test('formatCount groups with nbsp', () => {

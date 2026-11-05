@@ -137,7 +137,7 @@ describe('Overview payments', () => {
     expect(table.getAllByRole('row')).toHaveLength(6)
     for (const label of ['Оплачено', 'Ожидает', 'Отклонён', 'Отменён']) expect(table.getAllByText(label).length).toBeGreaterThan(0)
     expect(table.getByText('@u9')).toBeTruthy()
-    expect(table.getByText('106')).toBeTruthy() // без username — telegram id
+    expect(table.getByText('ID 106')).toBeTruthy() // без username — telegram id
     expect(table.getAllByText(/^11\s900\s₽$/)).toHaveLength(5)
     expect(table.getAllByText(/^сегодня, /)).toHaveLength(5)
     expect(table.queryByText('@u4')).toBeNull()

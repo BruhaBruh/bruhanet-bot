@@ -6,6 +6,7 @@ import { Avatar, Button, Sidebar, Spinner, TabBar, toast } from '@/ui'
 import { get, post } from '../api'
 import { Header } from './Header'
 import { nav, pageTitle, sectionOf, sections } from './nav'
+import type { ShellContext } from './page-title'
 
 const COLLAPSED_KEY = 'bn_sidebar_collapsed'
 // Без from сервер считает только последние 30 дней, а зависший платёж старше не должен пропасть из счётчика.
@@ -16,6 +17,8 @@ export function AppShell() {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
   const [pending, setPending] = useState(0)
+  const [customTitle, setPageTitle] = useState<string>()
+  const context: ShellContext = { setPageTitle }
   const tabs = useRef<HTMLDivElement>(null)
   const active = sectionOf(pathname).key
 
@@ -90,10 +93,10 @@ export function AppShell() {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <Header title={pageTitle(pathname)} onLogout={logout} />
+        <Header title={customTitle ?? pageTitle(pathname)} onLogout={logout} />
         <main className="flex w-full max-w-320 grow flex-col gap-6 px-4 pt-4 pb-[calc(var(--size-tab-bar)+var(--space-6))] md:px-8 md:pt-6 md:pb-10">
           <Suspense fallback={<Spinner className="self-center p-8" />}>
-            <Outlet />
+            <Outlet context={context} />
           </Suspense>
         </main>
       </div>
