@@ -51,7 +51,7 @@ const columns: DataTableColumn<Broadcast>[] = [
           >
             <Icon name={b.photo ? 'card' : 'message'} size={16} label={label} />
           </span>
-          <span className="flex max-w-85 min-w-0 flex-col whitespace-nowrap">
+          <span className="flex max-w-70 min-w-0 flex-col whitespace-nowrap">
             <span className="truncate font-medium">{titleOf(b)}</span>
             <span className="caption-1 truncate text-text-secondary">{stats(b)}</span>
           </span>
