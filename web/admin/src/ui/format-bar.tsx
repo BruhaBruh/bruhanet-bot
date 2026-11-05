@@ -23,17 +23,18 @@ export interface FormatBarProps {
   active?: FormatKey[]
   formats?: FormatKey[]
   onFormat?: (key: FormatKey) => void
+  disabled?: boolean
   right?: ReactNode
   className?: string
 }
 
-export function FormatBar({ active = [], formats, onFormat, right, className }: FormatBarProps) {
+export function FormatBar({ active = [], formats, onFormat, disabled, right, className }: FormatBarProps) {
   return (
     <div
       role="toolbar"
       aria-label="Форматирование"
       className={cn(
-        'flex items-center gap-0.5 rounded-md bg-surface p-1 shadow-[var(--shadow-card),inset_0_0_0_0.5px_var(--separator)]',
+        'flex flex-wrap items-center gap-0.5 rounded-md bg-surface p-1 shadow-[var(--shadow-card),inset_0_0_0_0.5px_var(--separator)]',
         className,
       )}
     >
@@ -46,8 +47,9 @@ export function FormatBar({ active = [], formats, onFormat, right, className }: 
             title={f.title}
             aria-label={f.title}
             aria-pressed={on}
+            disabled={disabled}
             className={cn(
-              'focus-ring inline-flex size-8 cursor-pointer items-center justify-center rounded-xs text-[16px] text-text hover:bg-fill-tertiary',
+              'focus-ring inline-flex size-8 cursor-pointer items-center justify-center rounded-xs text-[16px] text-text hover:bg-fill-tertiary disabled:cursor-default disabled:opacity-40',
               on && 'bg-accent-tint text-accent-strong hover:bg-accent-tint',
               f.className,
             )}

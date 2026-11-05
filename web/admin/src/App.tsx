@@ -5,7 +5,6 @@ import { ToastProvider } from '@/ui'
 import { setUnauthorizedHandler } from './api'
 import { AppShell } from './layout/AppShell'
 import { sectionOf } from './layout/nav'
-import BroadcastNew from './pages/BroadcastNew'
 import LoginRequired from './pages/LoginRequired'
 import Overview from './pages/Overview'
 import Payments from './pages/Payments'
@@ -18,6 +17,7 @@ import { useTheme } from './theme'
 
 // tiptap — отдельным чанком
 const Broadcasts = lazy(() => import('./pages/Broadcasts'))
+const BroadcastNew = lazy(() => import('./pages/BroadcastNew'))
 const Texts = lazy(() => import('./pages/Texts'))
 
 const title = (pathname: string) =>
@@ -39,6 +39,7 @@ export function App() {
         <Route path="/login-required" element={<LoginRequired />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Overview />} />
+          <Route path="/broadcasts" element={<Broadcasts />} />
           <Route path="/broadcasts/new" element={<BroadcastNew />} />
           <Route path="/promos/new" element={<PromoNew />} />
           {/* Старые экраны на telegram-ui: при замене экран переезжает из этого блока выше. */}
@@ -54,7 +55,6 @@ export function App() {
             <Route path="/users" element={<Users />} />
             <Route path="/users/:id" element={<UserCard />} />
             <Route path="/payments" element={<Payments />} />
-            <Route path="/broadcasts" element={<Broadcasts />} />
             <Route path="/promos" element={<Promos />} />
             <Route path="/texts" element={<Texts />} />
             <Route path="/settings" element={<Settings />} />

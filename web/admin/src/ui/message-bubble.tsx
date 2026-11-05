@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { Icon } from './icon'
+import { tgEntities } from './tg-entities'
 
 export interface KeyboardButton {
   text: string
@@ -28,17 +29,6 @@ const KEYBOARD: Record<NonNullable<KeyboardButton['style']>, string> = {
   danger: 'bg-destructive-strong text-on-destructive-strong',
 }
 
-// Сущности Telegram HTML внутри текста. Спойлер двумя способами: тег Bot API и класс из README DS.
-const ENTITIES = cn(
-  'wrap-anywhere',
-  '[&_a]:text-link [&_a]:no-underline',
-  '[&_code]:font-mono [&_code]:text-[14px] [&_code]:tracking-normal [&_code]:text-accent-strong',
-  '[&_pre]:my-1 [&_pre]:rounded-xs [&_pre]:bg-fill-tertiary [&_pre]:px-2 [&_pre]:py-1.5 [&_pre]:font-mono [&_pre]:text-[14px] [&_pre]:tracking-normal [&_pre]:whitespace-pre-wrap',
-  '[&_blockquote]:my-1 [&_blockquote]:rounded-xs [&_blockquote]:bg-accent-tint [&_blockquote]:px-2 [&_blockquote]:py-0.5 [&_blockquote]:shadow-[inset_3px_0_0_var(--accent)]',
-  '[&_.tg-spoiler]:rounded-[4px] [&_.tg-spoiler]:bg-text-hint [&_.tg-spoiler]:text-transparent',
-  '[&_tg-spoiler]:rounded-[4px] [&_tg-spoiler]:bg-text-hint [&_tg-spoiler]:text-transparent',
-)
-
 export function MessageBubble({
   out,
   time,
@@ -61,7 +51,7 @@ export function MessageBubble({
       >
         {author && <div className="admin-table leading-4.5 font-semibold text-accent-strong">{author}</div>}
         {media && <div className="-mt-0.5 -mr-1.5 mb-1.5 -ml-2 overflow-hidden rounded-xl">{media}</div>}
-        <div className={ENTITIES}>
+        <div className={tgEntities}>
           {children}
           <span
             className={cn(

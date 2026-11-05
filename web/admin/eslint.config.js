@@ -17,19 +17,13 @@ export default defineConfig([
   },
   // Легаси: файлы переписываются целиком, правила снимаются точечно и уходят вместе с ними.
   {
-    // до замены в Task 6 (Broadcasts, Composer, PhotoPicker), Task 7 (Promos), Task 10 (Texts)
-    files: [
-      'src/pages/Broadcasts.tsx',
-      'src/compose/Composer.tsx',
-      'src/compose/PhotoPicker.tsx',
-      'src/pages/Promos.tsx',
-      'src/pages/Texts.tsx',
-    ],
+    // до замены в Task 7 (Promos), Task 10 (Texts)
+    files: ['src/pages/Promos.tsx', 'src/pages/Texts.tsx'],
     rules: { 'react-hooks/refs': 'off', 'react-hooks/set-state-in-effect': 'off' },
   },
   {
-    // до замены в Task 6 (Composer.test), Task 7 (promos.test), Task 10 (texts.test)
-    files: ['src/compose/Composer.test.tsx', 'src/pages/promos.test.tsx', 'src/pages/texts.test.tsx'],
+    // до замены в Task 7 (promos.test), Task 10 (texts.test)
+    files: ['src/pages/promos.test.tsx', 'src/pages/texts.test.tsx'],
     rules: { '@typescript-eslint/no-explicit-any': 'off', '@typescript-eslint/no-unused-vars': 'off' },
   },
 ])

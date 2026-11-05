@@ -1,55 +1,124 @@
-import { Button } from '@telegram-apps/telegram-ui'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { BOT_NAME, OWNER_USERNAME } from '@/brand'
+import { cn } from '@/lib/utils'
+import { NOT_WIRED } from '@/lib/not-wired'
+import { Avatar, Button, Checkbox, Dialog, Icon, Input, MessageBubble, Switch, toast } from '@/ui'
 import { ApiError, get, post } from '../api'
 import { sanitize, visibleLen, visibleText } from '../editor/serialize'
 import { TgEditor } from '../editor/TgEditor'
+import { formatCount, plural } from '../format'
 import type { Broadcast, DirectMessage } from '../types'
 import { PhotoPicker } from './PhotoPicker'
 
+export interface ComposerDraft {
+  text: string
+  photo?: string
+}
+
 // broadcast — всем из панели; direct — одному юзеру (userId)
 export type ComposerProps =
-  | { mode: 'broadcast'; onSent?(b: Broadcast): void }
+  | { mode: 'broadcast'; initial?: ComposerDraft | null; onSent?(b: Broadcast): void }
   | { mode: 'direct'; userId: number; onSent?(m: DirectMessage): void }
+
+const AUDIENCE = 'Все пользователи'
+const OTHER_AUDIENCES = ['Активные подписчики', 'Без подписки', 'Пробный период']
+// Цвета стилей кнопок — как в макете, без бэкенда только образец.
+const BUTTON_STYLES = [
+  { label: 'Обычная', className: 'bg-keyboard-btn-bg shadow-[inset_0_0_0_1px_var(--separator)]' },
+  { label: 'Основная (синяя)', className: 'bg-accent-strong' },
+  { label: 'Успех (зелёная)', className: 'bg-success-strong' },
+  { label: 'Опасная (красная)', className: 'bg-destructive-strong' },
+]
+
+const card = 'flex flex-col rounded-lg bg-surface shadow-card'
+const note = 'footnote text-text-secondary'
+const separator = 'shadow-[inset_0_-0.5px_0_var(--separator)]'
+
+function Card({ title, aside, children }: { title: string; aside?: string; children: ReactNode }) {
+  return (
+    <section className={cn(card, 'gap-3 p-5')}>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="headline">{title}</h2>
+        {aside && <span className={note}>{aside}</span>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+const NotWiredHint = () => <p className={cn(note, 'py-2')}>{NOT_WIRED}</p>
+
+function Toggle({ title, subtitle, last }: { title: string; subtitle: string; last?: boolean }) {
+  return (
+    <div className={cn('flex min-h-14 items-center gap-3', !last && separator)} title={NOT_WIRED}>
+      <div className="flex grow flex-col">
+        <span>{title}</span>
+        <span className={note}>{subtitle}</span>
+      </div>
+      <Switch disabled aria-label={title} />
+    </div>
+  )
+}
+
+// Блоки Telegram отделены одним "\n": при pre-wrap он дал бы лишнюю пустую строку рядом с блоком.
+const previewHtml = (text: string) =>
+  sanitize(text)
+    .replace(/\n(<(?:pre|blockquote)>)/g, '$1')
+    .replace(/(<\/(?:pre|blockquote)>)\n/g, '$1')
+
+// undefined — панель недоступна
+const fetchRecipients = () =>
+  get<{ count: number }>('/api/broadcasts/recipients').then(
+    (r) => r.count,
+    () => undefined,
+  )
 
 export function Composer(props: ComposerProps) {
   const { mode } = props
-  const [text, setText] = useState('')
-  const [photo, setPhoto] = useState<string>()
+  const isBroadcast = mode === 'broadcast'
+  const initial = props.mode === 'broadcast' ? props.initial : undefined
+  const [text, setText] = useState(initial?.text ?? '')
+  const [photo, setPhoto] = useState(initial?.photo)
+  const [photoUrl, setPhotoUrl] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [testSent, setTestSent] = useState(false)
   const [confirming, setConfirming] = useState(false)
   // null — грузится, undefined — панель недоступна
   const [recipients, setRecipients] = useState<number | null | undefined>(null)
   const [uploading, setUploading] = useState(false)
   // ключ идемпотентности — на конкретное содержимое: повтор без правок после сбоя
   // не создаст вторую рассылку, а правка даёт новый ключ (иначе сервер вернёт старую)
-  const key = useRef(crypto.randomUUID())
+  const [firstKey] = useState(() => crypto.randomUUID())
+  const key = useRef(firstKey)
   // синхронный флаг: второй клик до перерисовки не шлёт второй запрос
   const inFlight = useRef(false)
 
-  async function loadRecipients() {
-    setRecipients(null)
-    try {
-      setRecipients((await get<{ count: number }>('/api/broadcasts/recipients')).count)
-    } catch {
-      setRecipients(undefined)
-    }
-  }
   useEffect(() => {
-    if (mode === 'broadcast') void loadRecipients()
-  }, [mode])
+    if (isBroadcast) void fetchRecipients().then(setRecipients)
+  }, [isBroadcast])
 
-  // правка черновика (и сброс после успеха) отменяет начатое подтверждение и меняет ключ
-  useEffect(() => {
+  // правка черновика (и сброс после успеха) меняет ключ и отменяет начатое подтверждение
+  function draftChanged() {
     key.current = crypto.randomUUID()
     setConfirming(false)
-    setTestSent(false)
-  }, [text, photo])
+  }
+  function changeText(next: string) {
+    if (next === text) return
+    draftChanged()
+    setText(next)
+  }
+  // Загрузка фото заканчивается позже: здесь нельзя трогать текст, замыкание его не видит.
+  function changePhoto(next?: string, url?: string) {
+    draftChanged()
+    setPhoto(next)
+    setPhotoUrl(url)
+  }
 
   const len = visibleLen(text)
   const limit = photo ? 1024 : 4096
-  const valid = !uploading && len <= limit && (!!photo || visibleText(text).trim() !== '')
+  const over = len - limit
+  const blank = visibleText(text).trim() === ''
+  const valid = !uploading && over <= 0 && (!!photo || !blank)
 
   const body = () => ({ text, ...(photo ? { photo } : {}) })
 
@@ -57,7 +126,6 @@ export function Composer(props: ComposerProps) {
     if (inFlight.current) return
     inFlight.current = true
     setError('')
-    setTestSent(false)
     setBusy(true)
     try {
       await fn()
@@ -78,12 +146,23 @@ export function Composer(props: ComposerProps) {
   const sendTest = () =>
     run(async () => {
       await post('/api/broadcasts/preview-send', body())
-      setTestSent(true)
+      toast(`Тестовое сообщение отправлено вам, @${OWNER_USERNAME}`, { icon: 'check' })
     })
 
   function reset() {
-    setText('')
-    setPhoto(undefined)
+    changeText('')
+    changePhoto()
+  }
+
+  // Диалог называет число получателей на момент клика: на странице оно могло устареть.
+  async function askSend() {
+    if (inFlight.current) return
+    inFlight.current = true
+    setError('')
+    const count = await fetchRecipients()
+    setRecipients(count)
+    inFlight.current = false
+    if (count) setConfirming(true)
   }
 
   const broadcast = () =>
@@ -103,65 +182,211 @@ export function Composer(props: ComposerProps) {
       props.onSent?.({ id, telegramId: props.userId, ...b, status: 'pending', createdAt: new Date().toISOString() })
     })
 
-  return (
-    <div className="composer">
-      <TgEditor value={text} onChange={setText} disabled={busy} />
-      <div className="composer-row">
-        <PhotoPicker value={photo} onChange={setPhoto} onUploading={setUploading} disabled={busy} />
-        <span className={len > limit ? 'count over' : 'count'}>{`${len} / ${limit}`}</span>
-      </div>
+  const picker = (
+    <PhotoPicker
+      value={photo}
+      onChange={changePhoto}
+      onUploading={setUploading}
+      disabled={busy}
+    />
+  )
 
-      <div className="composer-label">Превью</div>
-      {/* только разрешённые теги после sanitize */}
-      <div className="tg-msg">
-        {photo && <div className="ph">🖼 фото</div>}
-        <div dangerouslySetInnerHTML={{ __html: sanitize(text) }} />
-      </div>
+  const editor = (
+    <TgEditor
+      value={text}
+      onChange={changeText}
+      disabled={busy}
+      label={isBroadcast ? 'Текст рассылки' : 'Текст сообщения'}
+      placeholder={isBroadcast ? 'Текст рассылки…' : 'Текст сообщения…'}
+      right={
+        <span className={cn('tabular-nums', over > 0 && 'text-destructive-strong')}>
+          {formatCount(len)} / {formatCount(limit)}
+        </span>
+      }
+      error={
+        over <= 0
+          ? undefined
+          : `${photo ? 'С фото текст становится подписью — не больше 1024 символов' : 'Текст не должен быть длиннее 4096 символов'}. Сократите на ${formatCount(over)}.`
+      }
+      hint="Жирный, курсив, подчёркнутый, зачёркнутый, код в строке, блок кода, спойлер, цитата и ссылки — как в Telegram."
+    />
+  )
 
-      {mode === 'broadcast' && recipients === undefined && (
-        <div className="tg-err" role="alert">
-          Панель недоступна, количество получателей неизвестно{' '}
-          <Button mode="plain" size="s" onClick={loadRecipients}>
+  const preview = (
+    <div className="flex flex-col overflow-hidden rounded-lg shadow-card">
+      <div className={cn('flex items-center gap-2.5 bg-header-bg px-3.5 py-2.5', separator)}>
+        <Avatar name={BOT_NAME} colorIndex={5} size={32} />
+        <div className="flex flex-col">
+          <span className="font-semibold">{BOT_NAME}</span>
+          <span className="caption-1 text-text-secondary">бот</span>
+        </div>
+      </div>
+      <div className={cn('flex flex-col justify-end bg-chat-bg px-3 py-4', isBroadcast && 'min-h-90')}>
+        <MessageBubble
+          time="сейчас"
+          media={
+            photo &&
+            (photoUrl ? (
+              <img src={photoUrl} alt="" className="block aspect-video w-full min-w-60 object-cover" />
+            ) : (
+              <div className="flex aspect-video w-full min-w-60 items-center justify-center bg-fill-tertiary text-text-secondary">
+                <Icon name="card" size={32} />
+              </div>
+            ))
+          }
+        >
+          {blank ? (
+            <span className="text-text-hint">{isBroadcast ? 'Текст рассылки появится здесь' : 'Текст сообщения появится здесь'}</span>
+          ) : (
+            // только разрешённые теги после sanitize
+            <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: previewHtml(text) }} />
+          )}
+        </MessageBubble>
+      </div>
+    </div>
+  )
+
+  const messages = (
+    <>
+      {isBroadcast && recipients === undefined && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-destructive-strong">
+          Панель недоступна, количество получателей неизвестно
+          <Button
+            variant="plain"
+            size="sm"
+            onClick={() => {
+              setRecipients(null)
+              void fetchRecipients().then(setRecipients)
+            }}
+          >
             Повторить
           </Button>
         </div>
       )}
       {error && (
-        <p className="tg-err" role="alert">
+        <p role="alert" className="text-destructive-strong">
           {error}
         </p>
       )}
-      {testSent && (
-        <p className="tg-ok" role="status">
-          Отправлено в Telegram
-        </p>
-      )}
+    </>
+  )
 
-      <div className="composer-actions">
-        {mode === 'broadcast' ? (
-          confirming ? (
-            <>
-              <Button loading={busy} disabled={!valid} onClick={broadcast}>
-                {`Точно разослать ${recipients} юзерам?`}
-              </Button>
-              <Button mode="plain" disabled={busy} onClick={() => setConfirming(false)}>
-                Отмена
-              </Button>
-            </>
-          ) : (
-            <Button loading={busy} disabled={!valid || !recipients} onClick={() => setConfirming(true)}>
-              {`Разослать всем${recipients != null ? ` (${recipients})` : ''}`}
-            </Button>
-          )
-        ) : (
+  const sendTestButton = (
+    <Button variant="gray" icon="send" disabled={busy || !valid} onClick={sendTest}>
+      Отправить мне
+    </Button>
+  )
+
+  if (!isBroadcast) {
+    return (
+      <div className="ds-root admin-body flex flex-col gap-4 text-text">
+        {picker}
+        {editor}
+        {preview}
+        {messages}
+        <div className="flex flex-wrap justify-end gap-3">
+          {sendTestButton}
           <Button loading={busy} disabled={!valid} onClick={direct}>
             Отправить
           </Button>
-        )}
-        <Button mode="bezeled" disabled={busy || !valid} onClick={sendTest}>
-          Отправить себе
-        </Button>
+        </div>
       </div>
+    )
+  }
+
+  const count = recipients ?? 0
+
+  return (
+    <div className="admin-body flex flex-wrap items-start gap-6">
+      <div className="flex min-w-0 grow-999 basis-130 flex-col gap-4">
+        <Card title="Фото" aside="не больше одного · JPG или PNG до 10 МБ">
+          {picker}
+        </Card>
+
+        <Card title={photo ? 'Подпись к фото' : 'Текст сообщения'} aside="Выделите текст и выберите формат">
+          {editor}
+        </Card>
+
+        <Card title="Кнопки под сообщением" aside="до 3 кнопок · каждая на своей строке">
+          <div className="admin-label flex gap-2 px-0.5 text-text-secondary max-md:hidden">
+            <span className="flex-[1_1_--spacing(40)]">Текст</span>
+            <span className="flex-[1.6_1_--spacing(55)]">Ссылка</span>
+            <span className="w-35 flex-none">Стиль</span>
+            <span className="w-10 flex-none" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input className="min-w-0 flex-[1_1_--spacing(40)]" disabled placeholder="Текст кнопки" aria-label="Текст кнопки" />
+            <Input className="min-w-0 flex-[1.6_1_--spacing(55)]" disabled placeholder="https://" aria-label="Ссылка" />
+            <div role="radiogroup" aria-label="Стиль кнопки" aria-disabled className="flex w-35 flex-none items-center gap-1.5 opacity-40">
+              {BUTTON_STYLES.map((s, i) => (
+                <span
+                  key={s.label}
+                  role="radio"
+                  aria-checked={i === 0}
+                  aria-disabled
+                  aria-label={s.label}
+                  title={s.label}
+                  className={cn('size-7 rounded-full', s.className)}
+                />
+              ))}
+            </div>
+            <Button variant="gray" icon="trash" aria-label="Удалить кнопку" disabled />
+          </div>
+          <div>
+            <Button variant="tinted" icon="plus" disabled title={NOT_WIRED}>
+              Добавить кнопку
+            </Button>
+          </div>
+          <p className={note}>{NOT_WIRED}</p>
+        </Card>
+
+        <section className={cn(card, 'px-5 pt-5 pb-2')}>
+          <h2 className="headline mb-2">Получатели</h2>
+          {[AUDIENCE, ...OTHER_AUDIENCES].map((label) => (
+            <div key={label} className={cn('flex min-h-11 items-center gap-3', separator)} title={NOT_WIRED}>
+              <Checkbox disabled checked={label === AUDIENCE} label={label} className="grow" />
+              <span className="text-text-secondary tabular-nums">
+                {label === AUDIENCE && recipients != null ? formatCount(recipients) : '—'}
+              </span>
+            </div>
+          ))}
+          <NotWiredHint />
+        </section>
+
+        <section className={cn(card, 'px-5 py-1')}>
+          <Toggle title="Отправить позже" subtitle="по времени Екатеринбурга (UTC+5)" />
+          <Toggle title="Без звука" subtitle="сообщение придёт без уведомления" last />
+          <NotWiredHint />
+        </section>
+
+        {messages}
+
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {sendTestButton}
+          <Button loading={busy} disabled={!valid || !recipients} onClick={askSend}>
+            {recipients == null
+              ? 'Отправить'
+              : `Отправить ${formatCount(recipients)} ${plural(recipients, ['получателю', 'получателям', 'получателям'])}`}
+          </Button>
+        </div>
+      </div>
+
+      <aside aria-label="Превью сообщения" className="flex max-w-100 min-w-0 grow basis-85 flex-col gap-2 md:sticky md:top-6">
+        <h2 className="admin-label px-1 text-text-secondary">Превью</h2>
+        {preview}
+        <p className="caption-1 px-1 text-text-secondary">Приблизительно: у каждого пользователя своя тема и обои чата.</p>
+      </aside>
+
+      {confirming && (
+        <Dialog
+          title="Отправить рассылку?"
+          message={`Сообщение сразу получат ${formatCount(count)} ${plural(count, ['пользователь', 'пользователя', 'пользователей'])} из группы «${AUDIENCE}». Отменить отправленное нельзя.`}
+          actions={[
+            { label: 'Отмена', style: 'cancel', onClick: () => setConfirming(false) },
+            { label: 'Отправить', onClick: broadcast },
+          ]}
+        />
+      )}
     </div>
   )
 }

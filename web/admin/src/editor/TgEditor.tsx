@@ -1,8 +1,11 @@
-import { Button } from '@telegram-apps/telegram-ui'
 import { Mark } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useEffect, useId, useImperativeHandle, useRef, type ReactNode } from 'react'
+import { cn } from '@/lib/utils'
+import { FormatBar, type FormatKey } from '@/ui'
+import { Field, fieldBox } from '@/ui/input'
+import { tgEntities } from '@/ui/tg-entities'
 import { fromTelegramHtml, toTelegramHtml } from './serialize'
 
 // Спойлер Telegram: <tg-spoiler> (и <span class="tg-spoiler"> при вставке).
@@ -12,19 +15,39 @@ const Spoiler = Mark.create({
   renderHTML: () => ['tg-spoiler', 0],
 })
 
-const marks = [
-  { mark: 'bold', label: 'B', title: 'Жирный' },
-  { mark: 'italic', label: 'I', title: 'Курсив' },
-  { mark: 'underline', label: 'U', title: 'Подчёркнутый' },
-  { mark: 'strike', label: 'S', title: 'Зачёркнутый' },
-  { mark: 'code', label: '</>', title: 'Код' },
-  { mark: 'spoiler', label: 'Спойлер', title: 'Спойлер' },
-] as const
+// Кнопка FormatBar → узел или метка tiptap.
+const NODES: Record<FormatKey, string> = {
+  bold: 'bold',
+  italic: 'italic',
+  underline: 'underline',
+  strike: 'strike',
+  code: 'code',
+  pre: 'codeBlock',
+  spoiler: 'spoiler',
+  quote: 'blockquote',
+  link: 'link',
+}
+const FORMATS = Object.keys(NODES) as FormatKey[]
+
+// Спойлер в превью скрыт, а при наборе текст должен быть виден. Селекторы сильнее, чем в tgEntities.
+const CONTENT = cn(
+  tgEntities,
+  'min-w-0 flex-1',
+  '[&_.ProseMirror]:min-h-40 [&_.ProseMirror]:whitespace-pre-wrap [&_.ProseMirror]:outline-none [&_p]:min-h-[1lh]',
+  '[&_.ProseMirror_tg-spoiler]:bg-fill-tertiary [&_.ProseMirror_tg-spoiler]:text-text',
+)
 
 export interface TgEditorProps {
   value: string
   onChange(html: string): void
   disabled?: boolean
+  /** Подпись для скринридера. */
+  label?: string
+  placeholder?: string
+  hint?: string
+  error?: string
+  /** Правый край FormatBar: счётчик символов. */
+  right?: ReactNode
 }
 
 // insert — вставка текста (переменной) в позицию курсора.
@@ -32,13 +55,17 @@ export interface TgEditorHandle {
   insert(text: string): void
 }
 
-export const TgEditor = forwardRef<TgEditorHandle, TgEditorProps>(function TgEditor({ value, onChange, disabled }, ref) {
+export const TgEditor = forwardRef<TgEditorHandle, TgEditorProps>(function TgEditor(
+  { value, onChange, disabled, label = 'Текст сообщения', placeholder, hint, error, right },
+  ref,
+) {
+  const id = useId()
   const changed = useRef(onChange)
   changed.current = onChange
 
   const editor = useEditor({
     content: fromTelegramHtml(value),
-    editorProps: { attributes: { class: 'tg-msg' } },
+    editorProps: { attributes: { role: 'textbox', 'aria-multiline': 'true', 'aria-label': label } },
     shouldRerenderOnTransaction: true, // aria-pressed кнопок по курсору
     extensions: [
       StarterKit.configure({
@@ -73,36 +100,40 @@ export const TgEditor = forwardRef<TgEditorHandle, TgEditorProps>(function TgEdi
     ;(href.trim() ? c.setLink({ href: href.trim() }) : c.unsetLink()).run()
   }
 
+  function format(key: FormatKey) {
+    if (!editor) return
+    const c = editor.chain().focus()
+    // Telegram не вкладывает pre в blockquote: блоки взаимно заменяют друг друга.
+    if (key === 'link') link()
+    else if (key === 'pre') c.unsetBlockquote().toggleCodeBlock().run()
+    else if (key === 'quote') (editor.isActive('codeBlock') ? c.toggleCodeBlock() : c).toggleBlockquote().run()
+    else c.toggleMark(key).run()
+  }
+
   return (
-    <div className="tg-editor">
-      <div className="toolbar" role="toolbar" aria-label="Форматирование">
-        {marks.map((m) => (
-          <Button
-            key={m.mark}
-            mode="bezeled"
-            size="s"
-            title={m.title}
-            aria-label={m.title}
-            aria-pressed={editor?.isActive(m.mark) ? 'true' : 'false'}
-            disabled={disabled}
-            onClick={() => editor?.chain().focus().toggleMark(m.mark).run()}
-          >
-            {m.label}
-          </Button>
-        ))}
-        <Button
-          mode="bezeled"
-          size="s"
-          title="Ссылка"
-          aria-label="Ссылка"
-          aria-pressed={editor?.isActive('link') ? 'true' : 'false'}
-          disabled={disabled}
-          onClick={link}
+    <div className="ds-root flex flex-col gap-3 text-text">
+      <FormatBar
+        active={FORMATS.filter((f) => editor?.isActive(NODES[f]))}
+        disabled={disabled}
+        onFormat={format}
+        right={right}
+      />
+      <Field id={id} hint={hint} error={error}>
+        {/* ponytail: bg-page-bg, а не bg-surface как у Textarea: редактор лежит на карточке, иначе поля не видно. */}
+        <div
+          className={cn(
+            fieldBox,
+            'relative cursor-text bg-page-bg pt-2.75 pb-2',
+            error && 'border-destructive focus-within:border-destructive',
+            disabled && 'opacity-60',
+          )}
         >
-          🔗
-        </Button>
-      </div>
-      <EditorContent editor={editor} className="area" />
+          {placeholder && editor?.isEmpty && (
+            <span className="pointer-events-none absolute text-text-hint">{placeholder}</span>
+          )}
+          <EditorContent editor={editor} className={CONTENT} />
+        </div>
+      </Field>
     </div>
   )
 })
