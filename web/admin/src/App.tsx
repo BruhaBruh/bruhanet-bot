@@ -1,6 +1,5 @@
-import { AppRoot } from '@telegram-apps/telegram-ui'
 import { lazy, useEffect } from 'react'
-import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { ToastProvider } from '@/ui'
 import { setUnauthorizedHandler } from './api'
 import { AppShell } from './layout/AppShell'
@@ -24,7 +23,7 @@ const title = (pathname: string) =>
   `${pathname === '/login-required' ? 'Вход в админ-панель' : sectionOf(pathname).label} — BruhaNet`
 
 export function App() {
-  const { theme } = useTheme()
+  useTheme()
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
@@ -47,18 +46,7 @@ export function App() {
           <Route path="/users/:id" element={<UserCard />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/texts" element={<Texts />} />
-          {/* Старые экраны на telegram-ui: при замене экран переезжает из этого блока выше. */}
-          <Route
-            element={
-              <AppRoot className="app-root in-shell" appearance={theme} platform="ios">
-                <div className="col">
-                  <Outlet />
-                </div>
-              </AppRoot>
-            }
-          >
-            <Route path="/settings" element={<Settings />} />
-          </Route>
+          <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

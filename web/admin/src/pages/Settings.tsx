@@ -1,67 +1,106 @@
-import { Banner, Button, Input, Section, Spinner, VisuallyHidden } from '@telegram-apps/telegram-ui'
 import { useEffect, useRef, useState } from 'react'
+import { NOT_WIRED } from '@/lib/not-wired'
+import { Button, Card, Icon, Input, Spinner, toast } from '@/ui'
 import { ApiError, get, put } from '../api'
+import { formatRub } from '../format'
 import type { Settings as S } from '../types'
 
 type Tariff = { months: string; price: string }
+type Form = { tariffs: Tariff[]; phone: string; bank: string; comments: string[]; supportUrl: string }
+
+const toForm = (s: S): Form => ({
+  tariffs: Object.entries(s.prices)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([months, price]) => ({ months, price: String(price) })),
+  phone: s.phone,
+  bank: s.bank,
+  comments: [...s.comments],
+  supportUrl: s.supportUrl,
+})
+
+function perMonth(t: Tariff, first: Tariff, i: number): string {
+  const months = Number(t.months)
+  if (!(months > 0) || !t.price) return '—'
+  const cost = Number(t.price) / months
+  const base = Number(first.price) / Number(first.months)
+  const profit = i > 0 && Number.isFinite(base) && base > 0 ? ` · выгода ${Math.max(0, Math.round(100 - (cost / base) * 100))}%` : ''
+  return `${formatRub(Math.round(cost))} / мес.${profit}`
+}
+
+// Текст ошибки, если тарифы нельзя отправить.
+function tariffsError(tariffs: Tariff[]): string {
+  // одинаковые сроки схлопнулись бы в один ключ объекта — ловим до отправки
+  const dup = tariffs.map((t) => t.months.trim()).find((m, i, a) => a.indexOf(m) !== i)
+  if (dup !== undefined) return `Тариф на ${dup || '(пусто)'} мес. указан дважды`
+  const bad = tariffs.some((t) => !/^\d+$/.test(t.months.trim()) || +t.months < 1 || +t.months > 120 || !/^\d+$/.test(t.price.trim()) || +t.price < 1)
+  return bad ? 'Срок тарифа — целое число от 1 до 120 месяцев, цена — целое число больше 0' : ''
+}
+
+const removeButton = 'w-10 flex-none px-0'
 
 export default function Settings() {
-  const [tariffs, setTariffs] = useState<Tariff[]>([])
-  const [phone, setPhone] = useState('')
-  const [bank, setBank] = useState('')
-  const [comments, setComments] = useState<string[]>([])
-  const [supportUrl, setSupportUrl] = useState('')
-  const [loaded, setLoaded] = useState(false)
+  const [form, setForm] = useState<Form>()
+  const [saved, setSaved] = useState<Form>()
+  const [stored, setStored] = useState<string[] | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState(false)
-  const inFlight = useRef(false)
-  const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [problems, setProblems] = useState<string[]>([])
-  const [stored, setStored] = useState<string[] | null>(null)
+  const inFlight = useRef(false)
 
   useEffect(() => {
     get<S>('/api/settings').then(
       (s) => {
-        setTariffs(
-          Object.entries(s.prices)
-            .sort(([a], [b]) => Number(a) - Number(b))
-            .map(([months, price]) => ({ months, price: String(price) })),
-        )
-        setPhone(s.phone)
-        setBank(s.bank)
-        setComments([...s.comments])
-        setSupportUrl(s.supportUrl)
+        const loaded = toForm(s)
+        setForm(loaded)
+        setSaved(loaded)
         if (s.usingDefaults) setStored(s.problems ?? [])
-        setLoaded(true)
       },
       () => setLoadError(true),
     )
   }, [])
 
-  async function save() {
-    if (inFlight.current) return
+  if (loadError)
+    return (
+      <p role="alert" className="admin-body text-destructive-strong">
+        Не удалось загрузить
+      </p>
+    )
+  if (!form) return <Spinner className="self-center p-8" />
+
+  const patch = (p: Partial<Form>) => setForm({ ...form, ...p })
+  const setTariff = (i: number, p: Partial<Tariff>) => patch({ tariffs: form.tariffs.map((t, j) => (j === i ? { ...t, ...p } : t)) })
+  const pristine = JSON.stringify(form) === JSON.stringify(saved)
+  const supportError = form.supportUrl && !/^https?:\/\//.test(form.supportUrl) ? 'Ссылка должна начинаться с https://' : undefined
+  // Некорректные сохранённые настройки чинятся сохранением даже без правок: бот уже работает на значениях из формы.
+  const dirty = !pristine || !!stored
+
+  function reset() {
+    setForm(saved)
     setError('')
     setProblems([])
-    setSaved(false)
-    // одинаковые сроки схлопнулись бы в один ключ объекта — ловим до отправки
-    const dup = tariffs.map((t) => t.months.trim()).find((m, i, a) => a.indexOf(m) !== i)
-    if (dup !== undefined) return setError(`Тариф на ${dup || '(пусто)'} мес. указан дважды`)
-    const bad = tariffs.find((t) => !/^\d+$/.test(t.months.trim()) || +t.months < 1 || +t.months > 120 || !/^\d+$/.test(t.price.trim()) || +t.price < 1)
-    if (bad) return setError('Срок тарифа — целое число от 1 до 120 месяцев, цена — целое число больше 0')
+  }
+
+  async function save() {
+    if (inFlight.current || !form) return
+    setProblems([])
+    const invalid = tariffsError(form.tariffs)
+    setError(invalid)
+    if (invalid) return
     const body: S = {
-      prices: Object.fromEntries(tariffs.map((t) => [t.months.trim(), Number(t.price)])),
-      phone,
-      bank,
-      comments,
-      supportUrl,
+      prices: Object.fromEntries(form.tariffs.map((t) => [t.months.trim(), Number(t.price)])),
+      phone: form.phone,
+      bank: form.bank,
+      comments: form.comments,
+      supportUrl: form.supportUrl,
     }
     inFlight.current = true
     setBusy(true)
     try {
       await put('/api/settings', body)
-      setSaved(true)
+      setSaved(form)
       setStored(null)
+      toast('Настройки сохранены', { icon: 'check' })
     } catch (e) {
       if (e instanceof ApiError && e.body.message) {
         setError(e.body.message)
@@ -73,87 +112,116 @@ export default function Settings() {
     }
   }
 
-  if (loadError)
-    return (
-      <p className="tg-err pad" role="alert">
-        Не удалось загрузить
-      </p>
-    )
-  if (!loaded)
-    return (
-      <div className="tg-loading" role="status">
-        <Spinner size="m" />
-        <VisuallyHidden>Загрузка…</VisuallyHidden>
-      </div>
-    )
-
-  const setTariff = (i: number, p: Partial<Tariff>) => setTariffs((ts) => ts.map((t, j) => (j === i ? { ...t, ...p } : t)))
-
   return (
     <form
       noValidate
+      className="admin-body flex max-w-215 flex-col gap-4 text-text"
       onSubmit={(e) => {
         e.preventDefault()
         void save()
       }}
-      onInput={() => setSaved(false)}
     >
-      <VisuallyHidden Component="h1">Настройки</VisuallyHidden>
       {stored && (
-        <Banner
-          className="settings-banner"
-          type="section"
-          header="Сохранённые настройки некорректны"
-          subheader={`Бот работает на значениях из .env: ${stored.join('; ')}.`}
-          description="Сохраните форму, чтобы применить новые."
-          role="alert"
-        />
+        <div role="alert" className="flex flex-col gap-1 rounded-lg bg-warning-tint p-4">
+          <span className="headline">Сохранённые настройки некорректны</span>
+          <span>Бот работает на значениях из .env: {stored.join('; ')}.</span>
+          <span>Сохраните форму, чтобы применить новые.</span>
+        </div>
       )}
 
-      <Section header="Тарифы" footer="Месяцев и цена в рублях. Хотя бы один тариф.">
-        {tariffs.map((t, i) => (
-          <div key={i} className="field-row">
-            <Input type="number" min={1} placeholder="Месяцев" aria-label="Месяцев" after="мес" value={t.months} onChange={(e) => setTariff(i, { months: e.target.value })} />
-            <Input type="number" min={1} placeholder="Цена" aria-label="Цена, ₽" after="₽" value={t.price} onChange={(e) => setTariff(i, { price: e.target.value })} />
-            <Button type="button" mode="plain" disabled={tariffs.length <= 1} aria-label="Удалить тариф" onClick={() => setTariffs((ts) => ts.filter((_, j) => j !== i))}>
-              ✕
-            </Button>
+      <Card title="Тарифы" aside="пользователь выбирает срок при оплате" className="gap-2.5">
+        <div className="admin-label hidden gap-2 px-0.5 text-text-secondary md:flex">
+          <span className="grow basis-40">Срок</span>
+          <span className="grow basis-45">Цена</span>
+          <span className="grow basis-35">В месяц</span>
+          <span className="w-10 flex-none" />
+        </div>
+        {form.tariffs.map((t, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2 md:flex-nowrap">
+            <Input className="min-w-0 grow basis-40" type="number" min={1} max={120} aria-label="Срок в месяцах" after="мес." value={t.months} onChange={(e) => setTariff(i, { months: e.target.value })} />
+            <Input className="min-w-0 grow basis-45" type="number" min={1} aria-label="Цена" after="₽" value={t.price} onChange={(e) => setTariff(i, { price: e.target.value })} />
+            <span className="min-w-0 grow basis-35 text-text-secondary">{perMonth(t, form.tariffs[0], i)}</span>
+            <Button
+              variant="gray"
+              icon="trash"
+              className={removeButton}
+              aria-label="Удалить тариф"
+              disabled={form.tariffs.length <= 1}
+              onClick={() => patch({ tariffs: form.tariffs.filter((_, j) => j !== i) })}
+            />
           </div>
         ))}
-      </Section>
-      <Button className="settings-add" type="button" mode="bezeled" size="s" onClick={() => setTariffs((ts) => [...ts, { months: '', price: '' }])}>
-        Добавить тариф
-      </Button>
+        <div>
+          <Button variant="tinted" icon="plus" onClick={() => patch({ tariffs: [...form.tariffs, { months: '', price: '' }] })}>
+            Добавить тариф
+          </Button>
+        </div>
+      </Card>
 
-      <Section header="Реквизиты">
-        <Input placeholder="Телефон" aria-label="Телефон" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <Input placeholder="Банк" aria-label="Банк" value={bank} onChange={(e) => setBank(e.target.value)} />
-      </Section>
+      <Card title="Устройства">
+        <div className="flex flex-wrap gap-3">
+          <Input className="min-w-0 grow basis-60" label="Устройств по умолчанию" type="number" disabled readOnly value="" after="шт." hint={NOT_WIRED} />
+          <Input className="min-w-0 grow basis-60" label="Цена дополнительного устройства" type="number" disabled readOnly value="" after="₽ / мес." hint={NOT_WIRED} />
+        </div>
+      </Card>
 
-      <Section header="Комментарии к переводу">
-        {comments.map((c, i) => (
-          <div key={i} className="field-row">
-            <Input placeholder="Комментарий" aria-label="Комментарий" value={c} onChange={(e) => setComments((cs) => cs.map((x, j) => (j === i ? e.target.value : x)))} />
-            <Button type="button" mode="plain" aria-label="Удалить комментарий" onClick={() => setComments((cs) => cs.filter((_, j) => j !== i))}>
-              ✕
-            </Button>
+      <Card title="Реквизиты для перевода">
+        <div className="flex flex-wrap gap-3">
+          <Input className="min-w-0 grow basis-60" label="Номер телефона" type="tel" placeholder="+7 900 000-00-00" value={form.phone} onChange={(e) => patch({ phone: e.target.value })} />
+          <Input className="min-w-0 grow basis-60" label="Банк" placeholder="Например, Т-Банк" value={form.bank} onChange={(e) => patch({ bank: e.target.value })} />
+        </div>
+        <div className="admin-table flex items-center gap-2.5 rounded-md bg-page-bg px-3 py-2.5">
+          <Icon name="card" className="flex-none text-text-secondary" />
+          <span className="min-w-0 wrap-anywhere">
+            Пользователь увидит: <b>{`${form.phone || '—'} · ${form.bank || '—'}`}</b>
+          </span>
+        </div>
+      </Card>
+
+      <Card title="Комментарии к переводу" className="gap-2.5">
+        {form.comments.map((c, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Input
+              className="min-w-0 grow"
+              placeholder="Комментарий"
+              aria-label="Комментарий"
+              value={c}
+              onChange={(e) => patch({ comments: form.comments.map((x, j) => (j === i ? e.target.value : x)) })}
+            />
+            <Button
+              variant="gray"
+              icon="trash"
+              className={removeButton}
+              aria-label="Удалить комментарий"
+              onClick={() => patch({ comments: form.comments.filter((_, j) => j !== i) })}
+            />
           </div>
         ))}
-      </Section>
-      <Button className="settings-add" type="button" mode="bezeled" size="s" onClick={() => setComments((cs) => [...cs, ''])}>
-        Добавить комментарий
-      </Button>
+        <div>
+          <Button variant="tinted" icon="plus" onClick={() => patch({ comments: [...form.comments, ''] })}>
+            Добавить комментарий
+          </Button>
+        </div>
+      </Card>
 
-      <Section header="Поддержка">
-        <Input type="url" placeholder="https://t.me/…" aria-label="Ссылка на поддержку" value={supportUrl} onChange={(e) => setSupportUrl(e.target.value)} />
-      </Section>
+      <Card title="Поддержка">
+        <Input
+          className="max-w-105"
+          label="Ссылка на поддержку"
+          type="url"
+          value={form.supportUrl}
+          onChange={(e) => patch({ supportUrl: e.target.value })}
+          hint="Открывается по кнопке «Поддержка» в боте"
+          error={supportError}
+        />
+      </Card>
 
       {error && (
-        <div className="tg-err pad" role="alert">
+        <div role="alert" className="text-destructive-strong">
           {problems.length <= 1 ? (
             error
           ) : (
-            <ul>
+            <ul className="list-disc pl-5">
               {problems.map((p) => (
                 <li key={p}>{p}</li>
               ))}
@@ -161,14 +229,16 @@ export default function Settings() {
           )}
         </div>
       )}
-      {saved && (
-        <p className="tg-ok pad" role="status">
-          Сохранено
-        </p>
-      )}
-      <Button className="settings-save" type="submit" loading={busy}>
-        Сохранить
-      </Button>
+
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <span className="footnote grow text-text-secondary">{dirty ? 'Есть несохранённые изменения' : 'Все изменения сохранены'}</span>
+        <Button variant="gray" disabled={pristine || busy} onClick={reset}>
+          Отменить
+        </Button>
+        <Button type="submit" loading={busy} disabled={!dirty || !!supportError}>
+          Сохранить изменения
+        </Button>
+      </div>
     </form>
   )
 }

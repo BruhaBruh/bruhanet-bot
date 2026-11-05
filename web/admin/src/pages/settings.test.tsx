@@ -1,8 +1,7 @@
-import { AppRoot } from '@telegram-apps/telegram-ui'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { NOT_WIRED } from '@/lib/not-wired'
+import { ToastProvider } from '@/ui'
 import Settings from './Settings'
 
 type Call = { url: string; method: string; body: unknown }
@@ -12,9 +11,11 @@ let replies: Record<string, () => Response | Promise<Response>>
 const json = (status: number, body?: unknown) => () =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
+const s = { prices: { '3': 1290, '1': 490 }, phone: '+7900', bank: 'Банк', comments: ['На кофе'], supportUrl: 'https://t.me/x' }
+
 beforeEach(() => {
   calls = []
-  replies = {}
+  replies = { 'GET /api/settings': json(200, s), 'PUT /api/settings': json(204) }
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     const method = init.method ?? 'GET'
     calls.push({ url, method, body: init.body ? JSON.parse(String(init.body)) : undefined })
@@ -24,32 +25,144 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 const flush = () => act(() => new Promise((r) => setTimeout(r, 0)))
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <AppRoot>
-    <MemoryRouter>{children}</MemoryRouter>
-  </AppRoot>
-)
-const btn = (label: string) => screen.getAllByRole('button').find((b) => b.textContent === label)!
+const open = async () => {
+  render(
+    <ToastProvider>
+      <Settings />
+    </ToastProvider>,
+  )
+  await flush()
+}
+const btn = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement
+const field = (name: string) => screen.getByLabelText(name) as HTMLInputElement
+const edit = (el: HTMLElement, value: string) => fireEvent.change(el, { target: { value } })
+const puts = () => calls.filter((c) => c.method === 'PUT')
+const months = () => screen.getAllByRole('spinbutton', { name: 'Срок в месяцах' })
+const prices = () => screen.getAllByRole('spinbutton', { name: 'Цена' })
 
 describe('Settings', () => {
-  const s = { prices: { '1': 150, '3': 400 }, phone: '+7900', bank: 'Банк', comments: ['На кофе'], supportUrl: 'https://t.me/x' }
-
-  it('shows stored problems banner', async () => {
-    replies['GET /api/settings'] = json(200, { ...s, usingDefaults: true, problems: ['нет тарифов'] })
-    const { container } = render(<Settings />, { wrapper })
-    await flush()
-    expect(container.textContent).toContain('нет тарифов')
+  it('double save sends one PUT with all keys, comments included', async () => {
+    replies['PUT /api/settings'] = () => new Promise((r) => setTimeout(() => r(json(204)()), 10))
+    await open()
+    edit(field('Банк'), 'Т-Банк')
+    const save = btn('Сохранить изменения')
+    fireEvent.click(save)
+    fireEvent.click(save)
+    await act(() => new Promise((r) => setTimeout(r, 30)))
+    expect(puts()).toEqual([{ url: '/api/settings', method: 'PUT', body: { ...s, bank: 'Т-Банк' } }])
+    expect(Object.keys(puts()[0].body as object).sort()).toEqual(['bank', 'comments', 'phone', 'prices', 'supportUrl'])
+    expect(screen.getByText('Все изменения сохранены')).toBeTruthy()
+    expect(btn('Сохранить изменения').disabled).toBe(true)
   })
 
-  it('double «Сохранить» sends one PUT with the whole object', async () => {
-    replies['GET /api/settings'] = json(200, s)
-    replies['PUT /api/settings'] = () => new Promise((r) => setTimeout(() => r(json(204)()), 10))
-    render(<Settings />, { wrapper })
+  it('edited comments go into the PUT', async () => {
+    await open()
+    edit(screen.getByRole('textbox', { name: 'Комментарий' }), 'Перекус')
+    fireEvent.click(btn('Добавить комментарий'))
+    edit(screen.getAllByRole('textbox', { name: 'Комментарий' })[1], 'Вернул долг')
+    fireEvent.click(btn('Сохранить изменения'))
     await flush()
-    fireEvent.click(btn('Сохранить'))
-    fireEvent.click(btn('Сохранить'))
-    await act(() => new Promise((r) => setTimeout(r, 30)))
-    expect(calls.filter((c) => c.method === 'PUT')).toEqual([{ url: '/api/settings', method: 'PUT', body: s }])
-    expect(screen.getByText('Сохранено')).toBeTruthy()
+    expect((puts()[0].body as typeof s).comments).toEqual(['Перекус', 'Вернул долг'])
+  })
+
+  it('«В месяц» is price / months, rounded, with the profit against the first tariff', async () => {
+    await open()
+    expect(screen.getByText(/^490\s₽ \/ мес\.$/)).toBeTruthy()
+    expect(screen.getByText(/^430\s₽ \/ мес\. · выгода 12%$/)).toBeTruthy()
+    edit(months()[1], '')
+    expect(screen.getByText('—')).toBeTruthy()
+  })
+
+  it('tariffs are sorted by months; add and remove work, the last one stays', async () => {
+    await open()
+    expect(months().map((m) => (m as HTMLInputElement).value)).toEqual(['1', '3'])
+    fireEvent.click(btn('Добавить тариф'))
+    expect(months()).toHaveLength(3)
+    expect((months()[2] as HTMLInputElement).value).toBe('')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Удалить тариф' })[2])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Удалить тариф' })[1])
+    expect(months()).toHaveLength(1)
+    expect(btn('Удалить тариф').disabled).toBe(true)
+  })
+
+  it('rejects duplicate months and out-of-range values without a request', async () => {
+    await open()
+    edit(months()[1], '1')
+    fireEvent.click(btn('Сохранить изменения'))
+    expect(screen.getByRole('alert').textContent).toBe('Тариф на 1 мес. указан дважды')
+    edit(months()[1], '121')
+    fireEvent.click(btn('Сохранить изменения'))
+    expect(screen.getByRole('alert').textContent).toContain('от 1 до 120')
+    edit(months()[1], '3')
+    edit(prices()[1], '0')
+    fireEvent.click(btn('Сохранить изменения'))
+    expect(screen.getByRole('alert').textContent).toContain('больше 0')
+    expect(puts()).toHaveLength(0)
+  })
+
+  it('«Отменить» restores the loaded values and clears the error', async () => {
+    await open()
+    expect(btn('Отменить').disabled).toBe(true)
+    expect(screen.getByText('Все изменения сохранены')).toBeTruthy()
+    edit(months()[1], '1')
+    fireEvent.click(btn('Сохранить изменения'))
+    expect(screen.getByText('Есть несохранённые изменения')).toBeTruthy()
+    fireEvent.click(btn('Отменить'))
+    expect((months()[1] as HTMLInputElement).value).toBe('3')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(btn('Сохранить изменения').disabled).toBe(true)
+  })
+
+  it('requisites line follows the fields, dashes when empty', async () => {
+    await open()
+    expect(screen.getByText('+7900 · Банк')).toBeTruthy()
+    edit(field('Номер телефона'), '')
+    edit(field('Банк'), '')
+    expect(screen.getByText('— · —')).toBeTruthy()
+  })
+
+  it('support link must be http(s)', async () => {
+    await open()
+    edit(field('Ссылка на поддержку'), 't.me/x')
+    expect(screen.getByText('Ссылка должна начинаться с https://')).toBeTruthy()
+    expect(btn('Сохранить изменения').disabled).toBe(true)
+  })
+
+  it('devices are drawn disabled and empty', async () => {
+    await open()
+    for (const name of ['Устройств по умолчанию', 'Цена дополнительного устройства']) {
+      expect(field(name).disabled).toBe(true)
+      expect(field(name).value).toBe('')
+    }
+    expect(screen.getAllByText(NOT_WIRED)).toHaveLength(2)
+  })
+
+  it('usingDefaults: banner with problems, saving works without edits and hides the banner', async () => {
+    replies['GET /api/settings'] = json(200, { ...s, usingDefaults: true, problems: ['нет тарифов', 'нет банка'] })
+    await open()
+    expect(screen.getByRole('alert').textContent).toContain('нет тарифов; нет банка')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toEqual([{ url: '/api/settings', method: 'PUT', body: s }])
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('server errors are shown: message or the problems list', async () => {
+    replies['PUT /api/settings'] = json(400, { message: 'неверно', problems: ['нет банка', 'нет телефона'] })
+    await open()
+    edit(field('Банк'), 'x')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['нет банка', 'нет телефона'])
+    replies['PUT /api/settings'] = json(500)
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(screen.getByRole('alert').textContent).toBe('Не удалось сохранить, попробуйте ещё раз')
+  })
+
+  it('load failure is reported', async () => {
+    replies['GET /api/settings'] = json(500)
+    await open()
+    expect(screen.getByRole('alert').textContent).toBe('Не удалось загрузить')
   })
 })
