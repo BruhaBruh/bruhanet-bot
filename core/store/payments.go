@@ -15,7 +15,7 @@ import (
 
 const paymentCols = `id, telegram_id, username, months, price, status, prev_expire_at, advance_granted,
 	coalesce(admin_message_id, 0), created_at, submitted_at, resolved_at, promo_id, base_price,
-	coalesce(photo_file_id, '')`
+	coalesce(photo_file_id, ''), (SELECT c.code FROM promo_codes c WHERE c.id = payments.promo_id)`
 
 // unpaidAdvance — условие на строку payments: выданный и неоплаченный аванс, считается после последнего confirmed.
 const unpaidAdvance = `status IN ('declined', 'cancelled') AND advance_granted`
@@ -23,7 +23,7 @@ const unpaidAdvance = `status IN ('declined', 'cancelled') AND advance_granted`
 func scanPayment(row pgx.Row) (model.Payment, error) {
 	var p model.Payment
 	err := row.Scan(&p.ID, &p.TelegramID, &p.Username, &p.Month, &p.Price, &p.Status, &p.PrevExpireAt,
-		&p.AdvanceGranted, &p.AdminMessageID, &p.CreatedAt, &p.SubmittedAt, &p.ResolvedAt, &p.PromoID, &p.BasePrice, &p.PhotoFileID)
+		&p.AdvanceGranted, &p.AdminMessageID, &p.CreatedAt, &p.SubmittedAt, &p.ResolvedAt, &p.PromoID, &p.BasePrice, &p.PhotoFileID, &p.PromoCode)
 	p.HasPhoto = p.PhotoFileID != ""
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound

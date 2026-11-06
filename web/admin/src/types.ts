@@ -43,6 +43,7 @@ export interface Payment {
   promoId?: number | null
   basePrice?: number | null
   hasPhoto?: boolean
+  promoCode?: string | null
 }
 
 export interface UserDetail {

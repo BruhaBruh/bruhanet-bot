@@ -60,13 +60,12 @@ describe('Payments', () => {
   it('shows macro columns, revenue and the pager', async () => {
     stub()
     await renderPage()
-    expect(table().getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['ID', 'Пользователь', 'Тариф', 'Способ', 'Сумма', 'Статус', 'Дата', 'Действия'])
+    expect(table().getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['ID', 'Пользователь', 'Тариф', 'Сумма', 'Статус', 'Дата', 'Действия'])
     const cells = table().getAllByRole('cell').map((c) => c.textContent)
     expect(cells[0]).toBe('1')
     expect(cells[2]).toBe('3 мес.')
-    expect(cells[3]).toBe('—')
-    expect(cells[4]).toBe('900 ₽')
-    expect(cells[5]).toBe('Оплачено')
+    expect(cells[3]).toBe('900 ₽')
+    expect(cells[4]).toBe('Оплачено')
     expect(screen.getByText('Выручка по дате подтверждения за период')).toBeTruthy()
     expect(screen.getAllByText(/^900\s₽$/).length).toBeGreaterThan(1)
     expect(screen.getByText(/^Показано 1–1 из 120$/)).toBeTruthy()
@@ -101,6 +100,42 @@ describe('Payments', () => {
     expect(calls.at(-1)?.get('status')).toBe('confirmed')
     await pick('Ожидают')
     expect(calls.at(-1)?.get('status')).toBe('pending')
+    await pick('Отклонён')
+    expect(calls.at(-1)?.get('status')).toBe('declined')
+    await pick('Отменён')
+    expect(calls.at(-1)?.get('status')).toBe('cancelled')
+    expect(screen.queryByRole('radio', { name: 'Возвраты' })).toBeNull()
+  })
+
+  it('«Фильтры» have only the period', async () => {
+    stub()
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    expect(screen.queryByRole('group', { name: 'Статус' })).toBeNull()
+    expect(screen.queryByRole('radio', { name: 'Любой' })).toBeNull()
+    expect(screen.getByLabelText('С даты')).toBeTruthy()
+    expect(screen.getByLabelText('По дату')).toBeTruthy()
+  })
+
+  it('marks the advance and shows the promo code with the base price', async () => {
+    stub(() => json(200, { items: [payment(1, 'declined', { advanceGranted: true, promoCode: 'SALE10', basePrice: 1000 }), payment(2)], total: 2, revenue: 0 }))
+    await renderPage()
+    const row = within(table().getByText('1').closest('tr')!)
+    expect(row.getByText('аванс')).toBeTruthy()
+    expect(row.getByText(/^SALE10 · было 1\s000\s₽$/)).toBeTruthy()
+    const plain = within(table().getByText('2').closest('tr')!)
+    expect(plain.queryByText('аванс')).toBeNull()
+    expect(plain.queryByText(/было/)).toBeNull()
+  })
+
+  it('dates a confirmed payment by confirmation, the rest by creation', async () => {
+    const dates = { createdAt: '2026-01-10T10:00:00Z', resolvedAt: '2026-02-20T10:00:00Z' }
+    stub(() => json(200, { items: [payment(1, 'confirmed', dates), payment(2, 'declined', dates), payment(3, 'pending', { createdAt: dates.createdAt })], total: 3, revenue: 0 }))
+    await renderPage()
+    const dateOf = (id: string) => within(table().getByText(id).closest('tr')!).getAllByRole('cell')[5].textContent
+    expect(dateOf('1')).toContain('20 февр.')
+    expect(dateOf('2')).toContain('10 янв.')
+    expect(dateOf('3')).toContain('10 янв.')
   })
 
   it.each([
@@ -112,16 +147,6 @@ describe('Payments', () => {
     stub(() => json(200, { items: [payment(1, status)], total: 1, revenue: 0 }))
     await renderPage()
     expect(table().getByText(label)).toBeTruthy()
-  })
-
-  it('shows refunds as an empty state, revenue stays', async () => {
-    stub()
-    await renderPage()
-    await pick('Возвраты')
-    expect(table().queryByText('@eve')).toBeNull()
-    expect(table().getByText('Возвратов нет')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Следующая страница' })).toBeNull()
-    expect(screen.getByText(/^900\s₽$/)).toBeTruthy()
   })
 
   it('pages through the API', async () => {
@@ -155,24 +180,6 @@ describe('Payments', () => {
     expect(calls.at(-1)?.get('from')).toBe('2026-01-15')
     expect(calls.at(-1)?.get('page')).toBe('1')
     expect(screen.getByText(/^с 15 янв\./)).toBeTruthy()
-  })
-
-  it('a status from the filters overrides the tab, a tab click resets it', async () => {
-    const calls = stub()
-    await renderPage()
-    await pick('Возвраты')
-    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
-    expect(screen.getByRole('radio', { name: 'Любой' }).getAttribute('aria-checked')).toBe('true')
-    await pick('Отменён')
-    expect(calls.at(-1)?.get('status')).toBe('cancelled')
-    expect(table().getByText('@eve')).toBeTruthy()
-    expect(screen.getByRole('radio', { name: 'Возвраты' }).getAttribute('aria-checked')).toBe('false')
-    await pick('Отклонён')
-    expect(calls.at(-1)?.get('status')).toBe('declined')
-    await pick('Ожидают')
-    expect(calls.at(-1)?.get('status')).toBe('pending')
-    expect(screen.getByRole('radio', { name: 'Ожидают' }).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('radio', { name: 'Любой' }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('both dates cleared: omits them and says the server uses 30 days', async () => {

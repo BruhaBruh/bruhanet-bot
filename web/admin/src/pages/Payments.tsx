@@ -13,21 +13,16 @@ const SEGMENTS = [
   { value: 'all', label: 'Все' },
   { value: 'paid', label: 'Оплачено' },
   { value: 'pending', label: 'Ожидают' },
-  { value: 'refund', label: 'Возвраты' },
-]
-const API_STATUS: Record<string, string> = { paid: 'confirmed', pending: 'pending' }
-const STATUS_OPTIONS = [
-  { value: 'any', label: 'Любой' },
-  { value: 'confirmed', label: 'Оплачено' },
-  { value: 'pending', label: 'Ожидает' },
   { value: 'declined', label: 'Отклонён' },
   { value: 'cancelled', label: 'Отменён' },
 ]
+const API_STATUS: Record<string, string> = { paid: 'confirmed', pending: 'pending', declined: 'declined', cancelled: 'cancelled' }
 const EMPTY: Record<string, string> = {
   all: 'Платежей за период нет',
   paid: 'Оплаченных платежей за период нет',
   pending: 'Ожидающих платежей за период нет',
-  refund: 'Возвратов нет',
+  declined: 'Отклонённых платежей за период нет',
+  cancelled: 'Отменённых платежей за период нет',
 }
 
 interface Page {
@@ -39,12 +34,10 @@ interface Page {
 export default function Payments() {
   const navigate = useNavigate()
   // период всегда виден и уходит явно: сегодня и 29 дней назад (МСК), как default сервера
-  const [f, setF] = useState(() => ({ segment: 'all', status: 'any', from: mskDate(new Date(), -29), to: mskDate(new Date()), page: 1 }))
+  const [f, setF] = useState(() => ({ segment: 'all', from: mskDate(new Date(), -29), to: mskDate(new Date()), page: 1 }))
   const [showFilters, setShowFilters] = useState(false)
 
-  // Статус из фильтров важнее вкладки; смена вкладки его сбрасывает.
-  const overridden = f.status !== 'any'
-  const params = new URLSearchParams({ status: overridden ? f.status : (API_STATUS[f.segment] ?? ''), page: String(f.page) })
+  const params = new URLSearchParams({ status: API_STATUS[f.segment] ?? '', page: String(f.page) })
   if (f.from) params.set('from', f.from)
   if (f.to) params.set('to', f.to)
   const url = `/api/payments?${params}`
@@ -77,10 +70,8 @@ export default function Payments() {
 
   const loaded = data?.url === url ? data : undefined
   const result = loaded?.result
-  // Возвратов нет в API: сегмент всегда пустой.
-  const isRefund = !overridden && f.segment === 'refund'
-  const rows = isRefund ? [] : (result?.items ?? [])
-  const empty = isRefund ? EMPTY.refund : !loaded ? 'Загрузка…' : !result ? 'Не удалось загрузить платежи' : overridden ? 'Платежей с таким статусом за период нет' : EMPTY[f.segment]
+  const rows = result?.items ?? []
+  const empty = !loaded ? 'Загрузка…' : !result ? 'Не удалось загрузить платежи' : EMPTY[f.segment]
   const offset = (f.page - 1) * PAGE_SIZE
 
   const now = new Date()
@@ -90,7 +81,7 @@ export default function Payments() {
     <>
       <div className="flex flex-wrap items-center gap-3">
         <div className="max-w-full overflow-x-auto">
-          <SegmentedControl options={SEGMENTS} value={overridden ? undefined : f.segment} onChange={(segment) => filter({ segment, status: 'any' })} />
+          <SegmentedControl options={SEGMENTS} value={f.segment} onChange={(segment) => filter({ segment })} />
         </div>
         <div className="grow" />
         <Button variant="gray" icon="filter" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}>
@@ -99,10 +90,6 @@ export default function Payments() {
       </div>
       {showFilters && (
         <Card className="admin-body">
-          <div role="group" aria-label="Статус" className="flex flex-col gap-2">
-            <span className="admin-label px-0.5 text-text-secondary">Статус</span>
-            <SegmentedControl className="self-start" options={STATUS_OPTIONS} value={f.status} onChange={(status) => filter({ status })} />
-          </div>
           <div className="flex flex-wrap gap-4">
             <Input type="date" label="С даты" className="min-w-0 flex-1 basis-50" value={f.from} onChange={(e) => filter({ from: e.target.value })} />
             <Input type="date" label="По дату" className="min-w-0 flex-1 basis-50" value={f.to} onChange={(e) => filter({ to: e.target.value })} />
@@ -121,7 +108,7 @@ export default function Payments() {
           expandedRow={review.expandedRow}
           mobileRow={(p) => ({ ...paymentPageMobileRow(p), onClick: () => review.toggle(p) })}
           pagination={
-            result && !isRefund
+            result
               ? {
                   page: f.page,
                   pages: Math.max(1, Math.ceil(result.total / PAGE_SIZE)),

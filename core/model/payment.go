@@ -30,6 +30,8 @@ type Payment struct {
 	// PhotoFileID — file_id чека; наружу не отдаётся, панель смотрит HasPhoto и GET /api/payments/{id}/photo.
 	PhotoFileID string `json:"-"`
 	HasPhoto    bool   `json:"hasPhoto"`
+	// PromoCode — код promo_id на момент чтения.
+	PromoCode *string `json:"promoCode"`
 }
 
 type UserStats struct {

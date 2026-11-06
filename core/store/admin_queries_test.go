@@ -309,3 +309,36 @@ func TestUserPromos(t *testing.T) {
 		t.Fatalf("empty: %+v %v", got, err)
 	}
 }
+
+// Код промокода приходит в платеже из join; у платежа без промокода его нет.
+func TestPaymentPromoCode(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	pr, err := s.CreatePromo(ctx, model.Promo{Code: "SALE10", Kind: model.PromoPercent, Value: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := 1000
+	created, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 1, Month: 1, Price: 900, PrevExpireAt: time.Now(), PromoID: &pr.ID, BasePrice: &base}, noRollback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.PromoCode == nil || *created.PromoCode != "SALE10" {
+		t.Fatalf("created = %v", created.PromoCode)
+	}
+	if _, _, err = s.CreatePayment(ctx, newPay(2, time.Now()), noRollback); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := s.ListPayments(ctx, model.PaymentFilter{Limit: 10})
+	if err != nil || len(items) != 2 {
+		t.Fatalf("items = %+v, err = %v", items, err)
+	}
+	if items[0].PromoCode != nil || items[1].PromoCode == nil || *items[1].PromoCode != "SALE10" || *items[1].BasePrice != 1000 {
+		t.Fatalf("codes: %v %v", items[0].PromoCode, items[1].PromoCode)
+	}
+	// под FOR UPDATE подзапрос тоже читается
+	res, err := s.ResolvePayment(ctx, created.ID, model.PaymentConfirmed, time.Now(), okApply)
+	if err != nil || res.PromoCode == nil {
+		t.Fatalf("resolved = %+v, err = %v", res, err)
+	}
+}

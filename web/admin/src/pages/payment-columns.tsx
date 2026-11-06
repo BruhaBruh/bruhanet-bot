@@ -41,11 +41,38 @@ const userColumn: Column = {
     </Link>
   ),
 }
-// Способа оплаты нет в API: «Перевод» не выдумываем.
-const methodColumn: Column = { key: 'method', title: 'Способ', secondary: true, render: () => '—' }
-const priceColumn: Column = { key: 'price', title: 'Сумма', numeric: true, width: 120, render: (p) => formatRub(p.price) }
-const statusColumn: Column = { key: 'status', title: 'Статус', width: 140, render: (p) => statusTag(p.status) }
-const dateColumn: Column = { key: 'date', title: 'Дата', secondary: true, width: 150, render: (p) => formatShortDate(p.createdAt) }
+// «CODE · было M ₽»; у платежа без промокода пусто.
+const promoNote = (p: Payment) => [p.promoCode, p.basePrice != null && `было ${formatRub(p.basePrice)}`].filter(Boolean).join(' · ')
+// У оплаченного важна дата подтверждения: по ней считается выручка.
+const paymentDate = (p: Payment) => (p.status === 'confirmed' && p.resolvedAt) || p.createdAt
+
+const priceColumn: Column = {
+  key: 'price',
+  title: 'Сумма',
+  numeric: true,
+  width: 120,
+  render: (p) => {
+    const note = promoNote(p)
+    return (
+      <span className="flex flex-col items-end">
+        <span>{formatRub(p.price)}</span>
+        {note && <span className="caption-1 font-normal text-text-secondary">{note}</span>}
+      </span>
+    )
+  },
+}
+const statusColumn: Column = {
+  key: 'status',
+  title: 'Статус',
+  width: 140,
+  render: (p) => (
+    <span className="inline-flex items-center gap-1.5">
+      {statusTag(p.status)}
+      {p.advanceGranted && <StatusTag>аванс</StatusTag>}
+    </span>
+  ),
+}
+const dateColumn: Column = { key: 'date', title: 'Дата', secondary: true, width: 150, render: (p) => formatShortDate(paymentDate(p)) }
 
 export const paymentColumns: Column[] = [idColumn, userColumn, priceColumn, statusColumn, dateColumn]
 
@@ -53,7 +80,6 @@ export const paymentPageColumns: Column[] = [
   { ...idColumn, sortable: true, sortValue: (p) => Number(p.id) },
   { ...userColumn, sortable: true, sortValue: userLabel },
   { key: 'plan', title: 'Тариф', render: planLabel },
-  methodColumn,
   { ...priceColumn, sortable: true },
   statusColumn,
   dateColumn,
@@ -63,22 +89,24 @@ export const paymentPageColumns: Column[] = [
 export const userPayColumns: Column[] = [
   idColumn,
   { key: 'plan', title: 'Что оплачено', render: planLabel },
-  methodColumn,
   { ...priceColumn, sortable: true },
   statusColumn,
   dateColumn,
 ]
 
+const mobileSubtitle = (p: Payment, ...lead: string[]) =>
+  [...lead, formatShortDate(paymentDate(p)), p.advanceGranted && 'аванс', promoNote(p)].filter(Boolean).join(' · ')
+
 export const paymentMobileRow = (p: Payment): CellProps => ({
   title: userLabel(p),
-  subtitle: formatShortDate(p.createdAt),
+  subtitle: mobileSubtitle(p),
   value: formatRub(p.price),
   after: statusTag(p.status),
 })
 
 export const paymentPageMobileRow = (p: Payment): CellProps => ({
   ...paymentMobileRow(p),
-  subtitle: `${planLabel(p)} · ${formatShortDate(p.createdAt)}`,
+  subtitle: mobileSubtitle(p, planLabel(p)),
   chevron: true,
 })
 
