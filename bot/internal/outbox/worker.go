@@ -36,9 +36,13 @@ type Queue interface {
 	AddBroadcastReceived(ctx context.Context, telegramID int64) error
 }
 
+// Render подставляет переменные в текст для получателя (content.Provider): читает не больше строки users.
+type Render func(ctx context.Context, chatID int64, tpl string) string
+
 type Worker struct {
-	q Queue
-	b *bot.Bot
+	q      Queue
+	b      *bot.Bot
+	render Render
 
 	interval, idle time.Duration
 	backoff        func(attempt int) time.Duration
@@ -46,9 +50,9 @@ type Worker struct {
 	attempts map[int64]int
 }
 
-func New(q Queue, b *bot.Bot) *Worker {
+func New(q Queue, b *bot.Bot, render Render) *Worker {
 	return &Worker{
-		q: q, b: b, interval: interval, idle: idle,
+		q: q, b: b, render: render, interval: interval, idle: idle,
 		backoff:  func(n int) time.Duration { return min(time.Duration(1<<n)*time.Second, time.Minute) },
 		attempts: map[int64]int{},
 	}
@@ -136,6 +140,9 @@ func (w *Worker) remove(ctx context.Context, it model.OutboxItem, ok bool) bool 
 }
 
 func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
+	if it.Template {
+		it.Text = w.render(ctx, it.ChatID, it.Text)
+	}
 	switch {
 	case it.EventType == "broadcast_summary":
 		text, err := w.summary(ctx, it)

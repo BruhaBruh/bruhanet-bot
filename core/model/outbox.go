@@ -11,6 +11,9 @@ type OutboxMessage struct {
 	ParseMode string                       `json:"parse_mode,omitempty"`
 	Keyboard  *models.InlineKeyboardMarkup `json:"keyboard,omitempty"`
 	Photo     string                       `json:"photo,omitempty"` // file_id; есть — sendPhoto с подписью Text
+	// Template — Text содержит {{.переменные}}: воркер подставляет их на получателя. Нет флага — текст уходит как есть
+	// (строки до этой версии, готовые тексты и обычный текст с «{{»).
+	Template bool `json:"template,omitempty"`
 
 	// copy, если MessageID != 0
 	FromChatID int64 `json:"from_chat_id,omitempty"`

@@ -201,6 +201,11 @@ export const visibleText = (html: string) => parseBody(html).textContent ?? ''
 // Как texts.VisibleLen: длина видимого текста в UTF-16 (JS-строки — уже UTF-16).
 export const visibleLen = (html: string) => visibleText(html).length
 
+// Как texts.WorstLen: длина, когда все переменные максимальной длины.
+export function worstLen(tpl: string, vars: { name: string; max: number }[]): number {
+  return visibleLen(tpl.replace(placeholder, (_, path: string) => 'я'.repeat(vars.find((v) => v.name === path)?.max ?? 0)))
+}
+
 // Начало текста для списков (рассылки, сообщения юзеру).
 export function snippet(html: string, photo?: string): string {
   const t = visibleText(html).trim()

@@ -29,6 +29,51 @@ func jsonBody(t *testing.T, v any) string {
 	return string(b)
 }
 
+// Переменные в рассылках: неизвестная и неразборчивая — понятный 400, подпись — по худшему случаю.
+func TestMessageVars(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	st.setRaw = map[string][]byte{"vars": []byte(`{"my":"a"}`)}
+	post := func(text, photo string) (int, string) {
+		w := send(h, http.MethodPost, "/api/broadcasts/preview-send", c, jsonBody(t, map[string]string{"text": text, "photo": photo}))
+		return w.Code, w.Body.String()
+	}
+	if code, body := post("Привет, {{.name}} {{.my}}", ""); code != http.StatusNoContent {
+		t.Fatalf("%d %s", code, body)
+	}
+	last := st.outbox[len(st.outbox)-1]
+	if !last.Template || last.Text != "Привет, {{.name}} {{.my}}" || last.ChatID != adminID {
+		t.Fatalf("outbox = %+v", last)
+	}
+	if code, body := post("обычный {{ текст", ""); code != http.StatusNoContent || st.outbox[len(st.outbox)-1].Template {
+		t.Fatalf("%d %s %+v", code, body, st.outbox[len(st.outbox)-1])
+	}
+	for text, want := range map[string]string{
+		"{{.nope}}":     "неизвестная переменная",
+		"{{name}}":      "неправильная переменная",
+		"{{.na me}}":    "неправильная переменная",
+		"{{.months}} x": "неизвестная переменная", // переменная чужого текста в рассылке не имеет значения
+	} {
+		if code, body := post(text, ""); code != http.StatusBadRequest || !strings.Contains(body, want) {
+			t.Errorf("%q: %d %s", text, code, body)
+		}
+	}
+	// name 64: 960 + 64 = 1024 — помещается в подпись, на символ больше — нет
+	if code, body := post(strings.Repeat("a", 960)+"{{.name}}", "AgAD"); code != http.StatusNoContent {
+		t.Fatalf("%d %s", code, body)
+	}
+	if code, body := post(strings.Repeat("a", 961)+"{{.name}}", "AgAD"); code != http.StatusBadRequest || !strings.Contains(body, "подпись") {
+		t.Fatalf("%d %s", code, body)
+	}
+	// без фото — 4096
+	if code, body := post(strings.Repeat("a", 4033)+"{{.name}}", ""); code != http.StatusBadRequest {
+		t.Fatalf("%d %s", code, body)
+	}
+	// личное сообщение — те же правила
+	if w := send(h, http.MethodPost, "/api/users/7/messages", c, `{"text":"{{.nope}}"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
 func TestBroadcastPreviewSend(t *testing.T) {
 	h, st, c := bcServer(t, &fakePanel{})
 

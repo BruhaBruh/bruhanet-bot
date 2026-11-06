@@ -109,7 +109,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		return nil, errors.Join(errors.New("failed to load Europe/Moscow"), err)
 	}
 
-	ow := outbox.New(st, b)
+	ow := outbox.New(st, b, cnt.Render)
 	outboxDone := make(chan struct{})
 	if err = observability.Registry.Register(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "bot_outbox_pending", Help: "Messages waiting in the outbox.",

@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -10,6 +11,35 @@ import (
 )
 
 // Review Focus 1: повтор с тем же ключом не создаёт ни рассылки, ни строк outbox.
+// Флаг шаблона — только у текста с переменными: обычный текст воркер не трогает и users не читает.
+func TestTemplateFlag(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	if _, _, err := s.CreateBroadcast(ctx, model.BroadcastDraft{IdempotencyKey: uuid.New(), Text: "Привет, {{.name}}"}, []int64{10}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.CreateBroadcast(ctx, model.BroadcastDraft{IdempotencyKey: uuid.New(), Text: "обычный {{ текст"}, []int64{20}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TouchUser(ctx, model.UserSeen{TelegramID: 30, At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateDirect(ctx, 30, "{{.expireAt}}", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.OutboxBatch(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := map[int64]bool{}
+	for _, m := range got {
+		flags[m.ChatID] = m.Template
+	}
+	if !flags[10] || flags[20] || !flags[30] {
+		t.Fatalf("flags = %v", flags)
+	}
+}
+
 func TestCreateBroadcastIdempotent(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()

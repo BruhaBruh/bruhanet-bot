@@ -12,9 +12,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
 )
 
@@ -152,7 +154,7 @@ func setup(t *testing.T) (*tgtest.Server, *fakeQueue, *Worker) {
 	t.Helper()
 	srv := tgtest.NewServer(t)
 	q := &fakeQueue{}
-	return srv, q, New(q, srv.Bot(t))
+	return srv, q, New(q, srv.Bot(t), nil)
 }
 
 func count(event, result string) float64 {
@@ -283,7 +285,7 @@ func TestWorkerBroadcastSurvivesRestart(t *testing.T) {
 			t.Fatal("process failed")
 		}
 	}
-	w2 := New(q, srv.Bot(t))
+	w2 := New(q, srv.Bot(t), nil)
 	drain(t, w2, q)
 	calls := srv.Calls("sendMessage")
 	if got := calls[len(calls)-1].Params.Get("text"); got != "Разослано: <b>3</b>, не доставлено: <b>0</b>" {
@@ -471,5 +473,38 @@ func TestWorkerCountsReceivedBroadcasts(t *testing.T) {
 	drain(t, w, q)
 	if q.received[7] != 2 || q.received[8] != 0 {
 		t.Fatalf("received = %v", q.received)
+	}
+}
+
+// Рассылка с переменными: на каждого получателя свои значения, значения экранированы, строка без флага — как есть.
+func TestWorkerRendersTemplate(t *testing.T) {
+	srv := tgtest.NewServer(t)
+	q := &fakeQueue{}
+	src := &tgtest.Source{}
+	src.SetSettings(map[string][]byte{"vars": []byte(`{"my":"x<y"}`)})
+	src.SetContact(7, model.UserContact{FirstName: "<Анна>"})
+	src.SetContact(8, model.UserContact{FirstName: "Боб"})
+	cnt := content.New(src, settings.Defaults(map[int]int{1: 1}, "+7", "Банк", "https://t.me/s"), time.Hour, nil)
+	w := New(q, srv.Bot(t), cnt.Render)
+
+	const tpl = "Привет, <b>{{.name}}</b> {{.my}} {{.gone}}"
+	q.add(model.OutboxMessage{EventType: "broadcast", ChatID: 7, Text: tpl, ParseMode: "HTML", Template: true})
+	q.add(model.OutboxMessage{EventType: "direct", ChatID: 8, Text: tpl, Photo: "AgAD", ParseMode: "HTML", Template: true})
+	q.add(model.OutboxMessage{EventType: "broadcast", ChatID: 9, Text: "старая {{.name}}", ParseMode: "HTML"})
+	drain(t, w, q)
+
+	msgs := srv.Calls("sendMessage")
+	if len(msgs) != 2 {
+		t.Fatalf("sendMessage: %+v", msgs)
+	}
+	if got, want := msgs[0].Params.Get("text"), "Привет, <b>&lt;Анна&gt;</b> x&lt;y "; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if got := msgs[1].Params.Get("text"); got != "старая {{.name}}" {
+		t.Fatalf("строка без флага изменилась: %q", got)
+	}
+	photos := srv.Calls("sendPhoto")
+	if len(photos) != 1 || photos[0].Params.Get("caption") != "Привет, <b>Боб</b> x&lt;y " {
+		t.Fatalf("sendPhoto: %+v", photos)
 	}
 }

@@ -1,23 +1,28 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import type { Ref } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/ui'
-import type { TgEditorProps } from '../editor/TgEditor'
+import type { TgEditorHandle, TgEditorProps } from '../editor/TgEditor'
 import { Composer } from './Composer'
 import type { PhotoPickerProps } from './PhotoPicker'
 
 // Редактор и выбор фото подменены: тест управляет ими через пропсы, как в Vue-версии через $emit.
-const kids = vi.hoisted(() => ({ editor: {} as TgEditorProps, picker: {} as PhotoPickerProps }))
-vi.mock('../editor/TgEditor', () => ({
-  TgEditor: (p: TgEditorProps) => {
-    kids.editor = p
-    return (
-      <div>
-        <div data-testid="count">{p.right}</div>
-        {p.error}
-      </div>
-    )
-  },
-}))
+const kids = vi.hoisted(() => ({ editor: {} as TgEditorProps, picker: {} as PhotoPickerProps, inserted: [] as string[] }))
+vi.mock('../editor/TgEditor', async () => {
+  const { forwardRef: fr, useImperativeHandle: uih } = await import('react')
+  return {
+    TgEditor: fr(function Fake(p: TgEditorProps, ref: Ref<TgEditorHandle>) {
+      uih(ref, () => ({ insert: (t: string) => kids.inserted.push(t) }))
+      kids.editor = p
+      return (
+        <div>
+          <div data-testid="count">{p.right}</div>
+          {p.error}
+        </div>
+      )
+    }),
+  }
+})
 vi.mock('./PhotoPicker', () => ({
   PhotoPicker: (p: PhotoPickerProps) => {
     kids.picker = p
@@ -46,6 +51,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 const flush = () => act(() => new Promise((r) => setTimeout(r, 0)))
+
+const globals = [
+  { name: 'name', description: 'Имя', sample: '<Иван>', raw: false, max: 64 },
+  { name: 'promoLink', description: 'Своя', sample: 'https://x.io', raw: false, max: 256 },
+]
 
 const SEND = 'Отправить 3 получателям'
 const CONFIRM = 'Отправить'
@@ -374,5 +384,38 @@ describe('Composer', () => {
     expect(aside.querySelector('b')?.textContent).toBe('hi')
     expect(aside.querySelector('script')).toBeNull()
     expect(kids.editor.value).toContain('<b>hi</b>')
+  })
+
+  it('variables: chips insert tokens, preview fills samples, limit is the worst case', async () => {
+    replies['GET /api/texts'] = [json(200, { items: [], globals })]
+    const { setText } = await setup()
+    fireEvent.click(screen.getByRole('button', { name: '{{.name}}' }))
+    expect(kids.inserted).toEqual(['{{.name}}'])
+
+    await setText('Привет, {{.name}}')
+    // текст уходит с токеном, а не с примером
+    expect(kids.editor.value).toBe('Привет, {{.name}}')
+    expect(screen.getByLabelText('Превью сообщения').textContent).toContain('Привет, <Иван>')
+    expect(screen.getByTestId('count').textContent).toMatch(/^72 /) // 8 + 64
+
+    await setText('a'.repeat(4033) + '{{.name}}')
+    expect(screen.getByText(/Сократите на 1\./)).toBeTruthy()
+    expect((screen.getByRole('button', { name: SEND }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('«Отправить мне» sends the token: the worker renders it for the admin', async () => {
+    replies['GET /api/texts'] = [json(200, { items: [], globals })]
+    replies['POST /api/broadcasts/preview-send'] = [json(204)]
+    const { setText, click } = await setup()
+    await setText('Привет, {{.name}}')
+    await click(TEST)
+    expect(calls.find((c) => c.url === '/api/broadcasts/preview-send')?.body).toEqual({ text: 'Привет, {{.name}}' })
+  })
+
+  it('without globals (load failed) the composer still works', async () => {
+    const { setText } = await setup()
+    await setText('Привет')
+    expect(screen.queryByRole('button', { name: '{{.name}}' })).toBeNull()
+    expect(screen.getByTestId('count').textContent).toMatch(/^6 /)
   })
 })

@@ -4,10 +4,11 @@ import { cn } from '@/lib/utils'
 import { NOT_WIRED } from '@/lib/not-wired'
 import { Avatar, Button, Card, Checkbox, Dialog, Icon, Input, MessageBubble, Switch, toast } from '@/ui'
 import { ApiError, get, post } from '../api'
-import { previewHtml, visibleLen, visibleText } from '../editor/serialize'
-import { TgEditor } from '../editor/TgEditor'
+import { previewHtml, renderPreview, varLabel, visibleText, worstLen } from '../editor/serialize'
+import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
+import { VarChips } from '../editor/VarChips'
 import { formatCount, plural } from '../format'
-import type { Broadcast, DirectMessage } from '../types'
+import type { Broadcast, DirectMessage, TextVar } from '../types'
 import { PhotoPicker } from './PhotoPicker'
 
 export interface ComposerDraft {
@@ -67,6 +68,8 @@ export function Composer(props: ComposerProps) {
   // null — грузится, undefined — панель недоступна
   const [recipients, setRecipients] = useState<number | null | undefined>(null)
   const [uploading, setUploading] = useState(false)
+  const [globals, setGlobals] = useState<TextVar[]>([])
+  const editorRef = useRef<TgEditorHandle>(null)
   // ключ идемпотентности — на конкретное содержимое: повтор без правок после сбоя
   // не создаст вторую рассылку, а правка даёт новый ключ (иначе сервер вернёт старую)
   const [firstKey] = useState(() => crypto.randomUUID())
@@ -77,6 +80,14 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     if (isBroadcast) void fetchRecipients().then(setRecipients)
   }, [isBroadcast])
+
+  // Не загрузились — нет чипов и примеров, сервер всё равно проверит текст.
+  useEffect(() => {
+    get<{ globals: TextVar[] }>('/api/texts').then(
+      (r) => setGlobals(r.globals),
+      () => {},
+    )
+  }, [])
 
   // правка черновика (и сброс после успеха) меняет ключ и отменяет начатое подтверждение
   function draftChanged() {
@@ -95,7 +106,8 @@ export function Composer(props: ComposerProps) {
     setPhotoUrl(url)
   }
 
-  const len = visibleLen(text)
+  // Лимит — по худшему случаю: у каждого получателя свои значения переменных.
+  const len = worstLen(text, globals)
   const limit = photo ? 1024 : 4096
   const over = len - limit
   const blank = visibleText(text).trim() === ''
@@ -180,6 +192,7 @@ export function Composer(props: ComposerProps) {
 
   const editor = (
     <TgEditor
+      ref={editorRef}
       value={text}
       onChange={changeText}
       disabled={busy}
@@ -195,9 +208,11 @@ export function Composer(props: ComposerProps) {
           ? undefined
           : `${photo ? 'С фото текст становится подписью — не больше 1024 символов' : 'Текст не должен быть длиннее 4096 символов'}. Сократите на ${formatCount(over)}.`
       }
-      hint="Жирный, курсив, подчёркнутый, зачёркнутый, код в строке, блок кода, спойлер, цитата и ссылки — как в Telegram."
+      hint="Жирный, курсив, подчёркнутый, зачёркнутый, код в строке, блок кода, спойлер, цитата и ссылки — как в Telegram. Длина считается с самыми длинными значениями переменных."
     />
   )
+
+  const chips = <VarChips title="Переменные — у каждого получателя свои" vars={globals} disabled={busy} onInsert={(name) => editorRef.current?.insert(varLabel(name))} />
 
   const preview = (
     <div className="flex flex-col overflow-hidden rounded-lg shadow-card">
@@ -226,7 +241,7 @@ export function Composer(props: ComposerProps) {
             <span className="text-text-hint">{isBroadcast ? 'Текст рассылки появится здесь' : 'Текст сообщения появится здесь'}</span>
           ) : (
             // только разрешённые теги после sanitize
-            <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: previewHtml(text) }} />
+            <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: previewHtml(renderPreview(text, Object.fromEntries(globals.map((v) => [v.name, v.sample])))) }} />
           )}
         </MessageBubble>
       </div>
@@ -269,6 +284,7 @@ export function Composer(props: ComposerProps) {
       <div className="admin-body flex flex-col gap-4 text-text">
         {picker}
         {editor}
+        {chips}
         {preview}
         {messages}
         <div className="flex flex-wrap justify-end gap-3">
@@ -292,6 +308,7 @@ export function Composer(props: ComposerProps) {
 
         <Card title={photo ? 'Подпись к фото' : 'Текст сообщения'} aside="Выделите текст и выберите формат">
           {editor}
+          {chips}
         </Card>
 
         <Card title="Кнопки под сообщением" aside="до 3 кнопок · каждая на своей строке">
@@ -360,7 +377,7 @@ export function Composer(props: ComposerProps) {
       </div>
 
       <aside aria-label="Превью сообщения" className="flex max-w-100 min-w-0 grow basis-85 flex-col gap-2 md:sticky md:top-6">
-        <h2 className="admin-label px-1 text-text-secondary">Превью</h2>
+        <h2 className="admin-label px-1 text-text-secondary">Превью с примером данных</h2>
         {preview}
         <p className="caption-1 px-1 text-text-secondary">Приблизительно: у каждого пользователя своя тема и обои чата.</p>
       </aside>

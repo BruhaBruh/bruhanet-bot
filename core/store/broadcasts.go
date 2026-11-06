@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
 const broadcastCols = `id, text, COALESCE(photo, ''), total, sent, failed, created_at, finished_at`
@@ -48,7 +49,7 @@ func (s *Store) CreateBroadcast(ctx context.Context, d model.BroadcastDraft, rec
 		// ponytail: по INSERT на получателя; на десятках тысяч — CopyFrom.
 		for _, chat := range recipients {
 			if err = enqueue(ctx, tx, model.OutboxMessage{
-				EventType: "broadcast", ChatID: chat, Text: d.Text, Photo: d.Photo,
+				EventType: "broadcast", ChatID: chat, Text: d.Text, Photo: d.Photo, Template: texts.HasVars(d.Text),
 				ParseMode: string(models.ParseModeHTML), Broadcast: id,
 			}); err != nil {
 				return err
@@ -108,7 +109,7 @@ func (s *Store) CreateDirect(ctx context.Context, telegramID int64, text, photo 
 			return err
 		}
 		return enqueue(ctx, tx, model.OutboxMessage{
-			EventType: "direct", ChatID: telegramID, Text: text, Photo: photo,
+			EventType: "direct", ChatID: telegramID, Text: text, Photo: photo, Template: texts.HasVars(text),
 			ParseMode: string(models.ParseModeHTML), DirectID: id,
 		})
 	})

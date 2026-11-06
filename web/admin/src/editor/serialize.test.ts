@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
-import { fromTelegramHtml, renderPlain, renderPreview, sanitize, snippet, toTelegramHtml, visibleLen } from './serialize'
+import { fromTelegramHtml, previewHtml, renderPlain, renderPreview, sanitize, snippet, toTelegramHtml, visibleLen, worstLen } from './serialize'
 
 const p = (...content: JSONContent[]): JSONContent => (content.length ? { type: 'paragraph', content } : { type: 'paragraph' })
 const t = (text: string, ...marks: JSONContent['marks'] & {}): JSONContent => (marks.length ? { type: 'text', text, marks } : { type: 'text', text })
@@ -83,4 +83,27 @@ it('snippet: plain start of text, photo mark, empty', () => {
   expect(snippet('<b>Привет</b> &amp; всё', 'f')).toBe('🖼 Привет & всё')
   expect(snippet('a'.repeat(61))).toBe('a'.repeat(60) + '…')
   expect(snippet('', 'f')).toBe('🖼 без текста')
+})
+
+describe('variables', () => {
+  it('tokens survive the html <-> editor round trip', () => {
+    for (const html of [
+      'Привет, {{.name}}!',
+      '<b>{{.name}}</b> и <i>{{.expireAt}}</i>',
+      'строка {{.a_1}}\nдругая',
+      '<blockquote>{{.name}}</blockquote>',
+      '<pre>{{.name}}</pre>',
+      '<a href="{{.supportUrl}}">помощь</a>',
+    ])
+      expect(toTelegramHtml(fromTelegramHtml(html))).toBe(html)
+  })
+
+  it('preview escapes values', () => {
+    expect(previewHtml(renderPreview('{{.name}}', { name: '<script>x</script>' }))).toBe('&lt;script&gt;x&lt;/script&gt;')
+  })
+
+  it('worst case length uses var max', () => {
+    expect(worstLen('ab{{.name}}<b>{{.x}}</b>', [{ name: 'name', max: 64 }, { name: 'x', max: 6 }])).toBe(72)
+    expect(worstLen('ab', [])).toBe(2)
+  })
 })

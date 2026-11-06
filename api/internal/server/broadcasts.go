@@ -82,7 +82,7 @@ func (s *server) previewBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.Store.Enqueue(r.Context(), model.OutboxMessage{
-		EventType: "text_test", ChatID: s.AdminID, Text: in.Text, Photo: in.Photo, ParseMode: "HTML",
+		EventType: "text_test", ChatID: s.AdminID, Text: in.Text, Photo: in.Photo, ParseMode: "HTML", Template: texts.HasVars(in.Text),
 	})
 	if err != nil {
 		internal(w, r, "enqueue broadcast preview", err)
