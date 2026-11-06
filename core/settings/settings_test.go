@@ -124,11 +124,9 @@ func TestValidateBotKeys(t *testing.T) {
 	if err := s.Validate(); err != nil || s.ReferralEnabled() {
 		t.Fatal(err)
 	}
-	if d := def(); d.ReferralDays != 7 || !d.ReferralEnabled() {
-		t.Fatalf("referral default %+v", d)
-	}
-	if d := def(); d.TrialDays != 3 || d.TrialDevices != 2 || !d.TrialEnabled() {
-		t.Fatalf("trial defaults %+v", d)
+	// новые функции выключены, пока админ не включит
+	if d := def(); d.ReferralDays != 0 || d.ReferralEnabled() || d.TrialDays != 0 || d.TrialEnabled() || d.TrialDevices != 2 {
+		t.Fatalf("defaults %+v", d)
 	}
 }
 

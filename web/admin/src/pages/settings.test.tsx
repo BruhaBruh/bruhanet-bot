@@ -244,7 +244,7 @@ describe('Settings', () => {
     await open()
     expect(field('Дней пробного периода').value).toBe('3')
     expect(field('Устройств на пробном периоде').value).toBe('2')
-    expect(screen.getByText(/0 — выключен/)).toBeTruthy()
+    expect(screen.getByText('0 — выключено (по умолчанию): кнопки в боте нет')).toBeTruthy()
     edit(field('Дней пробного периода'), '0')
     edit(field('Устройств на пробном периоде'), '4')
     fireEvent.click(btn('Сохранить изменения'))
@@ -255,7 +255,7 @@ describe('Settings', () => {
   it('referral days are editable and saved; 0 is explained as off', async () => {
     await open()
     expect(field('Дней за приглашённого друга').value).toBe('7')
-    expect(screen.getByText(/0 — рефералка выключена/)).toBeTruthy()
+    expect(screen.getByText(/0 — выключено \(по умолчанию\): кнопки в боте нет, бонусы/)).toBeTruthy()
     edit(field('Дней за приглашённого друга'), '0')
     fireEvent.click(btn('Сохранить изменения'))
     await flush()

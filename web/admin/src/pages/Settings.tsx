@@ -266,7 +266,7 @@ export default function Settings() {
             after="дн."
             value={form.trialDays}
             onChange={(e) => patch({ trialDays: e.target.value })}
-            hint="0 — выключен: кнопки в боте нет"
+            hint="0 — выключено (по умолчанию): кнопки в боте нет"
           />
           <Input
             className="min-w-0 grow basis-60"
@@ -293,7 +293,7 @@ export default function Settings() {
             after="дн."
             value={form.referralDays}
             onChange={(e) => patch({ referralDays: e.target.value })}
-            hint="Получают оба после первой подтверждённой оплаты друга (цена больше 0 ₽). 0 — рефералка выключена: кнопки в боте нет, бонусы не начисляются"
+            hint="Получают оба после первой подтверждённой оплаты друга (цена больше 0 ₽). 0 — выключено (по умолчанию): кнопки в боте нет, бонусы не начисляются"
           />
         </div>
       </Card>

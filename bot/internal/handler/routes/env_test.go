@@ -66,7 +66,10 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 		Remnawave: coreconfig.RemnawaveConfig{InternalSquadId: uuid.New()},
 	}
 	// ttl 0 — каждое обращение перечитывает source, правка в тесте видна сразу
-	e.c = content.New(e.src, settings.Defaults(cfg.Payment.Prices, cfg.Payment.Phone, cfg.Payment.Bank, cfg.Support.URL), 0,
+	// пробный и рефералка по умолчанию выключены (settings.Defaults); тесты этих функций идут с включёнными
+	def := settings.Defaults(cfg.Payment.Prices, cfg.Payment.Phone, cfg.Payment.Bank, cfg.Support.URL)
+	def.TrialDays, def.ReferralDays = 3, 7
+	e.c = content.New(e.src, def, 0,
 		func() time.Time { return now })
 	b, err := handler.New(logger, cfg, handler.Deps{
 		FSM:       store,

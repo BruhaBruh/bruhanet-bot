@@ -82,10 +82,10 @@ func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
 		DevicesBase: 5,
 		DevicePrice: 0,
 
-		TrialDays:    3,
+		TrialDays:    0,
 		TrialDevices: 2,
 
-		ReferralDays: 7,
+		ReferralDays: 0,
 
 		Vars: map[string]string{},
 	}
