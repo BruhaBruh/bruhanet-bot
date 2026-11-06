@@ -247,8 +247,11 @@ func TestGlobalsValidEverywhere(t *testing.T) {
 	custom := map[string]string{"promoLink": "https://x.io/a"}
 	for _, d := range Registry() {
 		for _, name := range []string{"name", "username", "telegramId", "expireAt", "phone", "bank", "supportUrl", "promoLink"} {
-			if err := Validate(d, "a {{."+name+"}}", custom); err != nil {
-				t.Errorf("%s with %s: %v", d.Key, name, err)
+			err := Validate(d, "a {{."+name+"}}", custom)
+			// кнопки и простые тексты: длинные по худшему случаю переменные не проходят
+			tooLong := d.Kind != KindMessage && (name == "name" || name == "phone" || name == "bank" || name == "supportUrl")
+			if tooLong != (err != nil) {
+				t.Errorf("%s with %s: %v (too long: %v)", d.Key, name, err, tooLong)
 			}
 		}
 	}
@@ -338,18 +341,74 @@ func TestValidateStoredKeepsUnknownVar(t *testing.T) {
 	}
 }
 
-func TestButtonVarsClipped(t *testing.T) {
+func TestButtonVarsWorstCase(t *testing.T) {
 	d, _ := Lookup("button.pay")
-	if err := Validate(d, "Оплатить, {{.name}}", nil); err != nil {
+	pl, _ := Lookup("menu.status_active")
+	for _, def := range []Def{d, pl} {
+		// имя до 64: одна переменная ровно в лимит проходит, +1 символ — нет
+		if err := Validate(def, "{{.name}}", nil); err != nil {
+			t.Fatalf("%s: %v", def.Key, err)
+		}
+		err := Validate(def, "!{{.name}}", nil)
+		if !errors.Is(err, ErrBadButton) || !strings.Contains(Problem(err), "{{.name}} может не влезть") || !strings.Contains(Problem(err), "до 64 символов") {
+			t.Fatalf("%s: %v", def.Key, err)
+		}
+		// короткие переменные проходят
+		if err := Validate(def, "{{.telegramId}} до {{.expireAt}}", nil); err != nil {
+			t.Fatalf("%s short: %v", def.Key, err)
+		}
+	}
+	// называется самая длинная переменная
+	if err := Validate(d, "{{.telegramId}} {{.supportUrl}}", nil); !strings.Contains(Problem(err), "{{.supportUrl}}") {
+		t.Fatalf("widest: %v", err)
+	}
+	// переменные кнопки: months(16)+price(8) помещаются, длинный хвост — нет
+	tariff, _ := Lookup("button.tariff")
+	if err := Validate(tariff, tariff.Default, nil); err != nil {
 		t.Fatal(err)
 	}
-	got := RenderDef(d, "Оплатить, {{.name}}", map[string]string{"name": strings.Repeat("😀", 64)})
-	if n := utf16Len(got); n > maxButtonLen || !strings.HasPrefix(got, "Оплатить, 😀") {
-		t.Fatalf("len %d: %q", n, got)
+	if err := Validate(tariff, tariff.Default+strings.Repeat("я", 40), nil); !errors.Is(err, ErrBadButton) { // 30+40 = 70
+		t.Fatalf("tail: %v", err)
+	}
+	if err := Validate(tariff, tariff.Default+strings.Repeat("я", 34), nil); err != nil { // 30+34 = 64
+		t.Fatalf("64: %v", err)
+	}
+	if err := Validate(tariff, tariff.Default+strings.Repeat("я", 35), nil); !errors.Is(err, ErrBadButton) { // 65
+		t.Fatalf("65: %v", err)
+	}
+}
+
+func TestButtonCustomVarByCurrentValue(t *testing.T) {
+	d, _ := Lookup("button.pay")
+	at := func(n int) map[string]string { return map[string]string{"my": strings.Repeat("я", n)} }
+	if err := Validate(d, "{{.my}}", at(64)); err != nil {
+		t.Fatalf("64: %v", err)
+	}
+	err := Validate(d, "{{.my}}", at(65))
+	if !errors.Is(err, ErrBadButton) || !strings.Contains(Problem(err), "{{.my}} может не влезть в кнопку") {
+		t.Fatalf("65: %v", err)
+	}
+	// эмодзи — 2 UTF-16 units
+	if err := Validate(d, "{{.my}}", map[string]string{"my": strings.Repeat("😀", 33)}); !errors.Is(err, ErrBadButton) {
+		t.Fatalf("emoji 66: %v", err)
 	}
 	// значение с < в кнопке — просто текст, правку подписи не отменяет
 	if err := Validate(d, "{{.my}}", map[string]string{"my": "a<b"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRenderPlainNotClipped(t *testing.T) {
+	d, _ := Lookup("button.pay")
+	long := strings.Repeat("я", 70)
+	if got := RenderDef(d, "{{.x}}", map[string]string{"x": long}); got != long || FitsPlain(got) {
+		t.Fatalf("render must not clip: %d", utf16Len(got))
+	}
+	if !FitsPlain(strings.Repeat("я", 64)) || FitsPlain(strings.Repeat("я", 65)) || FitsPlain(" ") || FitsPlain("") {
+		t.Fatal("FitsPlain boundary")
+	}
+	if n := utf16Len(ClipPlain(long)); n != 64 {
+		t.Fatalf("ClipPlain = %d", n)
 	}
 }
 

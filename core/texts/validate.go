@@ -63,7 +63,7 @@ func Validate(def Def, body string, custom map[string]string) error {
 	}
 	rendered := RenderDef(def, body, Samples(def, custom))
 	if def.Kind != KindMessage {
-		return validatePlain(body, rendered)
+		return validatePlain(def, body, rendered, custom)
 	}
 	text, err := checkMarkup(rendered)
 	if err != nil {
@@ -102,13 +102,37 @@ func ValidateStored(def Def, body string, custom map[string]string) error {
 	return Validate(def, body, all)
 }
 
-// validatePlain: длина — по телу без переменных и по рендеру с примерами; рендер уже обрезан до лимита.
-func validatePlain(body, rendered string) error {
-	switch {
-	case strings.TrimSpace(rendered) == "":
+// validatePlain: рендер на примерах не пуст, а худший случай (переменные максимальной длины, свои — по текущему
+// значению) помещается в лимит; иначе ошибка называет самую длинную переменную.
+func validatePlain(def Def, body, rendered string, custom map[string]string) error {
+	if strings.TrimSpace(rendered) == "" {
 		return errors.Join(ErrBadButton, errors.New("текст не может быть пустым"))
-	case utf16Len(placeholder.ReplaceAllString(body, "")) > maxButtonLen:
+	}
+	fixed := utf16Len(placeholder.ReplaceAllString(body, ""))
+	if fixed > maxButtonLen {
 		return errors.Join(ErrBadButton, fmt.Errorf("текст длиннее %d символов", maxButtonLen))
+	}
+	lens := map[string]int{}
+	for _, v := range append(Globals(custom), def.Vars...) {
+		lens[v.Name] = max(v.Max, utf16Len(v.Sample))
+	}
+	for name, val := range custom {
+		lens[name] = utf16Len(val) // своя переменная: её значение известно
+	}
+	total, widest, widestLen := fixed, "", -1
+	for _, m := range placeholder.FindAllStringSubmatch(body, -1) {
+		n := lens[m[1]]
+		total += n
+		if n > widestLen {
+			widest, widestLen = m[1], n
+		}
+	}
+	if total > maxButtonLen {
+		where := "в кнопку"
+		if def.Kind == KindPlain {
+			where = "в текст"
+		}
+		return errors.Join(ErrBadButton, fmt.Errorf("{{.%s}} может не влезть %s: до %d символов (с самым длинным значением переменных — %d)", widest, where, maxButtonLen, total))
 	}
 	return nil
 }

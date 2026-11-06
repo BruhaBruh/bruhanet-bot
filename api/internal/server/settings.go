@@ -81,6 +81,36 @@ func (s *server) varsInUse(ctx context.Context, next map[string]string) ([]strin
 	return out, nil
 }
 
+// varsNotFitting — проблемы «новое значение своей переменной не влезает в сохранённую кнопку или простой текст»
+// с ключами этих текстов. Проверяются только тексты с изменившимися переменными.
+func (s *server) varsNotFitting(ctx context.Context, next map[string]string) ([]string, error) {
+	old, err := s.stored(ctx)
+	if err != nil {
+		return nil, err
+	}
+	over, err := s.Store.TextOverrides(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(next)) {
+		if v, had := old.Vars[name]; had && v == next[name] {
+			continue
+		}
+		var keys []string
+		for _, key := range slices.Sorted(maps.Keys(over)) {
+			def, ok := texts.Lookup(key)
+			if ok && def.Kind != texts.KindMessage && texts.Uses(over[key], name) && texts.Validate(def, over[key], next) != nil {
+				keys = append(keys, key)
+			}
+		}
+		if keys != nil {
+			out = append(out, fmt.Sprintf("значение переменной %s не влезает в кнопки и простые тексты (до 64 символов): %s", name, strings.Join(keys, ", ")))
+		}
+	}
+	return out, nil
+}
+
 func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in settings.Settings
 	if !readJSON(w, r, &in) {
@@ -107,6 +137,14 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	case used != nil:
 		invalid(used)
+		return
+	}
+	switch long, err := s.varsNotFitting(r.Context(), in.Vars); {
+	case err != nil:
+		internal(w, r, "vars not fitting", err)
+		return
+	case long != nil:
+		invalid(long)
 		return
 	}
 	vals := map[string][]byte{}

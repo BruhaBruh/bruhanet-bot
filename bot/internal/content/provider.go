@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -96,6 +97,7 @@ type Provider struct {
 	loadedAt   time.Time
 	refreshing bool
 	warned     map[string]string // key → тело, о невалидности которого уже предупредили; трогает только refresh
+	fitWarned  sync.Map          // key → struct{}: о подписи, не влезшей в лимит, предупредили
 }
 
 func New(src Source, defaults settings.Settings, ttl time.Duration, now func() time.Time) *Provider {
@@ -123,6 +125,25 @@ func (p *Provider) Text(ctx context.Context, key string, vars map[string]string)
 	out := texts.RenderDef(def, body, p.values(ctx, snap.settings, body, vars))
 	if texts.Blank(out) { // все переменные пусты: Telegram отверг бы и сообщение, и всю клавиатуру
 		out = texts.RenderDef(def, def.Default, p.values(ctx, snap.settings, def.Default, vars))
+	}
+	if def.Kind != texts.KindMessage && !texts.FitsPlain(out) {
+		out = p.fitPlain(ctx, def, snap.settings, vars, out)
+	}
+	return out
+}
+
+// fitPlain — последняя страховка: save-time проверка не пропустила бы такую подпись, но значение своей переменной
+// могли поменять в БД в обход API. Пустая или длиннее лимита подпись Telegram отвергает вместе со всей клавиатурой.
+func (p *Provider) fitPlain(ctx context.Context, def texts.Def, s settings.Settings, vars map[string]string, bad string) string {
+	if _, seen := p.fitWarned.LoadOrStore(def.Key, struct{}{}); !seen {
+		stlog.Warn(ctx, "rendered text does not fit, using default", "key", def.Key, "length", len([]rune(bad)))
+	}
+	out := texts.RenderDef(def, def.Default, p.values(ctx, s, def.Default, vars))
+	if !texts.FitsPlain(out) {
+		out = texts.ClipPlain(out)
+	}
+	if strings.TrimSpace(out) == "" {
+		out = def.Title
 	}
 	return out
 }

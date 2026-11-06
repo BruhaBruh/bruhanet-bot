@@ -58,6 +58,14 @@ func Blank(rendered string) bool {
 	return err == nil && strings.TrimSpace(text) == ""
 }
 
+// FitsPlain — подпись кнопки или простой текст годится для Telegram: не пустая и не длиннее лимита.
+func FitsPlain(s string) bool {
+	return strings.TrimSpace(s) != "" && utf16Len(s) <= maxButtonLen
+}
+
+// ClipPlain обрезает до лимита кнопки; последняя страховка, когда годного текста нет.
+func ClipPlain(s string) string { return clip(s, maxButtonLen) }
+
 // clip обрезает до n UTF-16 units.
 func clip(s string, n int) string {
 	used := 0
@@ -71,11 +79,11 @@ func clip(s string, n int) string {
 }
 
 // RenderDef рендерит текст по его виду: в сообщении Raw-переменные def.Vars вставляются как есть,
-// остальные экранируются; кнопки и простые тексты — без экранирования и обрезаются до лимита
-// (подпись с {{.name}} заранее нельзя ни проверить, ни запретить из-за редкого длинного имени).
+// остальные экранируются; кнопки и простые тексты — без экранирования и без обрезки: что поместится в лимит,
+// проверяет Validate при сохранении, а случайный выход за него ловит вызывающий через FitsPlain.
 func RenderDef(def Def, body string, vars map[string]string) string {
 	if def.Kind != KindMessage {
-		return clip(RenderPlain(body, vars), maxButtonLen)
+		return RenderPlain(body, vars)
 	}
 	raw := map[string]string{}
 	for _, v := range def.Vars {

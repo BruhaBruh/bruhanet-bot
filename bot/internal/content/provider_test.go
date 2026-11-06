@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf16"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/core/model"
@@ -381,3 +382,25 @@ func TestStyle(t *testing.T) {
 		}
 	}
 }
+
+// Подпись, которую Telegram отверг бы (пустая или длиннее 64), заменяется текстом по умолчанию; warn один раз на ключ.
+func TestButtonSafeGuard(t *testing.T) {
+	src := &fakeSource{texts: map[string]string{"button.pay": "{{.name}}"}}
+	p, _, ctx, buf := setup(src)
+	if got := p.Text(ctx, "button.pay", map[string]string{"name": strings.Repeat("я", 64)}); utf16Len(got) != 64 {
+		t.Fatalf("64 символа должны пройти: %q", got)
+	}
+	for range 3 {
+		if got := p.Text(ctx, "button.pay", map[string]string{"name": strings.Repeat("я", 65)}); got != "Оплатить" {
+			t.Fatalf("65 символов: got %q", got)
+		}
+	}
+	if got := p.Text(ctx, "button.pay", map[string]string{"name": "  "}); got != "Оплатить" {
+		t.Fatalf("пусто: got %q", got)
+	}
+	if n := strings.Count(buf.String(), "does not fit"); n != 1 {
+		t.Fatalf("warn %d раз, want 1: %s", n, buf)
+	}
+}
+
+func utf16Len(s string) int { return len(utf16.Encode([]rune(s))) }

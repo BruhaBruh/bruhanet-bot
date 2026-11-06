@@ -168,7 +168,7 @@ func TestPutTextGlobals(t *testing.T) {
 	st.setRaw = map[string][]byte{"vars": []byte(`{"my":"a"}`)}
 	for key, body := range map[string]string{
 		"payment.tariffs":    "{{.name}} {{.my}} {{.expireAt}}",
-		"button.pay":         "Оплатить, {{.name}}",
+		"button.pay":         "Оплатить, {{.username}}", // имя до 64 символов в кнопку не влезло бы
 		"menu.status_active": "{{.my}}",
 	} {
 		b, _ := json.Marshal(map[string]string{"body": body})
@@ -304,5 +304,38 @@ func TestTextBodyTooLong(t *testing.T) {
 		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "слишком длинный текст") {
 			t.Errorf("%s: %d %s", target, w.Code, w.Body)
 		}
+	}
+}
+
+// Кнопка и простой текст: переменная, которая может не влезть в 64 символа, — отказ при сохранении.
+func TestPutTextButtonVarsMustFit(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.setRaw = map[string][]byte{"vars": []byte(`{"my":"` + strings.Repeat("я", 61) + `"}`)}
+	put := func(key, body string) *httptest.ResponseRecorder {
+		return send(h, http.MethodPut, "/api/texts/"+key, c, `{"body":"`+body+`"}`)
+	}
+	for _, key := range []string{"button.pay", "menu.status_active"} {
+		w := put(key, "Привет, {{.name}}")
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "{{.name}} может не влезть") || !strings.Contains(w.Body.String(), "до 64 символов") {
+			t.Errorf("%s name: %d %s", key, w.Code, w.Body)
+		}
+		if w := put(key, "{{.name}}"); w.Code != http.StatusNoContent { // ровно 64
+			t.Errorf("%s 64: %d %s", key, w.Code, w.Body)
+		}
+		if w := put(key, "ID {{.telegramId}}"); w.Code != http.StatusNoContent {
+			t.Errorf("%s short: %d %s", key, w.Code, w.Body)
+		}
+		// своя переменная — по текущему значению (61): 3 + 61 = 64 проходит, 4 + 61 — нет
+		if w := put(key, "ab {{.my}}"); w.Code != http.StatusNoContent {
+			t.Errorf("%s custom 64: %d %s", key, w.Code, w.Body)
+		}
+		if w := put(key, "abc {{.my}}"); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "{{.my}}") {
+			t.Errorf("%s custom 65: %d %s", key, w.Code, w.Body)
+		}
+	}
+	// сообщение этого лимита не знает
+	if w := put("menu.greeting", "Привет, {{.name}} {{.my}} {{.supportUrl}}"); w.Code != http.StatusNoContent {
+		t.Errorf("message: %d %s", w.Code, w.Body)
 	}
 }

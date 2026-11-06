@@ -168,3 +168,35 @@ func TestSettingsGetInvalidStoredUsesDefaults(t *testing.T) {
 		t.Fatalf("flag on valid: %s", w.Body)
 	}
 }
+
+// Значение своей переменной нельзя менять так, чтобы сохранённая кнопка перестала влезать в 64 символа.
+func TestSettingsVarValueMustFitSavedButtons(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	put := func(value string) *httptest.ResponseRecorder {
+		body := strings.TrimSuffix(goodSettings, "}") + `,"vars":{"promoLink":"` + value + `"}}`
+		return send(h, http.MethodPut, "/api/settings", c, body)
+	}
+	if w := put("x"); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	st.setRaw["vars"] = []byte(`{"promoLink":"x"}`)
+	// кнопка с переменной сохраняется: 4 + 1 символ
+	if w := send(h, http.MethodPut, "/api/texts/button.pay", c, `{"body":"Для {{.promoLink}}"}`); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	// 60 + 4 = 64: проходит
+	if w := put(strings.Repeat("я", 60)); w.Code != http.StatusNoContent {
+		t.Fatalf("64: %d %s", w.Code, w.Body)
+	}
+	st.setRaw["vars"] = []byte(`{"promoLink":"x"}`)
+	// 61 + 4 = 65: отказ с ключом
+	w := put(strings.Repeat("я", 61))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "promoLink") || !strings.Contains(w.Body.String(), "button.pay") {
+		t.Fatalf("65: %d %s", w.Code, w.Body)
+	}
+	// переменная без изменений не проверяется заново; значение в сообщении (не кнопка) может быть длинным
+	if w := put("x"); w.Code != http.StatusNoContent {
+		t.Fatalf("unchanged: %d %s", w.Code, w.Body)
+	}
+}
