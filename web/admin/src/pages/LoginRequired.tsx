@@ -105,7 +105,7 @@ export default function LoginRequired() {
                     </>
                   )}
                 </span>
-                {botUrl && <span className="footnote text-text-secondary">Кнопка ниже откроет чат с ботом в Telegram.</span>}
+                {botUrl && <span className="footnote text-text-secondary">Кнопка ниже откроет чат с ботом, он сразу пришлёт кнопку входа.</span>}
               </div>
             </Step>
             <Step n={2}>

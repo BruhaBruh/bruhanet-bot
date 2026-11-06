@@ -57,7 +57,9 @@ Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruh
 
 Идентичность: `GET /api/me` → `{telegramId, username, name, bot:{username,name}}`; админ — из `users` (иначе `getChat` через `api/internal/telegram`), бот — `getMe`; удачный ответ кэшируется в памяти api, неудачный повторяется не чаще раза в 30 с, поля пустые, не 500. Публичный `GET /auth/bot` (без сессии, для страницы входа) отдаёт только `{username,name}` бота. Фронт: `useMe()` (`web/admin/src/me.ts`, контекст в `AppShell`), констант имён в коде нет; пусто — элемент скрыт. Поиск в шапке — «Поиск пользователей» (`/users?q=`).
 
-Вход: `/login` в боте → inline-кнопка со ссылкой `ADMIN_BASE_URL/auth?token=…` (токен одноразовый, 5 мин; ссылка только в кнопке, превью отключено) → сессионная cookie `bn_session` на 24 ч. `/api/*` — default-deny: без сессии 401, мутирующие принимают только `application/json`. Админ один — `TELEGRAM_ADMIN_ID`.
+Контраст (F4): активный пункт меню (сайдбар) и текста — `bg-accent-strong text-on-accent-strong`, активная вкладка телефона — `text-accent-strong`; пары ≥ 4.5:1 в обеих темах проверяет `web/admin/src/styles/contrast.test.ts` по `design/tokens.json`.
+
+Вход: `/login` в боте (или deep link `?start=login` со страницы входа: `/start login` от админа вызывает тот же `login`, от остальных — обычное приветствие, без токена и намёка) → inline-кнопка со ссылкой `ADMIN_BASE_URL/auth?token=…` (токен одноразовый, 5 мин; ссылка только в кнопке, превью отключено) → сессионная cookie `bn_session` на 24 ч. `/api/*` — default-deny: без сессии 401, мутирующие принимают только `application/json`. Админ один — `TELEGRAM_ADMIN_ID`.
 
 Деплой: один образ (bot + api + фронт), compose-сервис `api` (`/app/api`) слушает `127.0.0.1:8090`; наружу — nginx `admin.bruhanet.ru` → `127.0.0.1:8090` (см. README). Prometheus скрейпит `api:8091`. Токен в `/auth?token=…` попадает в access-лог nginx — безвредно (одноразовый), при желании `access_log off` для `location = /auth`.
 

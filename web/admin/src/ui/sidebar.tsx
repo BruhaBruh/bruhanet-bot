@@ -68,25 +68,25 @@ export function Sidebar({ items, value, onChange, collapsed = false, onToggle, h
                     aria-current={on ? 'page' : undefined}
                     className={cn(
                       itemClass(collapsed),
-                      on && 'bg-accent font-semibold text-on-accent hover:bg-accent',
+                      on && 'bg-accent-strong font-semibold text-on-accent-strong hover:bg-accent-strong',
                     )}
                     onClick={() => onChange?.(item.key)}
                   >
                     <span className="relative inline-flex flex-none">
-                      <Icon name={item.icon} size={20} className={on ? 'text-on-accent' : 'text-text-secondary'} />
+                      <Icon name={item.icon} size={20} className={on ? 'text-on-accent-strong' : 'text-text-secondary'} />
                       {collapsed && !!item.badge && (
                         <Badge
                           dot
                           className={cn(
                             'absolute -top-0.5 -right-0.75 size-2.25 min-w-2.25 shadow-[0_0_0_2px_var(--surface)]',
-                            on && 'bg-on-accent shadow-[0_0_0_2px_var(--accent)]',
+                            on && 'bg-on-accent-strong shadow-[0_0_0_2px_var(--accent-strong)]',
                           )}
                         />
                       )}
                     </span>
                     {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
                     {!collapsed && !!item.badge && (
-                      <Badge count={item.badge} className={cn(on && 'bg-on-accent text-accent')} />
+                      <Badge count={item.badge} className={cn(on && 'bg-on-accent-strong text-accent-strong')} />
                     )}
                   </button>,
                 )}

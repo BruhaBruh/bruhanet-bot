@@ -34,7 +34,7 @@ export function TabBar({ items, value, onChange, className }: TabBarProps) {
             aria-current={on ? 'page' : undefined}
             className={cn(
               'focus-ring flex min-w-16 focus-visible:-outline-offset-2 flex-1 shrink-0 cursor-pointer flex-col items-center justify-center gap-px pt-1 text-text-hint',
-              on && 'text-accent-text',
+              on && 'text-accent-strong',
             )}
             onClick={() => onChange?.(item.key)}
           >

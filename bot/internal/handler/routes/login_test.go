@@ -77,3 +77,48 @@ func TestLoginBothSendsFail(t *testing.T) {
 		t.Fatalf("last text = %q", got)
 	}
 }
+
+func TestStartLoginAdminGetsTheLoginButton(t *testing.T) {
+	e := newEnv(t)
+	e.process(t, tgtest.Message(adminID, "/start login"))
+	if n := len(e.pay.LoginTokens()); n != 1 {
+		t.Fatalf("tokens = %d", n)
+	}
+	p := e.last(t, "sendMessage").Params
+	if !strings.Contains(p.Get("text"), "Вход в админку") || !strings.Contains(p.Get("reply_markup"), `"url":"http://localhost:5173/auth?token=`) {
+		t.Fatalf("params = %v", p)
+	}
+	if n := e.count("sendMessage"); n != 1 {
+		t.Fatalf("sendMessage calls = %d, want just the login button", n)
+	}
+}
+
+// Остальным «/start login» неотличим от обычного приветствия: ни токена, ни намёка на админку.
+func TestStartLoginStrangerGetsTheGreeting(t *testing.T) {
+	e := newEnv(t)
+	e.process(t, tgtest.Message(userID, "/start login"))
+	if n := len(e.pay.LoginTokens()); n != 0 {
+		t.Fatalf("tokens = %d", n)
+	}
+	got := e.last(t, "sendMessage").Params
+	if got.Get("chat_id") != "42" || strings.Contains(got.Get("text"), "Вход в админку") || strings.Contains(got.Get("reply_markup"), "auth") {
+		t.Fatalf("params = %v", got)
+	}
+
+	plain := newEnv(t)
+	plain.process(t, tgtest.Message(userID, "/start"))
+	if want := plain.last(t, "sendMessage").Params; got.Get("text") != want.Get("text") || got.Get("reply_markup") != want.Get("reply_markup") {
+		t.Fatalf("differs from /start:\n%v\n%v", got, want)
+	}
+}
+
+// Любой другой payload и обычный /start у админа — меню, а не вход.
+func TestStartOtherPayloadForAdminIsTheMenu(t *testing.T) {
+	for _, text := range []string{"/start", "/start ref_1", "/start login extra", "/start LOGIN"} {
+		e := newEnv(t)
+		e.process(t, tgtest.Message(adminID, text))
+		if n := len(e.pay.LoginTokens()); n != 0 {
+			t.Fatalf("%q: tokens = %d", text, n)
+		}
+	}
+}

@@ -176,13 +176,13 @@ export default function Texts() {
                       className={cn(
                         'admin-body focus-ring flex cursor-pointer items-center gap-2.5 px-3.5 py-2.5 text-left focus-visible:-outline-offset-2',
                         separator,
-                        on ? 'bg-accent text-on-accent' : 'bg-surface text-text hover:bg-cell-highlight',
+                        on ? 'bg-accent-strong text-on-accent-strong' : 'bg-surface text-text hover:bg-cell-highlight',
                       )}
                       onClick={() => setParams({ key: i.key })}
                     >
                       <span className="flex min-w-0 grow flex-col">
                         <span className="font-medium">{i.title}</span>
-                        <span className="caption-1 truncate font-mono opacity-75">{i.key}</span>
+                        <span className={cn('caption-1 truncate font-mono', !on && 'opacity-75')}>{i.key}</span>
                       </span>
                       {i.inactive && <StatusTag tone="destructive">не применяется</StatusTag>}
                       {(i.overridden || dirty) && (
@@ -190,7 +190,7 @@ export default function Texts() {
                           role="img"
                           aria-label={dirty ? 'Есть несохранённые изменения' : 'Изменено'}
                           title={dirty ? 'Есть несохранённые изменения' : 'Изменено'}
-                          className={cn('size-2 flex-none rounded-full', on ? 'bg-on-accent' : 'bg-warning')}
+                          className={cn('size-2 flex-none rounded-full', on ? 'bg-on-accent-strong' : 'bg-warning')}
                         />
                       )}
                     </button>

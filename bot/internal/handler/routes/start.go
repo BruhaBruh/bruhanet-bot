@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -21,8 +22,23 @@ func (h *handlers) start(ctx context.Context, b *bot.Bot, u *models.Update) {
 	if tgupdate.ChatID(u) == 0 {
 		return
 	}
+	// Ссылка со страницы входа админки (`?start=login`): админу — кнопка входа, как у /login.
+	// Остальным — обычное приветствие, ничего не выдаём (и не отличаем от простого /start).
+	if h.isAdmin(u) && isStartLogin(u) {
+		h.login(ctx, b, u)
+		return
+	}
 	h.leavePromo(ctx, tgupdate.UserID(u))
 	show(ctx, b, u, h.mainKeyboard(ctx, tgupdate.UserID(u)), h.c.Text(ctx, "menu.greeting", nil))
+}
+
+// isStartLogin — сообщение ровно «/start login» (deep link payload).
+func isStartLogin(u *models.Update) bool {
+	if u.Message == nil {
+		return false
+	}
+	f := strings.Fields(u.Message.Text)
+	return len(f) == 2 && (f[0] == "/start" || strings.HasPrefix(f[0], "/start@")) && f[1] == "login"
 }
 
 // isPrivate: недоступное сообщение колбэка считаем приватным, ответ всё равно уйдёт по ChatID.
