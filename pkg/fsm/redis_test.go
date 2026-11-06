@@ -33,6 +33,6 @@ func TestRedisKeyLayout(t *testing.T) {
 		t.Fatalf("fsm:42 data = %q", got)
 	}
 	if mr.TTL("fsm:42") != 0 {
-		t.Fatal("у ключа FSM не должно быть TTL")
+		t.Fatal("FSM key must have no TTL")
 	}
 }

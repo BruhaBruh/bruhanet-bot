@@ -61,25 +61,25 @@ func TestReconcilerBackoffDoesNotStarveOthers(t *testing.T) {
 	// сразу же: упавшая откладывается, лишних вызовов нет
 	r.Run(t.Context())
 	if f.calls[1] != 1 {
-		t.Fatalf("упавшая награда повторена без паузы: %v", f.calls)
+		t.Fatalf("failed reward retried without a pause: %v", f.calls)
 	}
 	// после паузы — снова; пауза растёт
 	at = at.Add(backoffBase + time.Second)
 	r.Run(t.Context())
 	if f.calls[1] != 2 {
-		t.Fatalf("повтор после паузы: %v", f.calls)
+		t.Fatalf("retry after the pause: %v", f.calls)
 	}
 	at = at.Add(backoffBase + time.Second) // вторая пауза в 2 раза длиннее
 	r.Run(t.Context())
 	if f.calls[1] != 2 {
-		t.Fatalf("вторая пауза не выросла: %v", f.calls)
+		t.Fatalf("second pause did not grow: %v", f.calls)
 	}
 	// ошибка ушла
 	f.errs[1] = nil
 	at = at.Add(backoffBase * 2)
 	r.Run(t.Context())
 	if len(f.due) != 0 {
-		t.Fatalf("награда не выдана: %v", f.due)
+		t.Fatalf("reward not granted: %v", f.due)
 	}
 }
 

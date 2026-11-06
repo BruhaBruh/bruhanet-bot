@@ -20,7 +20,7 @@ func TestCronPanicLogsPanicRecovered(t *testing.T) {
 
 	var e map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &e); err != nil {
-		t.Fatalf("лог %q: %v", buf.String(), err)
+		t.Fatalf("log %q: %v", buf.String(), err)
 	}
 	if e["level"] != "ERROR" || e["msg"] != "panic recovered" || e["component"] != "reminder" {
 		t.Fatalf("entry = %v", e)

@@ -17,13 +17,13 @@ func TestInfoActiveUser(t *testing.T) {
 	text := p.Get("text")
 	for _, want := range []string{"Активна", "0 Б из ∞", "10 февраля 2026 г. в 15:00, MSK", "42"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("text без %q: %s", want, text)
+			t.Fatalf("text without %q: %s", want, text)
 		}
 	}
 	kb := p.Get("reply_markup")
 	for _, want := range []string{`"callback_data":"pay"`, `"callback_data":"menu"`, `"copy_text"`} {
 		if !strings.Contains(kb, want) {
-			t.Fatalf("клавиатура без %s: %s", want, kb)
+			t.Fatalf("keyboard without %s: %s", want, kb)
 		}
 	}
 }

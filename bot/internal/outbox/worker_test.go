@@ -539,7 +539,7 @@ func TestWorkerRendersTemplate(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	if got := msgs[1].Params.Get("text"); got != "старая {{.name}}" {
-		t.Fatalf("строка без флага изменилась: %q", got)
+		t.Fatalf("row without the flag changed: %q", got)
 	}
 	photos := srv.Calls("sendPhoto")
 	if len(photos) != 1 || photos[0].Params.Get("caption") != "Привет, <b>Боб</b> x&lt;y " {
@@ -614,7 +614,7 @@ func TestWorkerAdminClosed(t *testing.T) {
 		t.Fatalf("reactions: %+v", reacts)
 	}
 	if n := len(srv.Calls("copyMessage")) + len(srv.Calls("sendMessage")); n != 0 {
-		t.Fatalf("лишние сообщения: %d", n)
+		t.Fatalf("extra messages: %d", n)
 	}
 	// метрики — как у решения кнопками, в том числе без сообщения в боте
 	if got := testutil.ToFloat64(observability.Payments.WithLabelValues("confirmed", "6")); got != confirmed+2 {
@@ -635,10 +635,10 @@ func TestWorkerAdminClosedBadRequest(t *testing.T) {
 	q.add(closed(1, 5, true), model.OutboxMessage{EventType: "reminder", ChatID: 9, Text: "дальше"})
 	drain(t, w, q)
 	if len(srv.Calls("setMessageReaction")) != 1 {
-		t.Fatalf("после 400 на кнопках реакция всё равно идёт")
+		t.Fatalf("reaction still goes after a 400 on buttons")
 	}
 	if msgs := srv.Calls("sendMessage"); len(msgs) != 1 || msgs[0].Params.Get("text") != "дальше" {
-		t.Fatalf("очередь встала: %+v", msgs)
+		t.Fatalf("queue is stuck: %+v", msgs)
 	}
 }
 
@@ -649,15 +649,15 @@ func TestWorkerAdminClosedRetries(t *testing.T) {
 	q.add(closed(1, 5, false))
 	w.backoff = func(int) time.Duration { return time.Millisecond }
 	if w.process(t.Context(), q.rows[0]) {
-		t.Fatal("сбой должен оставить строку первой")
+		t.Fatal("failure must keep the row first")
 	}
 	if q.len() != 1 || len(srv.Calls("setMessageReaction")) != 0 {
-		t.Fatalf("строка удалена при 5xx: %d", q.len())
+		t.Fatalf("row deleted on 5xx: %d", q.len())
 	}
 	srv.FailMethod("editMessageReplyMarkup", 0, "")
 	drain(t, w, q)
 	if len(srv.Calls("setMessageReaction")) != 1 {
-		t.Fatal("нет реакции после восстановления")
+		t.Fatal("no reaction after recovery")
 	}
 }
 

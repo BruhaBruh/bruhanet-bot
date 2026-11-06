@@ -31,7 +31,7 @@ func TestPutAndData(t *testing.T) {
 func TestDataMissing(t *testing.T) {
 	f := fsm.For(fsm.NewInMemory(), 1)
 	if _, err := fsm.Data[payment](context.Background(), f); !errors.Is(err, fsm.ErrNoData) {
-		t.Fatalf("ожидался ErrNoData, получено %v", err)
+		t.Fatalf("want ErrNoData, got %v", err)
 	}
 }
 
@@ -42,7 +42,7 @@ func TestDataDecodeError(t *testing.T) {
 		t.Fatalf("Set: %v", err)
 	}
 	if _, err := fsm.Data[payment](ctx, fsm.For(s, 1)); !errors.Is(err, fsm.ErrDecode) {
-		t.Fatalf("ожидался ErrDecode, получено %v", err)
+		t.Fatalf("want ErrDecode, got %v", err)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestSetKeepsData(t *testing.T) {
 	}
 	p, err := fsm.Data[payment](ctx, f)
 	if err != nil || p.Month != 1 {
-		t.Fatalf("data потеряна: %+v, %v", p, err)
+		t.Fatalf("data lost: %+v, %v", p, err)
 	}
 	if st, _ := f.State(ctx); st != "b" {
 		t.Fatalf("State = %q, want b", st)
@@ -74,10 +74,10 @@ func TestTransition(t *testing.T) {
 		t.Fatalf("Transition: %v", err)
 	}
 	if _, err := fsm.Data[payment](ctx, f); !errors.Is(err, fsm.ErrNoData) {
-		t.Fatalf("после Transition с nil data ожидался ErrNoData, получено %v", err)
+		t.Fatalf("after Transition with nil data want ErrNoData, got %v", err)
 	}
 	if err := fsm.Transition(ctx, f, "review", fsm.StateNone, nil); !errors.Is(err, fsm.ErrStateMismatch) {
-		t.Fatalf("повторный Transition: ожидался ErrStateMismatch, получено %v", err)
+		t.Fatalf("repeated Transition: want ErrStateMismatch, got %v", err)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestClear(t *testing.T) {
 		t.Fatalf("Clear: %v", err)
 	}
 	if st, _ := f.State(ctx); st != fsm.StateNone {
-		t.Fatalf("State = %q после Clear", st)
+		t.Fatalf("State = %q after Clear", st)
 	}
 }
 
@@ -124,18 +124,18 @@ func TestNilFSM(t *testing.T) {
 func TestPutEncodeError(t *testing.T) {
 	f := fsm.For(fsm.NewInMemory(), 1)
 	if err := fsm.Put(context.Background(), f, "a", make(chan int)); !errors.Is(err, fsm.ErrEncode) {
-		t.Fatalf("ожидался ErrEncode, получено %v", err)
+		t.Fatalf("want ErrEncode, got %v", err)
 	}
 }
 
 func TestContext(t *testing.T) {
 	ctx := context.Background()
 	if fsm.From(ctx) != nil {
-		t.Fatal("From без FSM должен вернуть nil")
+		t.Fatal("From without FSM must return nil")
 	}
 	f := fsm.For(fsm.NewInMemory(), 7)
 	if got := fsm.From(fsm.WithContext(ctx, f)); got != f {
-		t.Fatal("From вернул не тот FSM")
+		t.Fatal("From returned the wrong FSM")
 	}
 }
 

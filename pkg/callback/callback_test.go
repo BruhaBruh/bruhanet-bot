@@ -38,7 +38,7 @@ func TestParseErrors(t *testing.T) {
 	for _, data := range []string{"", "price", "price:", "price:abc", "price:6:7", "pay:6", "prices:6"} {
 		t.Run(data, func(t *testing.T) {
 			if _, err := price.Parse(data); !errors.Is(err, callback.ErrInvalidData) {
-				t.Fatalf("ожидался ErrInvalidData, получено %v", err)
+				t.Fatalf("want ErrInvalidData, got %v", err)
 			}
 		})
 	}
@@ -52,7 +52,7 @@ func TestValidateName(t *testing.T) {
 	}
 	for _, name := range []string{"", "Pay", "a:b", "a b", "оплата", strings.Repeat("a", 41)} {
 		if err := callback.ValidateName(name); !errors.Is(err, callback.ErrInvalidName) {
-			t.Errorf("ValidateName(%q) = %v, ожидался ErrInvalidName", name, err)
+			t.Errorf("ValidateName(%q) = %v, want ErrInvalidName", name, err)
 		}
 	}
 }
@@ -60,7 +60,7 @@ func TestValidateName(t *testing.T) {
 func TestNewPanicsOnInvalidName(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Fatal("ожидалась паника")
+			t.Fatal("panic expected")
 		}
 	}()
 	callback.New[int]("Pay")
@@ -69,7 +69,7 @@ func TestNewPanicsOnInvalidName(t *testing.T) {
 func TestMaxDataFitsTelegramLimit(t *testing.T) {
 	r := callback.New[int64](strings.Repeat("a", 40))
 	if n := len(r.Data(math.MinInt64)); n > 64 {
-		t.Fatalf("data = %d байт, лимит 64", n)
+		t.Fatalf("data = %d bytes, limit 64", n)
 	}
 }
 
@@ -93,7 +93,7 @@ func TestRoute2ParseErrors(t *testing.T) {
 	for _, data := range []string{"", "buyp", "buyp:6", "buyp:6:", "buyp::7", "buyp:a:7", "buyp:6:b", "buyp:6:7:8", "buy:6:7", "buypp:6:7"} {
 		t.Run(data, func(t *testing.T) {
 			if _, _, err := buy.Parse(data); !errors.Is(err, callback.ErrInvalidData) {
-				t.Fatalf("ожидался ErrInvalidData, получено %v", err)
+				t.Fatalf("want ErrInvalidData, got %v", err)
 			}
 		})
 	}
@@ -109,14 +109,14 @@ func TestRoute2ArgOverflow(t *testing.T) {
 func TestRoute2MaxDataFitsTelegramLimit(t *testing.T) {
 	r := callback.New2[int64, int64](strings.Repeat("a", 22))
 	if n := len(r.Data(math.MinInt64, math.MinInt64)); n > 64 {
-		t.Fatalf("data = %d байт, лимит 64", n)
+		t.Fatalf("data = %d bytes, limit 64", n)
 	}
 }
 
 func TestNew2PanicsOnLongName(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Fatal("ожидалась паника")
+			t.Fatal("panic expected")
 		}
 	}()
 	callback.New2[int, int](strings.Repeat("a", 23))

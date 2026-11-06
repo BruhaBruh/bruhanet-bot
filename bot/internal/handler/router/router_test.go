@@ -143,7 +143,7 @@ func TestRouterPanicsOnBadRoutes(t *testing.T) {
 		t.Helper()
 		defer func() {
 			if recover() == nil {
-				t.Errorf("%s: ожидалась паника", name)
+				t.Errorf("%s: panic expected", name)
 			}
 		}()
 		f()

@@ -77,13 +77,13 @@ func TestReminderJobReschedule(t *testing.T) {
 		t.Fatalf("hours = %v", got)
 	}
 	if err := j.reschedule([]string{"09:05", "12:00", "18:00"}); err != nil || len(c.Entries()) != 3 {
-		t.Fatalf("те же времена: err = %v, entries = %d", err, len(c.Entries()))
+		t.Fatalf("same times: err = %v, entries = %d", err, len(c.Entries()))
 	}
 	if err := j.reschedule([]string{"18:30"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := hours(); !slices.Equal(got, []int{18}) {
-		t.Fatalf("старые задачи не сняты: %v", got)
+		t.Fatalf("old jobs not removed: %v", got)
 	}
 	// битое время: прежняя задача остаётся, новые не повисают
 	if err := j.reschedule([]string{"11:00", "мусор"}); err == nil || !slices.Equal(j.at, []string{"18:30"}) || len(c.Entries()) != 1 {

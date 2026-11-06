@@ -115,11 +115,11 @@ func TestOverrideAndTTL(t *testing.T) {
 	})
 	c.t = c.t.Add(9 * time.Second)
 	if got := p.Button(ctx, "button.pay"); got != "Платить" {
-		t.Fatalf("до TTL кеш не должен обновиться: %q", got)
+		t.Fatalf("cache must not refresh before TTL: %q", got)
 	}
 	c.t = c.t.Add(2 * time.Second)
 	if got := p.Button(ctx, "button.pay"); got != "Оплата" {
-		t.Fatalf("после TTL = %q", got)
+		t.Fatalf("after TTL = %q", got)
 	}
 	if got := p.Settings(ctx).Phone; got != "+7 999" {
 		t.Fatalf("phone = %q", got)
@@ -137,10 +137,10 @@ func TestSourceErrorKeepsLast(t *testing.T) {
 	src.set(func(f *fakeSource) { f.err = errors.New("db down") })
 	c.t = c.t.Add(time.Minute)
 	if got := p.Button(ctx, "button.pay"); got != "Платить" {
-		t.Fatalf("после ошибки = %q", got)
+		t.Fatalf("after error = %q", got)
 	}
 	if !strings.Contains(buf.String(), "db down") {
-		t.Fatalf("нет warn в логе: %s", buf.String())
+		t.Fatalf("no warn in log: %s", buf.String())
 	}
 
 	// БД недоступна с самого старта — значения по умолчанию
@@ -170,7 +170,7 @@ func TestInvalidOverrideFallsBack(t *testing.T) {
 		t.Fatalf("settings = %+v", got)
 	}
 	if !strings.Contains(buf.String(), "invalid text override") || !strings.Contains(buf.String(), "invalid settings") {
-		t.Fatalf("нет warn: %s", buf.String())
+		t.Fatalf("no warn: %s", buf.String())
 	}
 }
 
@@ -181,7 +181,7 @@ func TestBrokenSettingKeySkipped(t *testing.T) {
 		t.Fatalf("settings = %+v", got)
 	}
 	if !strings.Contains(buf.String(), "broken settings") {
-		t.Fatalf("нет warn: %s", buf.String())
+		t.Fatalf("no warn: %s", buf.String())
 	}
 }
 
@@ -194,10 +194,10 @@ func TestHungSourceTimesOut(t *testing.T) {
 		t.Fatalf("button = %q", got)
 	}
 	if d := time.Since(start); d > time.Second {
-		t.Fatalf("Text ждал %v", d)
+		t.Fatalf("Text waited %v", d)
 	}
 	if !strings.Contains(buf.String(), "deadline exceeded") {
-		t.Fatalf("нет warn: %s", buf.String())
+		t.Fatalf("no warn: %s", buf.String())
 	}
 }
 
@@ -222,17 +222,17 @@ func TestConcurrentReadersDoNotWaitForRefresh(t *testing.T) {
 	select {
 	case v := <-got:
 		if v != "Платить" {
-			t.Fatalf("во время обновления = %q", v)
+			t.Fatalf("during refresh = %q", v)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("читатель ждёт обновления")
+		t.Fatal("reader waits for the refresh")
 	}
 	close(release)
 	if v := <-done; v != "Оплата" {
-		t.Fatalf("обновивший = %q", v)
+		t.Fatalf("refresher = %q", v)
 	}
 	if v := p.Button(ctx, "button.pay"); v != "Оплата" {
-		t.Fatalf("после обновления = %q", v)
+		t.Fatalf("after refresh = %q", v)
 	}
 }
 
@@ -245,12 +245,12 @@ func TestInvalidOverrideWarnsOnce(t *testing.T) {
 		c.t = c.t.Add(time.Minute)
 	}
 	if n := strings.Count(buf.String(), "invalid text override"); n != 1 {
-		t.Fatalf("warn %d раз, want 1", n)
+		t.Fatalf("warn %d times, want 1", n)
 	}
 	src.set(func(f *fakeSource) { f.texts = map[string]string{"menu.greeting": "<i>битая"} })
 	p.Text(ctx, "menu.greeting", nil)
 	if n := strings.Count(buf.String(), "invalid text override"); n != 2 {
-		t.Fatalf("warn после правки %d раз, want 2", n)
+		t.Fatalf("warn after edit %d times, want 2", n)
 	}
 }
 
@@ -388,18 +388,18 @@ func TestButtonSafeGuard(t *testing.T) {
 	src := &fakeSource{texts: map[string]string{"button.pay": "{{.name}}"}}
 	p, _, ctx, buf := setup(src)
 	if got := p.Text(ctx, "button.pay", map[string]string{"name": strings.Repeat("я", 64)}); utf16Len(got) != 64 {
-		t.Fatalf("64 символа должны пройти: %q", got)
+		t.Fatalf("64 characters must pass: %q", got)
 	}
 	for range 3 {
 		if got := p.Text(ctx, "button.pay", map[string]string{"name": strings.Repeat("я", 65)}); got != "Оплатить" {
-			t.Fatalf("65 символов: got %q", got)
+			t.Fatalf("65 characters: got %q", got)
 		}
 	}
 	if got := p.Text(ctx, "button.pay", map[string]string{"name": "  "}); got != "Оплатить" {
-		t.Fatalf("пусто: got %q", got)
+		t.Fatalf("empty: got %q", got)
 	}
 	if n := strings.Count(buf.String(), "does not fit"); n != 1 {
-		t.Fatalf("warn %d раз, want 1: %s", n, buf)
+		t.Fatalf("warn %d times, want 1: %s", n, buf)
 	}
 }
 

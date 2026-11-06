@@ -55,7 +55,7 @@ func TestStartSendsMainMenu(t *testing.T) {
 		`"style":"primary"`, `"style":"danger"`,
 	} {
 		if !strings.Contains(p.Get("reply_markup"), want) {
-			t.Fatalf("reply_markup без %s: %s", want, p.Get("reply_markup"))
+			t.Fatalf("reply_markup without %s: %s", want, p.Get("reply_markup"))
 		}
 	}
 	line := tgtest.FindLog(t, buf, "update handled")
@@ -99,7 +99,7 @@ func TestEscapesUserName(t *testing.T) {
 	u.Message.From.FirstName = "a<b>&"
 	b.ProcessUpdate(t.Context(), u)
 	if text := srv.Calls("sendMessage")[0].Params.Get("text"); !strings.Contains(text, "<b>a&lt;b&gt;&amp;</b>") {
-		t.Fatalf("имя не экранировано: %q", text)
+		t.Fatalf("name not escaped: %q", text)
 	}
 }
 
@@ -109,7 +109,7 @@ func TestNameFallbackToID(t *testing.T) {
 	u.Message.From.FirstName = ""
 	b.ProcessUpdate(t.Context(), u)
 	if text := srv.Calls("sendMessage")[0].Params.Get("text"); !strings.Contains(text, "<b>#42</b>") {
-		t.Fatalf("ожидался fallback #42: %q", text)
+		t.Fatalf("fallback #42 expected: %q", text)
 	}
 }
 
@@ -131,7 +131,7 @@ func TestNewRequiresDeps(t *testing.T) {
 		d := full
 		drop(&d)
 		if _, err := New(logger, cfg, d); err == nil {
-			t.Fatalf("nil %s должен давать ошибку", name)
+			t.Fatalf("nil %s must give an error", name)
 		}
 	}
 }

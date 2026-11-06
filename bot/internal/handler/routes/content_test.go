@@ -54,7 +54,7 @@ func TestTariffsFromSettings(t *testing.T) {
 
 	e.process(t, tgtest.Callback(userID, "price:1")) // тариф из env, удалён в админке
 	if kb := e.last(t, "editMessageText").Params.Get("reply_markup"); strings.Contains(kb, "buy:1") {
-		t.Fatalf("удалённый тариф предложен: %s", kb)
+		t.Fatalf("removed tariff offered: %s", kb)
 	}
 
 	e.process(t, tgtest.Callback(userID, "price:3"))
@@ -64,7 +64,7 @@ func TestTariffsFromSettings(t *testing.T) {
 
 	e.process(t, tgtest.Callback(userID, "buy:1")) // подделанная покупка удалённого тарифа
 	if ps := e.pay.All(); len(ps) != 0 {
-		t.Fatalf("платёж по удалённому тарифу: %+v", ps)
+		t.Fatalf("payment for a removed tariff: %+v", ps)
 	}
 
 	e.process(t, tgtest.Callback(userID, "buy:3"))
@@ -167,7 +167,7 @@ func TestDeclaredButtons(t *testing.T) {
 				btn, ok = texts.Lookup("button.devices_add")
 			}
 			if !ok || !slices.Contains(def.Buttons, btn.Key) {
-				t.Errorf("%s: кнопка %q не объявлена в %v", key, b.Text, def.Buttons)
+				t.Errorf("%s: button %q not declared in %v", key, b.Text, def.Buttons)
 				continue
 			}
 			route, _, _ := strings.Cut(b.CallbackData, ":")
@@ -178,7 +178,7 @@ func TestDeclaredButtons(t *testing.T) {
 				route = "copy:"
 			}
 			if !strings.Contains(btn.Route, route) {
-				t.Errorf("%s: кнопка %q ведёт на %q, в реестре %q", key, b.Text, route, btn.Route)
+				t.Errorf("%s: button %q leads to %q, registry has %q", key, b.Text, route, btn.Route)
 			}
 		}
 	}
@@ -262,7 +262,7 @@ func TestButtonStyle(t *testing.T) {
 	for label, st := range want {
 		for _, d := range texts.Registry() {
 			if d.Kind == texts.KindButton && d.Default == label && d.Style != st {
-				t.Errorf("%s: Def.Style %q, в меню %q", d.Key, d.Style, st)
+				t.Errorf("%s: Def.Style %q, menu has %q", d.Key, d.Style, st)
 			}
 		}
 	}

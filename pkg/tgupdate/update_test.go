@@ -67,6 +67,6 @@ func TestUpdateFields(t *testing.T) {
 func TestUserNilFrom(t *testing.T) {
 	u := &models.Update{Message: &models.Message{Chat: models.Chat{ID: 1}}}
 	if tgupdate.User(u) != nil {
-		t.Fatal("ожидался nil для сообщения без From")
+		t.Fatal("want nil for a message without From")
 	}
 }

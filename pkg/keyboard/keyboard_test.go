@@ -18,7 +18,7 @@ func TestInline(t *testing.T) {
 	)
 	rows := kb.InlineKeyboard
 	if len(rows) != 2 || len(rows[0]) != 2 || len(rows[1]) != 1 {
-		t.Fatalf("неверная форма клавиатуры: %+v", rows)
+		t.Fatalf("wrong keyboard shape: %+v", rows)
 	}
 	pay := rows[0][0]
 	if pay.Text != "Оплатить" || pay.CallbackData != "pay" || pay.Style != "success" {
@@ -53,7 +53,7 @@ func TestDefaultStyleOmitted(t *testing.T) {
 		t.Fatalf("Marshal: %v", err)
 	}
 	if strings.Contains(string(data), "style") {
-		t.Fatalf("пустой стиль попал в JSON: %s", data)
+		t.Fatalf("empty style leaked into JSON: %s", data)
 	}
 }
 
@@ -63,7 +63,7 @@ func TestInlineEmpty(t *testing.T) {
 		t.Fatalf("Marshal: %v", err)
 	}
 	if !strings.Contains(string(data), `"inline_keyboard":[]`) {
-		t.Fatalf("пустая клавиатура должна сериализоваться в [], получено %s", data)
+		t.Fatalf("empty keyboard must serialize to [], got %s", data)
 	}
 }
 
@@ -71,13 +71,13 @@ func TestGrid(t *testing.T) {
 	b := keyboard.Callback("x", "x")
 	rows := keyboard.Grid(2, b, b, b)
 	if len(rows) != 2 || len(rows[0]) != 2 || len(rows[1]) != 1 {
-		t.Fatalf("Grid(2, 3 кнопки) = %d строк", len(rows))
+		t.Fatalf("Grid(2, 3 buttons) = %d rows", len(rows))
 	}
 	if rows := keyboard.Grid(0, b, b); len(rows) != 2 {
-		t.Fatalf("Grid(0) должен работать как Grid(1), получено %d строк", len(rows))
+		t.Fatalf("Grid(0) must behave as Grid(1), got %d rows", len(rows))
 	}
 	kb := keyboard.Inline(keyboard.Grid(2, b, b, b)...)
 	if len(kb.InlineKeyboard) != 2 {
-		t.Fatalf("Inline(Grid...) = %d строк", len(kb.InlineKeyboard))
+		t.Fatalf("Inline(Grid...) = %d rows", len(kb.InlineKeyboard))
 	}
 }

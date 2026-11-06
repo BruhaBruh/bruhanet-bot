@@ -19,6 +19,6 @@ func TestTracingNoopWithoutEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	if time.Since(start) > time.Second {
-		t.Fatal("слишком медленно")
+		t.Fatal("too slow")
 	}
 }

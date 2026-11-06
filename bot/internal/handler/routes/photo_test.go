@@ -33,7 +33,7 @@ func TestPhotoSubmitsForReview(t *testing.T) {
 		t.Fatalf("admin message = %v", admin)
 	}
 	if kb := admin.Get("reply_markup"); strings.Contains(kb, "adm_ok") {
-		t.Fatalf("кнопки до выдачи дня: %s", kb)
+		t.Fatalf("buttons before the day grant: %s", kb)
 	}
 	edit := e.last(t, "editMessageReplyMarkup").Params
 	if kb := edit.Get("reply_markup"); edit.Get("chat_id") != "1" || edit.Get("message_id") != "1" ||
@@ -52,7 +52,7 @@ func TestPhotoSubmitsForReview(t *testing.T) {
 		t.Fatalf("payment = %+v", got)
 	}
 	if _, err := fsm.Data[map[string]any](t.Context(), fsm.For(e.fsm, userID)); err == nil {
-		t.Fatal("в FSM остались данные платежа")
+		t.Fatal("payment data left in FSM")
 	}
 	if got := e.rw.ExpireAt(userID); !got.Equal(now.Add(24 * time.Hour)) {
 		t.Fatalf("advance expireAt = %v", got)
@@ -197,7 +197,7 @@ func TestAlbumPhotos(t *testing.T) {
 	e.process(t, tgtest.Photo(userID))
 
 	if n := len(e.rw.Updates()); n != 1 {
-		t.Fatalf("аванс выдан %d раз", n)
+		t.Fatalf("advance granted %d times", n)
 	}
 	copies := e.srv.Calls("copyMessage")
 	if len(copies) != 2 || copies[0].Params.Get("reply_parameters") != "" ||
@@ -211,10 +211,10 @@ func TestAlbumPhotos(t *testing.T) {
 		}
 	}
 	if reviews != 1 {
-		t.Fatalf("сообщений проверки = %d", reviews)
+		t.Fatalf("review messages = %d", reviews)
 	}
 	if edit := e.last(t, "editMessageReplyMarkup").Params.Get("reply_markup"); !strings.Contains(edit, fmt.Sprintf("adm_ok:%d", p.ID)) {
-		t.Fatalf("кнопки = %s", edit)
+		t.Fatalf("buttons = %s", edit)
 	}
 }
 
@@ -227,7 +227,7 @@ func TestSubmitRace(t *testing.T) {
 	e.process(t, tgtest.Photo(userID))
 
 	if n := len(e.rw.Updates()); n != 0 {
-		t.Fatalf("проигравшее фото выдало день: %d", n)
+		t.Fatalf("losing photo granted a day: %d", n)
 	}
 	reply := e.last(t, "sendMessage").Params
 	if reply.Get("chat_id") != "1" || reply.Get("text") != "Повторное фото этого платежа" ||
@@ -236,7 +236,7 @@ func TestSubmitRace(t *testing.T) {
 	}
 	edits := e.srv.Calls("editMessageReplyMarkup")
 	if len(edits) != 1 || strings.Contains(edits[0].Params.Get("reply_markup"), "adm_ok") {
-		t.Fatalf("проигравший навесил кнопки: %v", edits)
+		t.Fatalf("loser attached buttons: %v", edits)
 	}
 }
 

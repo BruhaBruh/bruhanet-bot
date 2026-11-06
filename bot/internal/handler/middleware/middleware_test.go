@@ -34,10 +34,10 @@ func TestRequestID(t *testing.T) {
 		info = middleware.UpdateInfoFrom(ctx)
 	}, middleware.RequestID)(context.Background(), nil, tgtest.Message(42, "x"))
 	if id == "" {
-		t.Fatal("request id пустой")
+		t.Fatal("request id is empty")
 	}
 	if info == nil {
-		t.Fatal("UpdateInfo не положен в ctx")
+		t.Fatal("UpdateInfo not put into ctx")
 	}
 }
 
@@ -47,7 +47,7 @@ func TestUpdateInfoNilSafe(t *testing.T) {
 	info.MarkAnswered()
 	info.MarkPanicked()
 	if info.Route() != "" || info.Answered() || info.Panicked() {
-		t.Fatal("nil UpdateInfo должен возвращать нулевые значения")
+		t.Fatal("nil UpdateInfo must return zero values")
 	}
 }
 
@@ -63,19 +63,19 @@ func TestLoggerWritesUpdateHandled(t *testing.T) {
 		t.Fatalf("line = %v", line)
 	}
 	if line["telegram_id"] != float64(42) || line["chat_id"] != float64(42) || line["update_type"] != "message" {
-		t.Fatalf("поля апдейта: %v", line)
+		t.Fatalf("update fields: %v", line)
 	}
 	if _, ok := line["update_id"]; ok {
-		t.Fatalf("update_id не должен логироваться: %v", line)
+		t.Fatalf("update_id must not be logged: %v", line)
 	}
 	if line["request_id"] == "" || line["request_id"] == nil {
-		t.Fatalf("нет request_id: %v", line)
+		t.Fatalf("no request_id: %v", line)
 	}
 	if _, ok := line["duration_ms"]; !ok {
-		t.Fatalf("нет duration_ms: %v", line)
+		t.Fatalf("no duration_ms: %v", line)
 	}
 	if strings.Contains(buf.String(), "secret-text") {
-		t.Fatal("текст сообщения попал в лог")
+		t.Fatal("message text leaked into the log")
 	}
 }
 
@@ -103,7 +103,7 @@ func TestRecoveryInner(t *testing.T) {
 		t.Fatalf("panic line = %v", p)
 	}
 	if strings.Contains(buf.String(), "update handled") {
-		t.Fatalf("при панике update handled не пишется, лог:\n%s", buf.String())
+		t.Fatalf("update handled is not logged on panic, log:\n%s", buf.String())
 	}
 }
 
@@ -181,7 +181,7 @@ func TestAdminOnly(t *testing.T) {
 		h := func(context.Context, *bot.Bot, *models.Update) { called = true }
 		chain(h, middleware.RequestID, middleware.AutoAnswer(), middleware.AdminOnly(1))(ctx, srv.Bot(t), tgtest.Callback(2, "adm_ok"))
 		if called {
-			t.Fatal("хендлер вызван для не-админа")
+			t.Fatal("handler called for a non-admin")
 		}
 		calls := srv.Calls("answerCallbackQuery")
 		if len(calls) != 1 || calls[0].Params.Get("text") != "Недостаточно прав" {
@@ -198,7 +198,7 @@ func TestAdminOnly(t *testing.T) {
 		h := func(context.Context, *bot.Bot, *models.Update) { called = true }
 		chain(h, middleware.RequestID, middleware.AdminOnly(1))(context.Background(), srv.Bot(t), tgtest.Callback(1, "adm_ok"))
 		if !called {
-			t.Fatal("хендлер не вызван для админа")
+			t.Fatal("handler not called for the admin")
 		}
 	})
 }
@@ -212,7 +212,7 @@ func TestTrackDetachesCancel(t *testing.T) {
 		err = ctx.Err()
 	}, middleware.Track(&wg))(ctx, nil, tgtest.Message(1, "x"))
 	if err != nil {
-		t.Fatalf("ctx хендлера отменён: %v", err)
+		t.Fatalf("handler ctx cancelled: %v", err)
 	}
 }
 
@@ -229,13 +229,13 @@ func TestTrackCountsInFlight(t *testing.T) {
 	go func() { wg.Wait(); close(drained) }()
 	select {
 	case <-drained:
-		t.Fatal("wg.Wait вернулся при работающем хендлере")
+		t.Fatal("wg.Wait returned while the handler is running")
 	case <-time.After(50 * time.Millisecond):
 	}
 	close(release)
 	select {
 	case <-drained:
 	case <-time.After(time.Second):
-		t.Fatal("wg.Wait не вернулся после завершения хендлера")
+		t.Fatal("wg.Wait did not return after the handler finished")
 	}
 }

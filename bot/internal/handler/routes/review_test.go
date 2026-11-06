@@ -69,7 +69,7 @@ func (e *env) status(t *testing.T, id int64) model.PaymentStatus {
 			return p.Status
 		}
 	}
-	t.Fatalf("платёж %d не найден", id)
+	t.Fatalf("payment %d not found", id)
 	return ""
 }
 
@@ -140,7 +140,7 @@ func TestConfirmQueuesNotice(t *testing.T) {
 
 			for _, c := range e.srv.Calls("sendMessage") {
 				if c.Params.Get("chat_id") == "42" {
-					t.Fatalf("прямое сообщение юзеру: %v", c.Params)
+					t.Fatalf("direct message to the user: %v", c.Params)
 				}
 			}
 			out := e.pay.Outbox()
@@ -171,7 +171,7 @@ func TestDoubleConfirm(t *testing.T) {
 		t.Fatalf("UpdateUser calls = %d, want 1", n)
 	}
 	if text := e.answer(t); text != "Уже обработано" {
-		t.Fatalf("второе нажатие: %q", text)
+		t.Fatalf("second press: %q", text)
 	}
 	if n := len(e.pay.Outbox()); n != 1 {
 		t.Fatalf("outbox = %d", n)
@@ -228,13 +228,13 @@ func TestConfirmUpdateFailureKeepsReview(t *testing.T) {
 		t.Fatalf("status = %q", s)
 	}
 	if n := e.count("editMessageReplyMarkup"); n != 0 {
-		t.Fatalf("кнопки сняты при ошибке: %d", n)
+		t.Fatalf("buttons removed on error: %d", n)
 	}
 
 	e.rw.FailWith(nil)
 	e.process(t, confirmPress(p.ID))
 	if got, want := e.rw.ExpireAt(userID), now.Add(6*30*24*time.Hour); !got.Equal(want) {
-		t.Fatalf("повтор после ошибки: expireAt = %v, want %v", got, want)
+		t.Fatalf("retry after error: expireAt = %v, want %v", got, want)
 	}
 }
 

@@ -27,7 +27,7 @@ func TestGrantDays(t *testing.T) {
 		t.Fatalf("panel = %v squad %v", panel.updates, panel.squad)
 	}
 	if len(st.panelWrites) != 1 || !st.panelWrites[0].exp.Equal(want) {
-		t.Fatalf("users не обновлён: %+v", st.panelWrites)
+		t.Fatalf("users not updated: %+v", st.panelWrites)
 	}
 	if len(st.outbox) != 1 || st.outbox[0].EventType != "grant_days" || st.outbox[0].TextKey != "grant.days" ||
 		st.outbox[0].ChatID != 7 || st.outbox[0].Days != 7 || !st.outbox[0].ExpireAt.Equal(want) {

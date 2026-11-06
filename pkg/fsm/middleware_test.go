@@ -19,12 +19,12 @@ func TestMiddleware(t *testing.T) {
 
 	h(context.Background(), nil, &models.Update{Message: &models.Message{From: &models.User{ID: 42}}})
 	if got == nil || got.UserID() != 42 {
-		t.Fatalf("ожидался FSM юзера 42, получено %+v", got)
+		t.Fatalf("want FSM of user 42, got %+v", got)
 	}
 
 	got = nil
 	h(context.Background(), nil, &models.Update{})
 	if got != nil {
-		t.Fatal("для апдейта без юзера FSM в ctx быть не должно")
+		t.Fatal("no FSM in ctx for an update without a user")
 	}
 }

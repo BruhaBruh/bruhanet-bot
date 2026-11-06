@@ -26,22 +26,22 @@ func TestRunStopsOnSignal(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-			t.Errorf("не удалось послать SIGTERM: %v", err)
+			t.Errorf("failed to send SIGTERM: %v", err)
 		}
 	}()
 
 	if err := app.Run(a); err != nil {
-		t.Fatalf("Run() вернул ошибку: %v", err)
+		t.Fatalf("Run() returned an error: %v", err)
 	}
 
 	want := []string{"start:компонент", "stop:компонент"}
 	if !equal(rec.events, want) {
-		t.Fatalf("последовательность %v, ожидалась %v", rec.events, want)
+		t.Fatalf("sequence %v, want %v", rec.events, want)
 	}
 }
 
 func TestRunReturnsStartError(t *testing.T) {
-	boom := errors.New("не поднялся")
+	boom := errors.New("failed to start")
 	rec := &recorder{}
 
 	a := app.New(
@@ -52,12 +52,12 @@ func TestRunReturnsStartError(t *testing.T) {
 	)
 
 	if err := app.Run(a); !errors.Is(err, boom) {
-		t.Fatalf("Run() вернул %v, ожидалась обёртка над boom", err)
+		t.Fatalf("Run() returned %v, want a wrapper of boom", err)
 	}
 }
 
 func TestRunStopsOnFatalError(t *testing.T) {
-	boom := errors.New("сервер упал")
+	boom := errors.New("server crashed")
 	fatal := make(chan error, 1)
 	rec := &recorder{}
 
@@ -73,12 +73,12 @@ func TestRunStopsOnFatalError(t *testing.T) {
 
 	err := app.Run(a)
 	if !errors.Is(err, boom) {
-		t.Fatalf("Run() вернул %v, ожидалась обёртка над boom", err)
+		t.Fatalf("Run() returned %v, want a wrapper of boom", err)
 	}
 
 	want := []string{"start:компонент", "stop:компонент"}
 	if !equal(rec.events, want) {
-		t.Fatalf("последовательность %v, ожидалась %v", rec.events, want)
+		t.Fatalf("sequence %v, want %v", rec.events, want)
 	}
 }
 
@@ -105,7 +105,7 @@ func TestRunEnforcesStopTimeout(t *testing.T) {
 		app.WithComponent("зависший", stuck),
 	)
 
-	fatal <- errors.New("пора выключаться")
+	fatal <- errors.New("time to shut down")
 
 	done := make(chan error, 1)
 
@@ -114,9 +114,9 @@ func TestRunEnforcesStopTimeout(t *testing.T) {
 	select {
 	case err := <-done:
 		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("Run() вернул %v, ожидался DeadlineExceeded", err)
+			t.Fatalf("Run() returned %v, want DeadlineExceeded", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Run() не вернул управление: предел времени остановки не работает")
+		t.Fatal("Run() did not return: stop timeout does not work")
 	}
 }

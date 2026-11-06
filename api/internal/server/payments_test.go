@@ -147,7 +147,7 @@ func TestResolvePaymentFromPanel(t *testing.T) {
 				t.Fatalf("panel = %v, squad %v", panel.updates, panel.squad)
 			}
 			if len(st.panelWrites) != 1 || !st.panelWrites[0].exp.Equal(tc.want) {
-				t.Fatalf("users не обновлён: %+v", st.panelWrites)
+				t.Fatalf("users not updated: %+v", st.panelWrites)
 			}
 			if len(st.outbox) != 2 {
 				t.Fatalf("outbox = %+v", st.outbox)

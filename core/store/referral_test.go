@@ -154,43 +154,43 @@ func TestRecordReferral(t *testing.T) {
 	}
 
 	if !rec(20, 10) || referredBy(20) == nil || *referredBy(20) != 10 {
-		t.Fatal("первый старт по ссылке не записан")
+		t.Fatal("first start via link not recorded")
 	}
 	if rec(20, 11) || *referredBy(20) != 10 {
-		t.Fatal("второй старт с другим payload перезаписал пригласившего")
+		t.Fatal("second start with another payload overwrote the referrer")
 	}
 	// LastSeen позже обновляет строку, но не пригласившего
 	if err := s.TouchUser(ctx, model.UserSeen{TelegramID: 20, Username: "u2", At: now}); err != nil || *referredBy(20) != 10 {
-		t.Fatalf("TouchUser затёр referred_by: %v", err)
+		t.Fatalf("TouchUser wiped referred_by: %v", err)
 	}
 	if rec(21, 21) {
-		t.Fatal("реферал сам на себя записан")
+		t.Fatal("self-referral recorded")
 	}
 	if rec(22, 999) {
-		t.Fatal("несуществующий пригласивший записан")
+		t.Fatal("nonexistent referrer recorded")
 	}
 	// отказ не создаёт строку: следующий обычный касание заведёт юзера без пригласившего
 	if n := func() (n int) {
 		_ = s.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE telegram_id IN (21, 22)`).Scan(&n)
 		return n
 	}(); n != 0 {
-		t.Fatalf("отказ создал %d строк юзера", n)
+		t.Fatalf("refusal created %d user rows", n)
 	}
 	if rec(10, 11) { // уже существующий юзер не может стать чьим-то приглашённым
-		t.Fatal("существующий юзер получил пригласившего")
+		t.Fatal("existing user got a referrer")
 	}
 	if referredBy(10) != nil {
-		t.Fatal("referred_by существующего юзера записан")
+		t.Fatal("referred_by of an existing user recorded")
 	}
 	if _, err := s.pool.Exec(ctx, `UPDATE users SET referred_by = telegram_id WHERE telegram_id = 11`); err == nil {
-		t.Fatal("CHECK referred_by <> telegram_id не сработал")
+		t.Fatal("CHECK referred_by <> telegram_id did not fire")
 	}
 	r, err := s.UserReferral(ctx, 10)
 	if err != nil || r.Invited != 1 || r.Paid != 0 {
-		t.Fatalf("карточка пригласившего %+v, %v", r, err)
+		t.Fatalf("referrer card %+v, %v", r, err)
 	}
 	if r, _ = s.UserReferral(ctx, 20); r.ReferredBy == nil || r.ReferredByUsername != "r" {
-		t.Fatalf("карточка друга %+v", r)
+		t.Fatalf("friend card %+v", r)
 	}
 }
 
@@ -224,21 +224,21 @@ func TestReferralRewardExactlyOnce(t *testing.T) {
 		}
 	}
 	if won < 0 || !pays[won].ReferralPending {
-		t.Fatalf("победитель %d, pending=%v", won, pays[won].ReferralPending)
+		t.Fatalf("winner %d, pending=%v", won, pays[won].ReferralPending)
 	}
 	want := payflow.ExtendedExpire(prev, f.now, 1).Add(refDays * 24 * time.Hour)
 	if w := f.panel.written(f.friend); len(w) != 1 || !w[0].Equal(want) {
-		t.Fatalf("запись срока друга %v, want одна %v", w, want)
+		t.Fatalf("friend expiry write %v, want a single %v", w, want)
 	}
 	if f.rewards(t) != 1 || f.grants(t, f.friend) != 1 || f.outboxEvents(t, f.friend) != 1 {
 		t.Fatalf("rewards=%d grants=%d outbox=%d", f.rewards(t), f.grants(t, f.friend), f.outboxEvents(t, f.friend))
 	}
 	if f.count(t, `SELECT count(*) FROM referral_rewards WHERE referred_rewarded_at IS NOT NULL AND referrer_rewarded_at IS NULL`) != 1 {
-		t.Fatal("отметка друга не стоит")
+		t.Fatal("friend mark is not set")
 	}
 	// повтор подтверждения
 	if _, err := f.resolve(ctx, p.ID, true, refDays); !errors.Is(err, ErrNotPending) {
-		t.Fatalf("повтор: %v", err)
+		t.Fatalf("retry: %v", err)
 	}
 
 	// пригласивший: параллельные запуски (немедленный шаг в боте и api + сверка) платят один раз
@@ -264,28 +264,28 @@ func TestReferralRewardExactlyOnce(t *testing.T) {
 		}
 	}
 	if ok != 1 {
-		t.Fatalf("успешных выдач %d, want 1", ok)
+		t.Fatalf("successful grants %d, want 1", ok)
 	}
 	if w := f.panel.written(f.referrer); len(w) != 1 || !w[0].Equal(prevRef.Add(refDays*24*time.Hour)) {
-		t.Fatalf("запись срока пригласившего %v", w)
+		t.Fatalf("referrer expiry write %v", w)
 	}
 	if f.grants(t, f.referrer) != 1 || f.outboxEvents(t, f.referrer) != 1 {
 		t.Fatalf("grants=%d outbox=%d", f.grants(t, f.referrer), f.outboxEvents(t, f.referrer))
 	}
 	if _, err := payflow.PayReferrer(ctx, f.s, f.panel, f.friend, f.now, uuid.Nil); !errors.Is(err, ErrAlreadyRewarded) {
-		t.Fatalf("повтор PayReferrer: %v", err)
+		t.Fatalf("PayReferrer retry: %v", err)
 	}
 	if r, _ := f.s.UserReferral(ctx, f.referrer); r.Invited != 1 || r.Paid != 1 {
-		t.Fatalf("карточка %+v", r)
+		t.Fatalf("card %+v", r)
 	}
 
 	// вторая оплата друга награды не даёт
 	p2 := f.pending(t, f.friend, model.KindTariff, 150, prev)
 	if res, err := f.resolve(ctx, p2.ID, true, refDays); err != nil || res.ReferralPending {
-		t.Fatalf("вторая оплата: pending=%v err=%v", res.ReferralPending, err)
+		t.Fatalf("second payment: pending=%v err=%v", res.ReferralPending, err)
 	}
 	if f.rewards(t) != 1 || f.grants(t, f.friend) != 1 {
-		t.Fatal("вторая оплата выдала награду")
+		t.Fatal("second payment granted a reward")
 	}
 }
 
@@ -310,7 +310,7 @@ func TestReferralNotTriggered(t *testing.T) {
 				t.Fatalf("pending=%v err=%v", res.ReferralPending, err)
 			}
 			if f.rewards(t) != 0 || f.grants(t, f.friend) != 0 || f.outboxEvents(t, f.friend) != 0 {
-				t.Fatal("награда создана")
+				t.Fatal("reward created")
 			}
 		})
 	}
@@ -323,16 +323,16 @@ func TestReferralCancelledPaymentNoReward(t *testing.T) {
 	// новая оплата отменяет прежнюю pending; отменённая не подтверждается
 	p2 := f.pending(t, f.friend, model.KindTariff, 150, f.now)
 	if _, err := f.resolve(ctx, p.ID, true, refDays); !errors.Is(err, ErrNotPending) {
-		t.Fatalf("подтверждение отменённого: %v", err)
+		t.Fatalf("confirming a cancelled payment: %v", err)
 	}
 	if f.rewards(t) != 0 {
-		t.Fatal("отменённый платёж дал награду")
+		t.Fatal("cancelled payment gave a reward")
 	}
 	if res, err := f.resolve(ctx, p2.ID, true, refDays); err != nil || !res.ReferralPending {
 		t.Fatalf("pending=%v err=%v", res.ReferralPending, err)
 	}
 	if f.rewards(t) != 1 {
-		t.Fatal("актуальный платёж не дал награду")
+		t.Fatal("current payment gave no reward")
 	}
 }
 
@@ -370,7 +370,7 @@ func TestReferralDevicesFirstThenTariff(t *testing.T) {
 	ctx := t.Context()
 	dev := f.pending(t, f.friend, model.KindDevices, 50, f.now)
 	if _, err := f.resolve(ctx, dev.ID, true, refDays); err != nil || f.rewards(t) != 0 {
-		t.Fatalf("докупка: %v rewards=%d", err, f.rewards(t))
+		t.Fatalf("top-up: %v rewards=%d", err, f.rewards(t))
 	}
 	tariff := f.pending(t, f.friend, model.KindTariff, 150, f.now)
 	if res, err := f.resolve(ctx, tariff.ID, true, refDays); err != nil || !res.ReferralPending {
@@ -390,7 +390,7 @@ func TestReferralTrialThenFirstTariff(t *testing.T) {
 		t.Fatalf("pending=%v err=%v", res.ReferralPending, err)
 	}
 	if w := f.panel.written(f.friend); len(w) != 1 || !w[0].Equal(payflow.ExtendedExpire(p.PrevExpireAt, f.now, 1).Add(refDays*24*time.Hour)) {
-		t.Fatalf("запись %v", w)
+		t.Fatalf("write %v", w)
 	}
 }
 
@@ -408,16 +408,16 @@ func TestReferralBlockedFriendStillRewardsReferrer(t *testing.T) {
 		t.Fatalf("pending=%v err=%v", res.ReferralPending, err)
 	}
 	if w := f.panel.written(f.friend); len(w) != 1 || !w[0].Equal(payflow.ExtendedExpire(prev, f.now, 1)) {
-		t.Fatalf("друг получил бонус: %v", w)
+		t.Fatalf("friend got the bonus: %v", w)
 	}
 	if f.grants(t, f.friend) != 0 || f.outboxEvents(t, f.friend) != 0 {
-		t.Fatal("бонус или уведомление заблокированному другу")
+		t.Fatal("bonus or notice sent to a blocked friend")
 	}
 	if f.count(t, `SELECT count(*) FROM referral_rewards WHERE referred_rewarded_at IS NULL`) != 1 {
-		t.Fatal("referred_rewarded_at должен остаться NULL")
+		t.Fatal("referred_rewarded_at must stay NULL")
 	}
 	if _, err = payflow.PayReferrer(ctx, f.s, f.panel, f.friend, f.now, uuid.Nil); err != nil {
-		t.Fatalf("пригласивший: %v", err)
+		t.Fatalf("referrer: %v", err)
 	}
 }
 
@@ -432,32 +432,32 @@ func TestReferralBlockedReferrerSkippedThenPaidAfterUnblock(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := payflow.PayReferrer(ctx, f.s, f.panel, f.friend, f.now, uuid.Nil); !errors.Is(err, ErrBlocked) {
-		t.Fatalf("заблокированный пригласивший: %v", err)
+		t.Fatalf("blocked referrer: %v", err)
 	}
 	if len(f.panel.written(f.referrer)) != 0 || f.grants(t, f.referrer) != 0 {
-		t.Fatal("заблокированному выданы дни")
+		t.Fatal("days granted to a blocked user")
 	}
 	if due, err := f.s.ReferralsDue(ctx, nil, 10); err != nil || len(due) != 0 {
-		t.Fatalf("due при блокировке: %v %v", due, err)
+		t.Fatalf("due while blocked: %v %v", due, err)
 	}
 	if err := f.s.SetUserBlocked(ctx, f.referrer, false, f.now); err != nil {
 		t.Fatal(err)
 	}
 	due, err := f.s.ReferralsDue(ctx, nil, 10)
 	if err != nil || len(due) != 1 || due[0] != f.friend {
-		t.Fatalf("due после снятия: %v %v", due, err)
+		t.Fatalf("due after unblock: %v %v", due, err)
 	}
 	if skipped, _ := f.s.ReferralsDue(ctx, []int64{f.friend}, 10); len(skipped) != 0 {
-		t.Fatal("skip не работает")
+		t.Fatal("skip does not work")
 	}
 	if _, err = payflow.PayReferrer(ctx, f.s, f.panel, f.friend, f.now, uuid.Nil); err != nil {
 		t.Fatal(err)
 	}
 	if f.grants(t, f.referrer) != 1 {
-		t.Fatal("после снятия блокировки дни не выданы")
+		t.Fatal("days not granted after unblock")
 	}
 	if due, _ = f.s.ReferralsDue(ctx, nil, 10); len(due) != 0 {
-		t.Fatal("выданная награда осталась в due")
+		t.Fatal("granted reward stayed in due")
 	}
 }
 
@@ -474,15 +474,15 @@ func TestReferralPanelFailureLeavesRetryable(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if f.grants(t, f.referrer) != 0 || f.outboxEvents(t, f.referrer) != 0 {
-		t.Fatal("сбой панели оставил следы")
+		t.Fatal("panel failure left traces")
 	}
 	if due, _ := f.s.ReferralsDue(ctx, nil, 10); len(due) != 1 {
-		t.Fatal("награда не осталась к повтору")
+		t.Fatal("reward not kept for retry")
 	}
 	f.panel.setFail(f.referrer, nil)
 	got, err := payflow.PayReferrer(ctx, f.s, f.panel, f.friend, f.now, uuid.Nil)
 	if err != nil || !got.Equal(f.now.Add(refDays*24*time.Hour)) {
-		t.Fatalf("повтор: %v %v", got, err)
+		t.Fatalf("retry: %v %v", got, err)
 	}
 }
 
@@ -496,11 +496,11 @@ func TestReferralFriendPanelFailureRollsBack(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if f.rewards(t) != 0 || f.grants(t, f.friend) != 0 {
-		t.Fatal("откат оставил награду")
+		t.Fatal("rollback left a reward")
 	}
 	f.panel.setFail(f.friend, nil)
 	if res, err := f.resolve(ctx, p.ID, true, refDays); err != nil || !res.ReferralPending {
-		t.Fatalf("повтор: pending=%v err=%v", res.ReferralPending, err)
+		t.Fatalf("retry: pending=%v err=%v", res.ReferralPending, err)
 	}
 }
 
@@ -550,12 +550,12 @@ func TestReferralNoDeadlockWithReferrerOwnPayments(t *testing.T) {
 	})
 	wg.Wait()
 	if ctx.Err() != nil {
-		t.Fatal("таймаут: вероятный дедлок")
+		t.Fatal("timeout: probable deadlock")
 	}
 	if _, err := payflow.PayReferrer(ctx, f.s, f.panel, f.friend, f.now, uuid.Nil); err != nil && !errors.Is(err, ErrAlreadyRewarded) && !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}
 	if f.grants(t, f.referrer) > 1 {
-		t.Fatal("пригласивший награждён дважды")
+		t.Fatal("referrer rewarded twice")
 	}
 }

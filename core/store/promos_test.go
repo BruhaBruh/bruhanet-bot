@@ -301,10 +301,10 @@ func TestResolveFreePromoPaymentRejectsRepeat(t *testing.T) {
 	if _, err = s.ResolvePayment(ctx, o.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) ([]model.OutboxMessage, error) {
 		return nil, errors.New("panel down")
 	}); err == nil {
-		t.Fatal("ожидалась ошибка apply")
+		t.Fatal("apply error expected")
 	}
 	if _, already, err := s.PromoUsage(ctx, pr.ID, 2); err != nil || already {
-		t.Fatalf("активация после отката: %v %v", already, err)
+		t.Fatalf("activation after rollback: %v %v", already, err)
 	}
 }
 
@@ -322,10 +322,10 @@ func TestCancelPayment(t *testing.T) {
 		t.Fatalf("payment = %+v", got)
 	}
 	if err = s.CancelPayment(ctx, p.ID); !errors.Is(err, ErrNotPending) {
-		t.Fatalf("повтор: %v", err)
+		t.Fatalf("retry: %v", err)
 	}
 	if err = s.CancelPayment(ctx, 999999); !errors.Is(err, ErrNotPending) {
-		t.Fatalf("нет платежа: %v", err)
+		t.Fatalf("no payment: %v", err)
 	}
 }
 

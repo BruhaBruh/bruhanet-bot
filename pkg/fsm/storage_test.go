@@ -22,7 +22,7 @@ func testStorage(t *testing.T, newStore func(t *testing.T) fsm.Storage) {
 			t.Fatalf("Get: %v", err)
 		}
 		if r.State != fsm.StateNone || len(r.Data) != 0 {
-			t.Fatalf("ожидалась пустая запись, получено %+v", r)
+			t.Fatalf("want an empty record, got %+v", r)
 		}
 	})
 
@@ -54,7 +54,7 @@ func testStorage(t *testing.T, newStore func(t *testing.T) fsm.Storage) {
 			t.Fatalf("Get: %v", err)
 		}
 		if r.State != fsm.StateNone {
-			t.Fatalf("ожидался StateNone после Delete, получено %q", r.State)
+			t.Fatalf("want StateNone after Delete, got %q", r.State)
 		}
 	})
 
@@ -76,11 +76,11 @@ func testStorage(t *testing.T, newStore func(t *testing.T) fsm.Storage) {
 		}
 		err := s.CompareAndSet(ctx, 1, "b", fsm.Record{State: "c"})
 		if !errors.Is(err, fsm.ErrStateMismatch) {
-			t.Fatalf("ожидался ErrStateMismatch, получено %v", err)
+			t.Fatalf("want ErrStateMismatch, got %v", err)
 		}
 		r, _ := s.Get(ctx, 1)
 		if r.State != "a" || string(r.Data) != "1" {
-			t.Fatalf("запись изменилась: %+v", r)
+			t.Fatalf("record changed: %+v", r)
 		}
 	})
 
@@ -100,7 +100,7 @@ func testStorage(t *testing.T, newStore func(t *testing.T) fsm.Storage) {
 		}
 		wg.Wait()
 		if ok.Load() != 1 {
-			t.Fatalf("успешных CAS = %d, want 1", ok.Load())
+			t.Fatalf("successful CAS = %d, want 1", ok.Load())
 		}
 	})
 }

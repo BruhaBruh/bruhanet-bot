@@ -118,7 +118,7 @@ func (e *env) last(t *testing.T, method string) tgtest.Call {
 	t.Helper()
 	calls := e.srv.Calls(method)
 	if len(calls) == 0 {
-		t.Fatalf("нет вызовов %s", method)
+		t.Fatalf("no calls to %s", method)
 	}
 	return calls[len(calls)-1]
 }

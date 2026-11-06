@@ -23,11 +23,11 @@ func TestTariffsList(t *testing.T) {
 	i6 := strings.Index(kb, `"callback_data":"price:6"`)
 	i12 := strings.Index(kb, `"callback_data":"price:12"`)
 	if i1 < 0 || i6 < i1 || i12 < i6 {
-		t.Fatalf("тарифы не по порядку: %s", kb)
+		t.Fatalf("tariffs out of order: %s", kb)
 	}
 	for _, want := range []string{"1 месяц за 150 ₽", "6 месяцев за 800 ₽", `"callback_data":"menu"`} {
 		if !strings.Contains(kb, want) {
-			t.Fatalf("клавиатура без %s: %s", want, kb)
+			t.Fatalf("keyboard without %s: %s", want, kb)
 		}
 	}
 }
@@ -38,12 +38,12 @@ func TestPriceAsksConfirmation(t *testing.T) {
 	p := e.last(t, "editMessageText").Params
 	for _, want := range []string{"6 месяцев", "800 ₽", "Верно?"} {
 		if !strings.Contains(p.Get("text"), want) {
-			t.Fatalf("text без %q: %s", want, p.Get("text"))
+			t.Fatalf("text without %q: %s", want, p.Get("text"))
 		}
 	}
 	kb := p.Get("reply_markup")
 	if !strings.Contains(kb, `"callback_data":"buy:6"`) || !strings.Contains(kb, `"callback_data":"pay"`) {
-		t.Fatalf("клавиатура = %s", kb)
+		t.Fatalf("keyboard = %s", kb)
 	}
 }
 
@@ -59,7 +59,7 @@ func TestBuyCreatesPendingPayment(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Callback(userID, "buy:6"))
 	if got := e.rw.ExpireAt(userID); !got.Equal(now) {
-		t.Fatalf("новый юзер expireAt = %v, want %v", got, now)
+		t.Fatalf("new user expireAt = %v, want %v", got, now)
 	}
 	if st := e.state(t, userID); st != "await_photo" {
 		t.Fatalf("state = %q", st)
@@ -71,7 +71,7 @@ func TestBuyCreatesPendingPayment(t *testing.T) {
 	text := e.last(t, "editMessageText").Params.Get("text")
 	for _, want := range []string{"<b>800 ₽</b>", "<code>+7 (800) 555-35-35</code>", "<b>Т-Банк</b>", "- <code>На кофе</code>\n- <code>Перекус</code>", "фото платежа"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("реквизиты без %q: %s", want, text)
+			t.Fatalf("payment details without %q: %s", want, text)
 		}
 	}
 }
@@ -93,7 +93,7 @@ func TestBuyUnknownTariffDoesNothing(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 	if got := e.rw.ExpireAt(userID); !got.IsZero() {
-		t.Fatalf("юзер создан для невалидного тарифа: %v", got)
+		t.Fatalf("user created for an invalid tariff: %v", got)
 	}
 	if n := len(e.pay.All()); n != 0 {
 		t.Fatalf("payments = %d", n)
@@ -108,7 +108,7 @@ func TestBuyCancelsPaymentInReview(t *testing.T) {
 	e.process(t, tgtest.Callback(userID, "buy:1"))
 
 	if got := e.rw.ExpireAt(userID); !got.Equal(base) {
-		t.Fatalf("срок не откатился: %v, want %v", got, base)
+		t.Fatalf("expiry not rolled back: %v, want %v", got, base)
 	}
 	if s := e.status(t, old.ID); s != model.PaymentCancelled {
 		t.Fatalf("old status = %q", s)
@@ -144,7 +144,7 @@ func TestBuyOverPendingWithoutAdvanceKeepsExpire(t *testing.T) {
 		t.Fatalf("payment = %+v", p)
 	}
 	if n := e.count("editMessageReplyMarkup") + e.count("sendMessage"); n != 0 {
-		t.Fatalf("админ-сообщение тронуто: %d", n)
+		t.Fatalf("admin message touched: %d", n)
 	}
 }
 
@@ -187,7 +187,7 @@ func TestBuyCancelFailureKeepsReview(t *testing.T) {
 		t.Fatalf("text = %s", text)
 	}
 	if n := e.count("editMessageReplyMarkup"); n != 0 {
-		t.Fatalf("админ-сообщение тронуто: %d", n)
+		t.Fatalf("admin message touched: %d", n)
 	}
 	tgtest.FindLog(t, e.log, "failed to create payment")
 }

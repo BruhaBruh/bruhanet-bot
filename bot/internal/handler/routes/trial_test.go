@@ -26,25 +26,25 @@ func (e *env) startTrial(t *testing.T) {
 func TestTrialFlow(t *testing.T) {
 	e := newEnv(t)
 	if !e.menuHasTrial(t) {
-		t.Fatal("новому юзеру нет кнопки пробного")
+		t.Fatal("no trial button for a new user")
 	}
 	e.process(t, tgtest.Callback(userID, "trial"))
 	if text := e.text(t); !strings.Contains(text, "<b>3</b>") || !strings.Contains(text, "<b>2</b>") {
 		t.Fatalf("confirm: %s", text)
 	}
 	if e.rw.ExpireAt(userID) != (time.Time{}) {
-		t.Fatal("экран подтверждения уже выдал срок")
+		t.Fatal("confirmation screen already granted the term")
 	}
 
 	e.process(t, tgtest.Callback(userID, "trialy"))
 	if got, want := e.rw.ExpireAt(userID), now.Add(3*day); !got.Equal(want) {
-		t.Fatalf("срок %v, want %v", got, want)
+		t.Fatalf("expiry %v, want %v", got, want)
 	}
 	if e.rw.DeviceLimit(userID) != 2 {
-		t.Fatalf("лимит %d", e.rw.DeviceLimit(userID))
+		t.Fatalf("limit %d", e.rw.DeviceLimit(userID))
 	}
 	if _, ok := e.pay.TrialUsedAt(userID); !ok {
-		t.Fatal("trial_used_at не записан")
+		t.Fatal("trial_used_at not recorded")
 	}
 	if g := e.pay.Grants(); len(g) != 1 || g[0].Days != 3 || g[0].Source != "trial" {
 		t.Fatalf("grants %+v", g)
@@ -54,14 +54,14 @@ func TestTrialFlow(t *testing.T) {
 		t.Fatalf("outbox %+v", out)
 	}
 	if e.menuHasTrial(t) {
-		t.Fatal("кнопка осталась после выдачи")
+		t.Fatal("button stayed after the grant")
 	}
 
 	// двойное «Да» (или повтор со старого экрана): срок не растёт, вторая запись не появляется
 	before := len(e.rw.Updates())
 	e.process(t, tgtest.Callback(userID, "trialy"))
 	if len(e.rw.Updates()) != before || len(e.pay.Grants()) != 1 || len(e.pay.Outbox()) != 1 {
-		t.Fatal("повторная выдача")
+		t.Fatal("repeated grant")
 	}
 	if text := e.text(t); !strings.Contains(text, "недоступен") {
 		t.Fatalf("text: %s", text)
@@ -107,7 +107,7 @@ func TestTrialEligibility(t *testing.T) {
 			e := newEnv(t)
 			tc.setup(t, e)
 			if got := e.menuHasTrial(t); got != tc.ok {
-				t.Fatalf("кнопка в меню = %v, want %v", got, tc.ok)
+				t.Fatalf("menu button = %v, want %v", got, tc.ok)
 			}
 			before := len(e.rw.Updates())
 			e.startTrial(t)
@@ -116,18 +116,18 @@ func TestTrialEligibility(t *testing.T) {
 			granted := len(e.pay.Grants()) == 1
 			if name == "already used" {
 				if granted || len(e.rw.Updates()) != before {
-					t.Fatal("повторная выдача")
+					t.Fatal("repeated grant")
 				}
 				return
 			}
 			if granted != tc.ok || (tc.ok && !used) {
-				t.Fatalf("выдан = %v, want %v", granted, tc.ok)
+				t.Fatalf("granted = %v, want %v", granted, tc.ok)
 			}
 			if !tc.ok && len(e.rw.Updates()) != before {
-				t.Fatalf("панель тронута отказом: %v", e.rw.Updates())
+				t.Fatalf("panel touched by a refusal: %v", e.rw.Updates())
 			}
 			if !tc.ok && len(e.pay.Outbox()) > 0 && e.pay.Outbox()[0].TextKey == "trial.started" {
-				t.Fatal("уведомление о выдаче при отказе")
+				t.Fatal("grant notice on refusal")
 			}
 		})
 	}
@@ -137,20 +137,20 @@ func TestTrialDisabledAndSettings(t *testing.T) {
 	e := newEnv(t)
 	e.src.SetSettings(map[string][]byte{"trialDays": []byte(`0`)})
 	if e.menuHasTrial(t) {
-		t.Fatal("кнопка при trialDays=0")
+		t.Fatal("button with trialDays=0")
 	}
 	e.startTrial(t) // подделанный callback
 	if len(e.pay.Grants()) != 0 || e.rw.ExpireAt(userID) != (time.Time{}) {
-		t.Fatal("выдан при выключенном")
+		t.Fatal("granted while disabled")
 	}
 
 	e.src.SetSettings(map[string][]byte{"trialDays": []byte(`7`), "trialDevices": []byte(`4`)})
 	e.startTrial(t)
 	if got := e.rw.ExpireAt(userID); !got.Equal(now.Add(7 * day)) {
-		t.Fatalf("срок %v", got)
+		t.Fatalf("expiry %v", got)
 	}
 	if e.rw.DeviceLimit(userID) != 4 {
-		t.Fatalf("лимит %d", e.rw.DeviceLimit(userID))
+		t.Fatalf("limit %d", e.rw.DeviceLimit(userID))
 	}
 }
 
@@ -160,15 +160,15 @@ func TestTrialPanelFailureRollsBack(t *testing.T) {
 	e.rw.FailUpdateWith(errors.New("panel down"))
 	e.startTrial(t)
 	if _, ok := e.pay.TrialUsedAt(userID); ok || len(e.pay.Grants()) != 0 || len(e.pay.Outbox()) != 0 {
-		t.Fatal("сбой панели оставил следы")
+		t.Fatal("panel failure left traces")
 	}
 	if e.rw.ExpireAt(userID).After(now) {
-		t.Fatal("срок записан")
+		t.Fatal("expiry recorded")
 	}
 	e.rw.FailUpdateWith(nil)
 	e.startTrial(t) // повтор считает ту же дату
 	if got := e.rw.ExpireAt(userID); !got.Equal(now.Add(3 * day)) {
-		t.Fatalf("срок %v", got)
+		t.Fatalf("expiry %v", got)
 	}
 }
 
@@ -179,13 +179,13 @@ func TestTrialCommitFailureRestoresPanel(t *testing.T) {
 	e.pay.FailTrialCommitOnce()
 	e.startTrial(t)
 	if _, ok := e.pay.TrialUsedAt(userID); ok {
-		t.Fatal("trial записан")
+		t.Fatal("trial recorded")
 	}
 	if got := e.rw.ExpireAt(userID); !got.Equal(old) {
-		t.Fatalf("срок не возвращён: %v", got)
+		t.Fatalf("expiry not restored: %v", got)
 	}
 	if w := e.rw.DeviceLimitWrites(); len(w) != 2 || w[0].Limit != 2 || w[1].Limit != 5 {
-		t.Fatalf("лимит не возвращён к базе: %+v", w)
+		t.Fatalf("limit not restored to base: %+v", w)
 	}
 }
 
@@ -197,32 +197,32 @@ func TestTrialCountsAsAdvanceAndConvertsToPaid(t *testing.T) {
 	e.startTrial(t)
 	st, _ := e.pay.UserStats(t.Context(), userID, 0)
 	if st.UnpaidAdvances != 1 {
-		t.Fatalf("после выдачи неоплаченных авансов %d", st.UnpaidAdvances)
+		t.Fatalf("unpaid advances after grant %d", st.UnpaidAdvances)
 	}
 
 	_, advanced := e.round(t) // второй аванс — последний допустимый
 	if !advanced {
-		t.Fatal("аванс при 1 из 2")
+		t.Fatal("advance at 1 of 2")
 	}
 	e.process(t, declinePress(e.pending(t, userID).ID))
 	if _, advanced = e.round(t); advanced {
-		t.Fatal("аванс сверх лимита: пробный не учтён")
+		t.Fatal("advance over the limit: trial not counted")
 	}
 
 	// срок от конца пробного, лимит устройств пишется
 	prev := e.pending(t, userID).PrevExpireAt
 	if want := now.Add(3 * day); !prev.Equal(want) {
-		t.Fatalf("база продления %v, want %v", prev, want)
+		t.Fatalf("extension base %v, want %v", prev, want)
 	}
 	id := e.pending(t, userID).ID
 	limits := len(e.rw.DeviceLimitWrites())
 	e.process(t, confirmPress(id))
 	w := e.rw.DeviceLimitWrites()
 	if len(w) != limits+1 || w[len(w)-1].Limit != 5 || e.rw.DeviceLimit(userID) != 5 {
-		t.Fatalf("конвертация не записала base+extra: %+v", w)
+		t.Fatalf("conversion did not record base+extra: %+v", w)
 	}
 	if st, _ = e.pay.UserStats(t.Context(), userID, 0); st.UnpaidAdvances != 0 {
-		t.Fatalf("после оплаты неоплаченных авансов %d", st.UnpaidAdvances)
+		t.Fatalf("unpaid advances after payment %d", st.UnpaidAdvances)
 	}
 
 	// следующая оплата лимит не трогает
@@ -231,7 +231,7 @@ func TestTrialCountsAsAdvanceAndConvertsToPaid(t *testing.T) {
 	e.process(t, tgtest.Photo(userID))
 	e.process(t, confirmPress(e.pending(t, userID).ID))
 	if got := len(e.rw.DeviceLimitWrites()); got != len(w) {
-		t.Fatalf("лишняя запись лимита: %+v", e.rw.DeviceLimitWrites())
+		t.Fatalf("extra limit record: %+v", e.rw.DeviceLimitWrites())
 	}
 }
 
@@ -244,7 +244,7 @@ func TestTrialShiftsPendingBase(t *testing.T) {
 	}
 	e.startTrial(t)
 	if p := e.pending(t, userID); !p.PrevExpireAt.Equal(now.Add(3 * day)) {
-		t.Fatalf("база pending не сдвинута: %v", p.PrevExpireAt)
+		t.Fatalf("pending base not shifted: %v", p.PrevExpireAt)
 	}
 	_ = model.PaymentPending
 }

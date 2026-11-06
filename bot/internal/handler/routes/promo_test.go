@@ -28,7 +28,7 @@ func TestPriceOffersPromo(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Callback(userID, "price:6"))
 	if kb := e.last(t, "editMessageText").Params.Get("reply_markup"); !strings.Contains(kb, `"callback_data":"have_promo:6"`) {
-		t.Fatalf("клавиатура = %s", kb)
+		t.Fatalf("keyboard = %s", kb)
 	}
 }
 
@@ -40,7 +40,7 @@ func TestHavePromoAsksCode(t *testing.T) {
 	}
 	p := e.last(t, "editMessageText").Params
 	if !strings.Contains(p.Get("text"), "Отправьте промокод сообщением") || !strings.Contains(p.Get("reply_markup"), `"callback_data":"price:6"`) {
-		t.Fatalf("экран = %v", p)
+		t.Fatalf("screen = %v", p)
 	}
 	// подделанный тариф — к списку тарифов, стейт не меняется
 	e2 := newEnv(t)
@@ -58,17 +58,17 @@ func TestPromoDiscountPath(t *testing.T) {
 	text := enterPaymentPromo(t, e, "  summer25 ")
 	for _, want := range []string{"<s>150 ₽</s> <b>112 ₽</b>", "<code>SUMMER25</code>", "1 месяц"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("экран без %q: %s", want, text)
+			t.Fatalf("screen without %q: %s", want, text)
 		}
 	}
 	kb := e.last(t, "sendMessage").Params.Get("reply_markup")
 	for _, want := range []string{`"callback_data":"buyp:1:1"`, `"callback_data":"pay"`, `"callback_data":"price:1"`, "Убрать промокод"} {
 		if !strings.Contains(kb, want) {
-			t.Fatalf("клавиатура без %s: %s", want, kb)
+			t.Fatalf("keyboard without %s: %s", want, kb)
 		}
 	}
 	if st := e.state(t, userID); st != fsm.StateNone {
-		t.Fatalf("после ввода кода state = %q", st)
+		t.Fatalf("state after code input = %q", st)
 	}
 
 	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
@@ -80,10 +80,10 @@ func TestPromoDiscountPath(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Переведите <b>112 ₽</b>") {
-		t.Fatalf("реквизиты = %s", text)
+		t.Fatalf("payment details = %s", text)
 	}
 	if n := len(e.pay.Activations()); n != 0 {
-		t.Fatalf("активация до подтверждения: %d", n)
+		t.Fatalf("activation before confirmation: %d", n)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestPromoPhotoShowsPromoToAdmin(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("админу не показан промокод")
+		t.Fatal("promo not shown to the admin")
 	}
 }
 
@@ -136,7 +136,7 @@ func TestPromoFreeConfirmsImmediately(t *testing.T) {
 	}
 	admin := adminMessages(e)
 	if len(admin) != 1 || !strings.Contains(admin[0].Params.Get("text"), "FREE") || admin[0].Params.Get("reply_markup") != "" {
-		t.Fatalf("админу = %+v", admin)
+		t.Fatalf("admin got %+v", admin)
 	}
 
 	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
@@ -147,7 +147,7 @@ func TestPromoFreeConfirmsImmediately(t *testing.T) {
 		t.Fatalf("payments = %d", n)
 	}
 	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "уже использовали") {
-		t.Fatalf("повтор = %s", text)
+		t.Fatalf("retry = %s", text)
 	}
 }
 
@@ -280,7 +280,7 @@ func TestPromoRejectReasons(t *testing.T) {
 				t.Fatalf("text = %s", text)
 			}
 			if st := e.state(t, userID); st != wantState {
-				t.Fatalf("state = %q, ждём код снова", st)
+				t.Fatalf("state = %q, expecting the code again", st)
 			}
 			if n := len(e.pay.All()); n != before {
 				t.Fatalf("payments = %d", n)
@@ -313,7 +313,7 @@ func TestBuypForged(t *testing.T) {
 				t.Fatalf("updates = %d", n)
 			}
 			if got := e.rw.ExpireAt(userID); !got.IsZero() {
-				t.Fatalf("юзер создан: %v", got)
+				t.Fatalf("user created: %v", got)
 			}
 		})
 	}
@@ -323,12 +323,12 @@ func TestMenuHasPromoButton(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Message(userID, "/start"))
 	if kb := e.last(t, "sendMessage").Params.Get("reply_markup"); !strings.Contains(kb, `"callback_data":"promo"`) {
-		t.Fatalf("без юзера: %s", kb)
+		t.Fatalf("without user: %s", kb)
 	}
 	e.rw.AddUser(userID, now)
 	e.process(t, tgtest.Message(userID, "/start"))
 	if kb := e.last(t, "sendMessage").Params.Get("reply_markup"); !strings.Contains(kb, `"callback_data":"promo"`) {
-		t.Fatalf("с юзером: %s", kb)
+		t.Fatalf("with user: %s", kb)
 	}
 }
 
@@ -344,7 +344,7 @@ func TestDaysPromoFromMenu(t *testing.T) {
 	}
 	p := e.last(t, "editMessageText").Params
 	if !strings.Contains(p.Get("text"), "Отправьте промокод") || !strings.Contains(p.Get("reply_markup"), `"callback_data":"menu"`) {
-		t.Fatalf("экран = %v", p)
+		t.Fatalf("screen = %v", p)
 	}
 	e.process(t, tgtest.Message(userID, " week "))
 	want := expire.Add(7 * 24 * time.Hour)
@@ -362,7 +362,7 @@ func TestDaysPromoFromMenu(t *testing.T) {
 	e.process(t, tgtest.Callback(userID, "promo"))
 	e.process(t, tgtest.Message(userID, "WEEK"))
 	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "уже использовали") {
-		t.Fatalf("повтор = %s", text)
+		t.Fatalf("retry = %s", text)
 	}
 	if n := len(e.rw.Updates()); n != 1 {
 		t.Fatalf("updates = %d", n)
@@ -409,7 +409,7 @@ func TestStartLeavesPromoState(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 	if kb := e.last(t, "sendMessage").Params.Get("reply_markup"); !strings.Contains(kb, `"callback_data":"pay"`) {
-		t.Fatalf("клавиатура = %s", kb)
+		t.Fatalf("keyboard = %s", kb)
 	}
 
 	e.process(t, tgtest.Callback(userID, "buy:6"))
@@ -461,7 +461,7 @@ func TestPromoFreeRepeatRefusedWithoutLock(t *testing.T) {
 			case model.PaymentConfirmed:
 				confirmed++
 			case model.PaymentPending:
-				t.Fatalf("остался pending: %+v", p)
+				t.Fatalf("pending left: %+v", p)
 			case model.PaymentDeclined, model.PaymentCancelled:
 			}
 		}
@@ -520,7 +520,7 @@ func TestPromoFreeLastActivationRace(t *testing.T) {
 			case model.PaymentConfirmed:
 				confirmed++
 			case model.PaymentPending:
-				t.Fatalf("остался pending: %+v", p)
+				t.Fatalf("pending left: %+v", p)
 			case model.PaymentDeclined, model.PaymentCancelled:
 			}
 		}
@@ -534,7 +534,7 @@ func TestPromoFreeLastActivationRace(t *testing.T) {
 			}
 		}
 		if exhausted != 1 {
-			t.Fatalf("отказов «закончились» = %d", exhausted)
+			t.Fatalf("exhausted refusals = %d", exhausted)
 		}
 	}
 }
@@ -603,7 +603,7 @@ func TestPromoReviewShowsAmountDue(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("админу не показана сумма к оплате")
+	t.Fatal("amount due not shown to the admin")
 }
 
 // Заблокированному админом юзеру ни скидка, ни дни, ни 0 ₽ не выдаются; причина неотличима от «кода нет».
@@ -615,10 +615,10 @@ func TestBlockedUserPromosRefused(t *testing.T) {
 		e.pay.AddPromo(model.Promo{Code: "OFF", Kind: model.PromoPercent, Value: 25})
 		e.pay.SetBlocked(userID, true)
 		if text := enterPaymentPromo(t, e, "off"); strings.Contains(text, "112") {
-			t.Fatalf("скидка показана: %s", text)
+			t.Fatalf("discount shown: %s", text)
 		}
 		if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, notFound) {
-			t.Fatalf("ответ = %s", text)
+			t.Fatalf("answer = %s", text)
 		}
 	})
 
@@ -630,10 +630,10 @@ func TestBlockedUserPromosRefused(t *testing.T) {
 		e.pay.SetBlocked(userID, true) // заблокировали, пока юзер смотрел экран
 		e.process(t, tgtest.Callback(userID, "buyp:1:1"))
 		if n := len(e.pay.All()); n != 0 {
-			t.Fatalf("платёж со скидкой создан: %+v", e.pay.All())
+			t.Fatalf("discounted payment created: %+v", e.pay.All())
 		}
 		if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, notFound) {
-			t.Fatalf("ответ = %s", text)
+			t.Fatalf("answer = %s", text)
 		}
 	})
 
@@ -649,7 +649,7 @@ func TestBlockedUserPromosRefused(t *testing.T) {
 		}
 		for _, p := range e.pay.All() {
 			if p.Status == model.PaymentConfirmed {
-				t.Fatalf("0 ₽ подтверждён: %+v", p)
+				t.Fatalf("0 RUB confirmed: %+v", p)
 			}
 		}
 		if n := len(e.pay.Activations()); n != 0 {
@@ -668,7 +668,7 @@ func TestBlockedUserPromosRefused(t *testing.T) {
 			t.Fatalf("UpdateUser calls = %d", n)
 		}
 		if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, notFound) {
-			t.Fatalf("ответ = %s", text)
+			t.Fatalf("answer = %s", text)
 		}
 		// после снятия блокировки код работает
 		e.pay.SetBlocked(userID, false)
@@ -692,7 +692,7 @@ func TestPromoFreeDeviceLimitFailureKeepsTerm(t *testing.T) {
 	enterPaymentPromo(t, e, "free")
 	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
 	if got := e.rw.ExpireAt(userID); !got.Equal(trialEnd) {
-		t.Fatalf("срок изменён: %v", got)
+		t.Fatalf("expiry changed: %v", got)
 	}
 	if all := e.pay.All(); len(all) != 1 || all[0].Status != model.PaymentCancelled || len(e.pay.Activations()) != 0 {
 		t.Fatalf("payments = %+v", all)
@@ -701,7 +701,7 @@ func TestPromoFreeDeviceLimitFailureKeepsTerm(t *testing.T) {
 	e.rw.FailLimitWith(nil)
 	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
 	if got, want := e.rw.ExpireAt(userID), trialEnd.Add(30*24*time.Hour); !got.Equal(want) {
-		t.Fatalf("после повтора: %v, want %v", got, want)
+		t.Fatalf("after retry: %v, want %v", got, want)
 	}
 }
 
@@ -716,10 +716,10 @@ func TestPromoFreeCommitFailureRestoresTerm(t *testing.T) {
 	enterPaymentPromo(t, e, "free")
 	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
 	if got := e.rw.ExpireAt(userID); !got.Equal(expire) {
-		t.Fatalf("срок не возвращён: %v", got)
+		t.Fatalf("expiry not restored: %v", got)
 	}
 	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
 	if got, want := e.rw.ExpireAt(userID), expire.Add(30*24*time.Hour); !got.Equal(want) {
-		t.Fatalf("после повтора: %v, want %v", got, want)
+		t.Fatalf("after retry: %v, want %v", got, want)
 	}
 }

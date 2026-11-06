@@ -111,10 +111,10 @@ func TestThresholdsFromSettings(t *testing.T) {
 	e.week, e.day = 14*24*time.Hour, 2*time.Hour
 	e.r.Run(t.Context())
 	if got := e.n.forID(1001); len(got) != 1 || got[0].kind != reminder.Week {
-		t.Fatalf("10 дней при пороге 14: %+v", got)
+		t.Fatalf("10 days at threshold 14: %+v", got)
 	}
 	if got := e.n.forID(1002); len(got) != 1 || got[0].kind != reminder.Week {
-		t.Fatalf("3 часа при пороге 2 часа: %+v", got)
+		t.Fatalf("3 hours at threshold 2 hours: %+v", got)
 	}
 	// ключ живёт дольше окна, иначе напоминание за 14 дней повторится
 	key := fmt.Sprintf("notify:1001:%d:week", now.Add(10*24*time.Hour).Unix())
@@ -202,12 +202,12 @@ func TestTemporaryFailureRetries(t *testing.T) {
 	e.n.errs[userID] = errors.New("oops")
 	e.r.Run(t.Context())
 	if e.mr.Exists(key) {
-		t.Fatal("ключ не должен остаться после временной ошибки")
+		t.Fatal("key must not remain after a transient error")
 	}
 	delete(e.n.errs, userID)
 	e.r.Run(t.Context())
 	if !e.mr.Exists(key) {
-		t.Fatal("ключ должен быть после успешной отправки")
+		t.Fatal("key must exist after a successful send")
 	}
 	if len(e.n.calls) != 2 {
 		t.Fatalf("calls = %d, want 2", len(e.n.calls))

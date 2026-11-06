@@ -21,16 +21,16 @@ func TestStartAndStop(t *testing.T) {
 		},
 	)
 	if err := l.Start(t.Context()); err != nil {
-		t.Fatalf("ожидалось что lifecycle.Start не вернет ошибку")
+		t.Fatalf("lifecycle.Start expected to succeed")
 	}
 	if !isStarted {
-		t.Fatalf("ожидалось что lifecycle включен")
+		t.Fatalf("lifecycle expected to be enabled")
 	}
 	if err := l.Stop(t.Context()); err != nil {
-		t.Fatalf("ожидалось что lifecycle.Stop не вернет ошибку")
+		t.Fatalf("lifecycle.Stop expected to succeed")
 	}
 	if isStarted {
-		t.Fatalf("ожидалось что lifecycle выключен")
+		t.Fatalf("lifecycle expected to be disabled")
 	}
 }
 
@@ -44,7 +44,7 @@ func TestStartError(t *testing.T) {
 		},
 	)
 	if err := l.Start(t.Context()); err == nil {
-		t.Fatalf("ожидалось что lifecycle.Start вернет ошибку")
+		t.Fatalf("lifecycle.Start expected to fail")
 	}
 }
 
@@ -58,9 +58,9 @@ func TestStopError(t *testing.T) {
 		},
 	)
 	if err := l.Start(t.Context()); err != nil {
-		t.Fatalf("ожидалось что lifecycle.Start не вернет ошибку")
+		t.Fatalf("lifecycle.Start expected to succeed")
 	}
 	if err := l.Stop(t.Context()); err == nil {
-		t.Fatalf("ожидалось что lifecycle.Stop вернет ошибку")
+		t.Fatalf("lifecycle.Stop expected to fail")
 	}
 }

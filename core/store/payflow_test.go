@@ -205,7 +205,7 @@ func TestGrantAdvanceHoldsRow(t *testing.T) {
 	done := make(chan error, 1)
 	err = s.GrantAdvance(ctx, p.ID, func(locked model.Payment) {
 		if !locked.AdvanceGranted {
-			t.Error("флаг ставится до записи в панель")
+			t.Error("flag is set before the panel write")
 		}
 		started.Store(true)
 		go func() {
@@ -229,7 +229,7 @@ func TestGrantAdvanceHoldsRow(t *testing.T) {
 	}
 
 	// платёж уже решён: панель не трогаем
-	err = s.GrantAdvance(ctx, p.ID, func(model.Payment) { t.Error("apply на решённом платеже") })
+	err = s.GrantAdvance(ctx, p.ID, func(model.Payment) { t.Error("apply on a resolved payment") })
 	if !errors.Is(err, ErrNotPending) {
 		t.Fatalf("resolved: %v", err)
 	}

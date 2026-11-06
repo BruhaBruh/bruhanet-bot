@@ -45,12 +45,12 @@ func TestStartRunsComponentsInOrder(t *testing.T) {
 	)
 
 	if err := a.Start(t.Context()); err != nil {
-		t.Fatalf("Start() вернул ошибку: %v", err)
+		t.Fatalf("Start() returned an error: %v", err)
 	}
 
 	want := []string{"start:первый", "start:второй"}
 	if !equal(rec.events, want) {
-		t.Fatalf("порядок запуска %v, ожидался %v", rec.events, want)
+		t.Fatalf("start order %v, want %v", rec.events, want)
 	}
 }
 
@@ -64,24 +64,24 @@ func TestStopRunsComponentsInReverseOrder(t *testing.T) {
 	)
 
 	if err := a.Start(t.Context()); err != nil {
-		t.Fatalf("Start() вернул ошибку: %v", err)
+		t.Fatalf("Start() returned an error: %v", err)
 	}
 
 	rec.events = nil
 
 	if err := a.Stop(t.Context()); err != nil {
-		t.Fatalf("Stop() вернул ошибку: %v", err)
+		t.Fatalf("Stop() returned an error: %v", err)
 	}
 
 	want := []string{"stop:второй", "stop:первый"}
 	if !equal(rec.events, want) {
-		t.Fatalf("порядок остановки %v, ожидался %v", rec.events, want)
+		t.Fatalf("stop order %v, want %v", rec.events, want)
 	}
 }
 
 func TestStartRollsBackStartedComponentsOnFailure(t *testing.T) {
 	rec := &recorder{}
-	boom := errors.New("не поднялся")
+	boom := errors.New("failed to start")
 
 	a := app.New(
 		app.WithLogger(quietLogger()),
@@ -92,19 +92,19 @@ func TestStartRollsBackStartedComponentsOnFailure(t *testing.T) {
 
 	err := a.Start(t.Context())
 	if !errors.Is(err, boom) {
-		t.Fatalf("Start() вернул %v, ожидалась обёртка над boom", err)
+		t.Fatalf("Start() returned %v, want a wrapper of boom", err)
 	}
 
 	want := []string{"start:первый", "start:второй", "stop:первый"}
 	if !equal(rec.events, want) {
-		t.Fatalf("последовательность %v, ожидалась %v", rec.events, want)
+		t.Fatalf("sequence %v, want %v", rec.events, want)
 	}
 }
 
 func TestStopJoinsErrors(t *testing.T) {
 	rec := &recorder{}
-	first := errors.New("первый не закрылся")
-	second := errors.New("второй не закрылся")
+	first := errors.New("first failed to close")
+	second := errors.New("second failed to close")
 
 	a := app.New(
 		app.WithLogger(quietLogger()),
@@ -113,17 +113,17 @@ func TestStopJoinsErrors(t *testing.T) {
 	)
 
 	if err := a.Start(t.Context()); err != nil {
-		t.Fatalf("Start() вернул ошибку: %v", err)
+		t.Fatalf("Start() returned an error: %v", err)
 	}
 
 	err := a.Stop(t.Context())
 
 	if !errors.Is(err, first) {
-		t.Fatalf("Stop() потерял ошибку первого компонента: %v", err)
+		t.Fatalf("Stop() lost the first component error: %v", err)
 	}
 
 	if !errors.Is(err, second) {
-		t.Fatalf("Stop() потерял ошибку второго компонента: %v", err)
+		t.Fatalf("Stop() lost the second component error: %v", err)
 	}
 }
 
@@ -136,11 +136,11 @@ func TestStopSkipsComponentsThatNeverStarted(t *testing.T) {
 	)
 
 	if err := a.Stop(t.Context()); err != nil {
-		t.Fatalf("Stop() без Start вернул ошибку: %v", err)
+		t.Fatalf("Stop() without Start returned an error: %v", err)
 	}
 
 	if len(rec.events) != 0 {
-		t.Fatalf("Stop() без Start тронул компоненты: %v", rec.events)
+		t.Fatalf("Stop() without Start touched components: %v", rec.events)
 	}
 }
 
@@ -148,11 +148,11 @@ func TestTimeoutsHaveDefaults(t *testing.T) {
 	a := app.New(app.WithLogger(quietLogger()))
 
 	if a.StartTimeout() != 15*time.Second {
-		t.Fatalf("умолчание StartTimeout = %s, ожидалось 15s", a.StartTimeout())
+		t.Fatalf("default StartTimeout = %s, want 15s", a.StartTimeout())
 	}
 
 	if a.StopTimeout() != 30*time.Second {
-		t.Fatalf("умолчание StopTimeout = %s, ожидалось 30s", a.StopTimeout())
+		t.Fatalf("default StopTimeout = %s, want 30s", a.StopTimeout())
 	}
 }
 
@@ -164,11 +164,11 @@ func TestTimeoutOptionsOverrideDefaults(t *testing.T) {
 	)
 
 	if a.StartTimeout() != time.Second {
-		t.Fatalf("StartTimeout = %s, ожидалась 1s", a.StartTimeout())
+		t.Fatalf("StartTimeout = %s, want 1s", a.StartTimeout())
 	}
 
 	if a.StopTimeout() != 2*time.Second {
-		t.Fatalf("StopTimeout = %s, ожидались 2s", a.StopTimeout())
+		t.Fatalf("StopTimeout = %s, want 2s", a.StopTimeout())
 	}
 }
 
