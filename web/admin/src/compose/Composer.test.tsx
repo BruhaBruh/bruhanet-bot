@@ -30,7 +30,7 @@ vi.mock('./PhotoPicker', () => ({
   },
 }))
 
-type Body = { idempotencyKey?: string; text?: string; photo?: string }
+type Body = { idempotencyKey?: string; text?: string; photo?: string; audience?: string; audienceDays?: number | null }
 type Call = { url: string; method: string; body?: Body }
 let calls: Call[]
 let replies: Record<string, (() => Response | Promise<Response>)[]>
@@ -40,7 +40,10 @@ const json = (status: number, body?: unknown) => () =>
 
 beforeEach(() => {
   calls = []
-  replies = { 'GET /api/broadcasts/recipients': [json(200, { count: 3 })] }
+  replies = {
+    'GET /api/broadcasts/recipients?days=7': [json(200, { all: 3, active: 2, no_subscription: 1, expiring: 1 })],
+    'GET /api/broadcasts/recipients?audience=all': [json(200, { count: 3 })],
+  }
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     const method = init.method ?? 'GET'
     calls.push({ url, method, body: init.body ? JSON.parse(String(init.body)) : undefined })
@@ -149,7 +152,7 @@ describe('Composer', () => {
   })
 
   it('confirm dialog shows the last-minute recipients count', async () => {
-    replies['GET /api/broadcasts/recipients'] = [json(200, { count: 3 }), json(200, { count: 21 })]
+    replies['GET /api/broadcasts/recipients?audience=all'] = [json(200, { count: 21 })]
     const { setText, click } = await setup()
     await setText('hi')
     await click(SEND)
@@ -157,19 +160,19 @@ describe('Composer', () => {
   })
 
   it('recipients gone by the time of send: no dialog', async () => {
-    replies['GET /api/broadcasts/recipients'] = [json(200, { count: 3 }), json(502, { error: 'panel_unavailable' })]
+    replies['GET /api/broadcasts/recipients?audience=all'] = [json(502, { error: 'internal' })]
     const { r, setText, click } = await setup()
     await setText('hi')
     await click(SEND)
     expect(screen.queryByRole('alertdialog')).toBeNull()
-    expect(r.container.textContent).toContain('Панель недоступна, количество получателей неизвестно')
+    expect(r.container.textContent).toContain('Не удалось получить количество получателей')
   })
 
   describe('while recipients are re-fetched', () => {
     async function asking(text: string) {
       let release!: () => void
       const gate = new Promise<void>((r) => (release = r))
-      replies['GET /api/broadcasts/recipients'] = [json(200, { count: 3 }), () => gate.then(() => json(200, { count: 3 })())]
+      replies['GET /api/broadcasts/recipients?audience=all'] = [() => gate.then(() => json(200, { count: 3 })())]
       const s = await setup()
       await s.setText(text)
       fireEvent.click(s.btn(SEND)!)
@@ -306,37 +309,37 @@ describe('Composer', () => {
   })
 
   it('panel down: no recipients count, broadcast disabled', async () => {
-    replies['GET /api/broadcasts/recipients'] = [json(502, { error: 'panel_unavailable' })]
+    replies['GET /api/broadcasts/recipients?days=7'] = [json(502, { error: 'internal' })]
     const { r, setText, btn } = await setup()
     await setText('hi')
-    expect(r.container.textContent).toContain('Панель недоступна, количество получателей неизвестно')
+    expect(r.container.textContent).toContain('Не удалось получить количество получателей')
     expect(disabled(btn(CONFIRM))).toBe(true)
   })
 
   it('zero recipients: broadcast disabled, label shows 0', async () => {
-    replies['GET /api/broadcasts/recipients'] = [json(200, { count: 0 })]
+    replies['GET /api/broadcasts/recipients?days=7'] = [json(200, { all: 0, active: 0, no_subscription: 0, expiring: 0 })]
     const { setText, btn } = await setup()
     await setText('hi')
     expect(disabled(btn('Отправить 0 получателям'))).toBe(true)
   })
 
   it('failed recipients load can be retried', async () => {
-    replies['GET /api/broadcasts/recipients'] = [json(502, { error: 'panel_unavailable' }), json(200, { count: 3 })]
+    replies['GET /api/broadcasts/recipients?days=7'] = [json(502, { error: 'internal' }), json(200, { all: 3 })]
     const { r, setText, btn, click } = await setup()
     await setText('hi')
     await click('Повторить')
     expect(btn('Повторить')).toBeUndefined()
-    expect(r.container.textContent).not.toContain('количество получателей неизвестно')
+    expect(r.container.textContent).not.toContain('Не удалось получить количество')
     expect(disabled(btn(SEND))).toBe(false)
   })
 
-  it('panel down on send: explains that no broadcast was created', async () => {
-    replies['POST /api/broadcasts'] = [json(502, { error: 'panel_unavailable' })]
+  it('a server refusal is shown with its message', async () => {
+    replies['POST /api/broadcasts'] = [json(400, { error: 'invalid', message: 'время отправки уже прошло' })]
     const { setText, click } = await setup()
     await setText('hi')
     await click(SEND)
     await click(CONFIRM)
-    expect(screen.getByRole('alert').textContent).toBe('Панель недоступна, рассылка не создана')
+    expect(screen.getByRole('alert').textContent).toBe('время отправки уже прошло')
   })
 
   it('editor and photo picker are locked while a send is in flight', async () => {
@@ -357,7 +360,7 @@ describe('Composer', () => {
   it('direct mode posts to the user without confirm', async () => {
     replies['POST /api/users/7/messages'] = [json(201, { id: 5 })]
     const { onSent, setText, click } = await setup({ mode: 'direct', userId: 7 })
-    expect(calls.some((c) => c.url === '/api/broadcasts/recipients')).toBe(false)
+    expect(calls.some((c) => c.url.startsWith('/api/broadcasts/recipients'))).toBe(false)
     await setText('hi')
     await click('Отправить')
     expect(calls.at(-1)).toMatchObject({ url: '/api/users/7/messages', method: 'POST', body: { text: 'hi' } })
@@ -384,8 +387,52 @@ describe('Composer', () => {
     for (const name of ['Отправить позже', 'Без звука']) {
       expect(screen.getByRole('switch', { name }).hasAttribute('disabled')).toBe(true)
     }
-    for (const box of screen.getAllByRole('checkbox')) expect(box.hasAttribute('disabled')).toBe(true)
     expect((screen.getByRole('textbox', { name: 'Текст кнопки' }) as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('audience radios show counts and the choice goes to the server with days', async () => {
+    replies['GET /api/broadcasts/recipients?days=3'] = [json(200, { all: 3, active: 2, no_subscription: 1, expiring: 5 })]
+    replies['GET /api/broadcasts/recipients?audience=expiring&days=3'] = [json(200, { count: 5 })]
+    replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
+    const { setText, click } = await setup()
+    const counts = () => ['Все пользователи', 'Активные подписчики', 'Без подписки', 'Подписка истекает через'].map((n) => screen.getByLabelText(`Получателей: ${n}`).textContent)
+    expect(counts()).toEqual(['3', '2', '1', '1'])
+    expect(screen.getByRole('radio', { name: 'Все пользователи' }).getAttribute('aria-checked')).toBe('true')
+    await setText('hi')
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Дней до окончания подписки' }), { target: { value: '3' } })
+    await flush()
+    expect(screen.getByRole('radio', { name: 'Подписка истекает через' }).getAttribute('aria-checked')).toBe('true')
+    expect(counts()[3]).toBe('5')
+    await click('Отправить 5 получателям')
+    expect(screen.getByRole('alertdialog').textContent).toContain('получат 5 пользователей из группы «Подписка истекает через 3 дня»')
+    await click(CONFIRM)
+    expect(posts()[0].body).toMatchObject({ audience: 'expiring', audienceDays: 3 })
+  })
+
+  it('days outside 1..60 disable sending', async () => {
+    const { setText, btn } = await setup()
+    await setText('hi')
+    const days = screen.getByRole('spinbutton', { name: 'Дней до окончания подписки' })
+    for (const bad of ['0', '61', '', '1.5']) {
+      fireEvent.change(days, { target: { value: bad } })
+      await flush()
+      expect(disabled(btn('Отправить')), bad).toBe(true)
+    }
+    fireEvent.change(days, { target: { value: '60' } })
+    await flush()
+    expect(screen.getByRole('radio', { name: 'Подписка истекает через' }).getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('other audiences send null days', async () => {
+    replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
+    replies['GET /api/broadcasts/recipients?audience=active'] = [json(200, { count: 2 })]
+    const { setText, click } = await setup()
+    await setText('hi')
+    fireEvent.click(screen.getByRole('radio', { name: 'Активные подписчики' }))
+    await flush()
+    await click('Отправить 2 получателям')
+    await click(CONFIRM)
+    expect(posts()[0].body).toMatchObject({ audience: 'active', audienceDays: null })
   })
 
   it('preview shows sanitized text and the initial draft', async () => {

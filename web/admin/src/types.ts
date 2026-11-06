@@ -103,15 +103,31 @@ export interface Settings {
   problems?: string[]
 }
 
+export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled'
+export type Audience = 'all' | 'active' | 'no_subscription' | 'expiring'
+
 export interface Broadcast {
   id: string
+  status: BroadcastStatus
   text: string
   photo?: string
+  audience: Audience
+  audienceDays: number | null
+  silent: boolean
+  buttons: BroadcastButton[]
+  scheduledAt: string | null
   total: number
   sent: number
   failed: number
   createdAt: string
+  updatedAt: string
   finishedAt: string | null
+}
+
+export interface BroadcastButton {
+  text: string
+  url: string
+  style: '' | 'primary' | 'success' | 'danger'
 }
 
 export interface DirectMessage {

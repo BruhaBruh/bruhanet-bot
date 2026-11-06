@@ -4,6 +4,7 @@ import { notWired } from '@/lib/not-wired'
 import { cn } from '@/lib/utils'
 import { Button, DataTable, Icon, RowAction, SegmentedControl, StatusTag, toast, type DataTableColumn } from '@/ui'
 import { get } from '../api'
+import { audienceLabel } from '../compose/audience'
 import { visibleText } from '../editor/serialize'
 import { formatCount, formatShortDate } from '../format'
 import type { Broadcast } from '../types'
@@ -59,7 +60,7 @@ const columns: DataTableColumn<Broadcast>[] = [
       )
     },
   },
-  { key: 'audience', title: 'Аудитория', secondary: true, truncate: true, maxWidth: 220, render: () => 'Все пользователи' },
+  { key: 'audience', title: 'Аудитория', secondary: true, truncate: true, maxWidth: 220, render: (b) => audienceLabel(b.audience, String(b.audienceDays ?? '')) },
   { key: 'total', title: 'Получатели', numeric: true, sortable: true, width: 120, render: (b) => formatCount(b.total) },
   { key: 'opens', title: 'Открыли', numeric: true, sortable: true, width: 100, render: () => DASH },
   { key: 'buttons', title: 'Кнопки', numeric: true, width: 90, render: () => DASH },

@@ -2,18 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import { BOT_NAME, OWNER_USERNAME } from '@/brand'
 import { cn } from '@/lib/utils'
 import { NOT_WIRED } from '@/lib/not-wired'
-import { Avatar, Button, Card, Checkbox, Dialog, Icon, Input, MessageBubble, Switch, toast } from '@/ui'
+import { Avatar, Button, Card, Dialog, Icon, Input, MessageBubble, Radio, RadioGroup, Switch, toast } from '@/ui'
 import { ApiError, get, post } from '../api'
 import { previewHtml, renderPreview, varLabel, visibleText, worstLen } from '../editor/serialize'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { formatCount, plural } from '../format'
-import type { Broadcast, DirectMessage, TextVar } from '../types'
+import type { Audience, Broadcast, DirectMessage, TextVar } from '../types'
+import { AUDIENCES, audienceLabel, daysValid, DEFAULT_DAYS, MAX_DAYS, MIN_DAYS } from './audience'
 import { PhotoPicker } from './PhotoPicker'
 
 export interface ComposerDraft {
   text: string
   photo?: string
+  audience?: Audience
+  audienceDays?: number | null
 }
 
 // broadcast — всем из панели; direct — одному юзеру (userId)
@@ -21,8 +24,7 @@ export type ComposerProps =
   | { mode: 'broadcast'; initial?: ComposerDraft | null; onSent?(b: Broadcast): void }
   | { mode: 'direct'; userId: number; onSent?(m: DirectMessage): void }
 
-const AUDIENCE = 'Все пользователи'
-const OTHER_AUDIENCES = ['Активные подписчики', 'Без подписки', 'Пробный период']
+type Counts = Partial<Record<Audience, number>>
 // Цвета стилей кнопок — как в макете, без бэкенда только образец.
 const BUTTON_STYLES = [
   { label: 'Обычная', className: 'bg-keyboard-btn-bg shadow-[inset_0_0_0_1px_var(--separator)]' },
@@ -48,9 +50,16 @@ function Toggle({ title, subtitle, last }: { title: string; subtitle: string; la
   )
 }
 
-// undefined — панель недоступна
-const fetchRecipients = () =>
-  get<{ count: number }>('/api/broadcasts/recipients').then(
+// Все аудитории сразу (expiring — за days дней); undefined — не удалось получить
+const fetchCounts = (days: string) =>
+  get<Counts>(`/api/broadcasts/recipients${daysValid(days) ? `?days=${days}` : ''}`).then(
+    (r) => r,
+    () => undefined,
+  )
+
+// Одна аудитория на момент клика; undefined — не удалось получить
+const fetchRecipients = (audience: Audience, days: string) =>
+  get<{ count: number }>(`/api/broadcasts/recipients?audience=${audience}${audience === 'expiring' ? `&days=${days}` : ''}`).then(
     (r) => r.count,
     () => undefined,
   )
@@ -65,8 +74,10 @@ export function Composer(props: ComposerProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
-  // null — грузится, undefined — панель недоступна
-  const [recipients, setRecipients] = useState<number | null | undefined>(null)
+  const [audience, setAudience] = useState<Audience>(initial?.audience ?? 'all')
+  const [days, setDays] = useState(initial?.audienceDays ? String(initial.audienceDays) : DEFAULT_DAYS)
+  // null — грузится, undefined — не удалось получить
+  const [counts, setCounts] = useState<Counts | null | undefined>(null)
   const [uploading, setUploading] = useState(false)
   const [globals, setGlobals] = useState<TextVar[]>([])
   const editorRef = useRef<TgEditorHandle>(null)
@@ -77,9 +88,10 @@ export function Composer(props: ComposerProps) {
   // синхронный флаг: второй клик до перерисовки не шлёт второй запрос
   const inFlight = useRef(false)
 
+  const daysOk = daysValid(days)
   useEffect(() => {
-    if (isBroadcast) void fetchRecipients().then(setRecipients)
-  }, [isBroadcast])
+    if (isBroadcast) void fetchCounts(daysOk ? days : '').then(setCounts)
+  }, [isBroadcast, days, daysOk])
 
   // Не загрузились — нет чипов и примеров, сервер всё равно проверит текст.
   useEffect(() => {
@@ -100,6 +112,12 @@ export function Composer(props: ComposerProps) {
     setText(next)
   }
   // Загрузка фото заканчивается позже: здесь нельзя трогать текст, замыкание его не видит.
+  function changeAudience(next: Audience, nextDays = days) {
+    if (next === audience && nextDays === days) return
+    draftChanged()
+    setAudience(next)
+    setDays(nextDays)
+  }
   function changePhoto(next?: string, url?: string) {
     draftChanged()
     setPhoto(next)
@@ -112,14 +130,18 @@ export function Composer(props: ComposerProps) {
   const over = len - limit
   const hasVars = /\{\{\s*\.[^{}\s]+\s*\}\}/.test(text)
   const blank = visibleText(text).trim() === ''
-  const valid = !uploading && over <= 0 && (!!photo || !blank)
+  const valid = !uploading && over <= 0 && (!!photo || !blank) && (audience !== 'expiring' || daysOk)
   // Для кода после await: файл из уже открытого окна выбора может прийти и под busy.
   const validNow = useRef(valid)
   useEffect(() => {
     validNow.current = valid
   }, [valid])
 
+  // null — грузится или для аудитории нет числа (дни не заданы), undefined — не удалось получить
+  const recipients = counts == null ? counts : (counts[audience] ?? null)
+
   const body = () => ({ text, ...(photo ? { photo } : {}) })
+  const broadcastBody = () => ({ ...body(), audience, audienceDays: audience === 'expiring' ? Number(days) : null })
 
   async function run(fn: () => Promise<void>) {
     if (inFlight.current) return
@@ -130,11 +152,7 @@ export function Composer(props: ComposerProps) {
       await fn()
     } catch (e) {
       setError(
-        e instanceof ApiError && e.body.error === 'panel_unavailable'
-          ? 'Панель недоступна, рассылка не создана'
-          : e instanceof ApiError && e.body.message
-            ? e.body.message
-            : 'Не удалось отправить, попробуйте ещё раз',
+        e instanceof ApiError && e.body.message ? e.body.message : 'Не удалось отправить, попробуйте ещё раз',
       )
     } finally {
       inFlight.current = false
@@ -156,8 +174,8 @@ export function Composer(props: ComposerProps) {
   // Диалог называет число получателей на момент клика: на странице оно могло устареть.
   const askSend = () =>
     run(async () => {
-      const count = await fetchRecipients()
-      setRecipients(count)
+      const count = await fetchRecipients(audience, days)
+      setCounts(count === undefined ? undefined : (c) => ({ ...c, [audience]: count }))
       if (count && validNow.current) setConfirming(true)
     })
 
@@ -165,7 +183,7 @@ export function Composer(props: ComposerProps) {
     run(async () => {
       setConfirming(false)
       if (!valid) return
-      const { broadcast } = await post<{ broadcast: Broadcast }>('/api/broadcasts', { idempotencyKey: key.current, ...body() })
+      const { broadcast } = await post<{ broadcast: Broadcast }>('/api/broadcasts', { idempotencyKey: key.current, ...broadcastBody() })
       reset()
       if (props.mode === 'broadcast') props.onSent?.(broadcast)
     })
@@ -251,15 +269,15 @@ export function Composer(props: ComposerProps) {
 
   const messages = (
     <>
-      {isBroadcast && recipients === undefined && (
+      {isBroadcast && counts === undefined && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-destructive-strong">
-          Панель недоступна, количество получателей неизвестно
+          Не удалось получить количество получателей
           <Button
             variant="plain"
             size="sm"
             onClick={() => {
-              setRecipients(null)
-              void fetchRecipients().then(setRecipients)
+              setCounts(null)
+              void fetchCounts(daysOk ? days : '').then(setCounts)
             }}
           >
             Повторить
@@ -346,17 +364,40 @@ export function Composer(props: ComposerProps) {
         </Card>
 
         <Card title="Получатели" className="gap-2 px-5 pt-5 pb-2">
-          <div className="flex flex-col">
-            {[AUDIENCE, ...OTHER_AUDIENCES].map((label) => (
-              <div key={label} className={cn('flex min-h-11 items-center gap-3', separator)} title={NOT_WIRED}>
-                <Checkbox disabled checked={label === AUDIENCE} label={label} className="grow" />
-                <span className="text-text-secondary tabular-nums">
-                  {label === AUDIENCE && recipients != null ? formatCount(recipients) : '—'}
-                </span>
-              </div>
+          <RadioGroup aria-label="Получатели" value={audience} onChange={(v) => changeAudience(v as Audience)} disabled={busy}>
+            {AUDIENCES.map(({ value, label }) => (
+              <Radio
+                key={value}
+                value={value}
+                label={label}
+                className={separator}
+                after={
+                  <>
+                    {value === 'expiring' && (
+                      <Input
+                        type="number"
+                        min={MIN_DAYS}
+                        max={MAX_DAYS}
+                        inputMode="numeric"
+                        aria-label="Дней до окончания подписки"
+                        className="w-24"
+                        disabled={busy}
+                        value={days}
+                        error={audience === 'expiring' && !daysOk ? `От ${MIN_DAYS} до ${MAX_DAYS}` : undefined}
+                        onFocus={() => changeAudience('expiring')}
+                        onChange={(e) => changeAudience('expiring', e.target.value)}
+                        after="дн."
+                      />
+                    )}
+                    <span className="min-w-12 text-right text-text-secondary tabular-nums" aria-label={`Получателей: ${label}`}>
+                      {counts?.[value] != null ? formatCount(counts[value]) : '—'}
+                    </span>
+                  </>
+                }
+              />
             ))}
-            <NotWiredHint />
-          </div>
+          </RadioGroup>
+          <p className={cn(note, 'pb-2')}>Получатели считаются в момент отправки: не заблокировавшие бота и не заблокированные вами.</p>
         </Card>
 
         <Card className="gap-0 px-5 py-1">
@@ -386,7 +427,7 @@ export function Composer(props: ComposerProps) {
       {confirming && (
         <Dialog
           title="Отправить рассылку?"
-          message={`Сообщение сразу получат ${formatCount(count)} ${plural(count, ['пользователь', 'пользователя', 'пользователей'])} из группы «${AUDIENCE}». Отменить отправленное нельзя.`}
+          message={`Сообщение сразу получат ${formatCount(count)} ${plural(count, ['пользователь', 'пользователя', 'пользователей'])} из группы «${audienceLabel(audience, days)}». Отменить отправленное нельзя.`}
           actions={[
             { label: 'Отмена', style: 'cancel', onClick: () => setConfirming(false) },
             { label: 'Отправить', onClick: broadcast },

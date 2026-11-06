@@ -12,6 +12,13 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 
 const item = (id: string, over = {}) => ({
   id,
+  status: 'sent',
+  audience: 'all',
+  audienceDays: null,
+  silent: false,
+  buttons: [],
+  scheduledAt: null,
+  updatedAt: '2026-11-04T11:40:00Z',
   text: `<b>Заголовок ${id}</b>\nтекст`,
   total: 10,
   sent: 8,
@@ -117,7 +124,8 @@ describe('Broadcasts', () => {
   it('duplicated draft is sent, toast is shown and the list opens again', async () => {
     let posted: unknown
     const fetchMock = stub({ 1: { items: [item('a')], total: 1 } }, (url, init) => {
-      if (url === '/api/broadcasts/recipients') return json(200, { count: 3 })
+      if (url === '/api/broadcasts/recipients?days=7') return json(200, { all: 3, active: 1, no_subscription: 1, expiring: 1 })
+      if (url === '/api/broadcasts/recipients?audience=all') return json(200, { count: 3 })
       if (url === '/api/broadcasts' && init.method === 'POST') {
         posted = JSON.parse(String(init.body))
         return json(201, { broadcast: item('n', { total: 3 }) })

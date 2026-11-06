@@ -79,13 +79,54 @@ func (s *server) previewBroadcast(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// recipients — сколько получателей в аудиториях сейчас. Без audience — все аудитории сразу (expiring — если задан
+// корректный days), с audience — одна: {"count": n}. Отправка пересчитывает аудиторию в момент старта.
 func (s *server) recipients(w http.ResponseWriter, r *http.Request) {
-	c, err := s.Store.AudienceCounts(r.Context(), s.Now(), 0)
+	q := r.URL.Query()
+	var days *int
+	if v := q.Get("days"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			writeBadRequest(w)
+			return
+		}
+		days = &n
+	}
+	aud := q.Get("audience")
+	if aud != "" {
+		if days != nil && aud != broadcast.AudienceExpiring {
+			days = nil // число дней нужно только expiring
+		}
+		if err := broadcast.ValidateAudience(aud, days); err != nil {
+			writeInvalid(w, texts.Problem(err))
+			return
+		}
+	}
+	n := 0
+	if days != nil && *days >= broadcast.MinDays && *days <= broadcast.MaxDays {
+		n = *days
+	}
+	c, err := s.Store.AudienceCounts(r.Context(), s.Now(), n)
 	if err != nil {
 		internal(w, r, "audience counts", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"count": c.All})
+	switch aud {
+	case broadcast.AudienceAll:
+		writeJSON(w, http.StatusOK, map[string]int{"count": c.All})
+	case broadcast.AudienceActive:
+		writeJSON(w, http.StatusOK, map[string]int{"count": c.Active})
+	case broadcast.AudienceNoSubscription:
+		writeJSON(w, http.StatusOK, map[string]int{"count": c.NoSubscription})
+	case broadcast.AudienceExpiring:
+		writeJSON(w, http.StatusOK, map[string]int{"count": c.Expiring})
+	default:
+		out := map[string]int{"all": c.All, "active": c.Active, "no_subscription": c.NoSubscription}
+		if n > 0 {
+			out["expiring"] = c.Expiring
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
 }
 
 // scheduleLayout — datetime-local из панели: московское время без пояса.
@@ -112,11 +153,20 @@ func parseSchedule(v string, now time.Time) (*time.Time, error) {
 type broadcastIn struct {
 	IdempotencyKey uuid.UUID `json:"idempotencyKey"`
 	message
-	ScheduledAt string `json:"scheduledAt"` // МСК, пусто — сразу
+	Audience     string `json:"audience"` // пусто — all
+	AudienceDays *int   `json:"audienceDays"`
+	ScheduledAt  string `json:"scheduledAt"` // МСК, пусто — сразу
 }
 
 func (s *server) readBroadcast(w http.ResponseWriter, r *http.Request, in *broadcastIn) (*time.Time, bool) {
 	if !s.readMessage(w, r, in, &in.message) {
+		return nil, false
+	}
+	if in.Audience == "" {
+		in.Audience = broadcast.AudienceAll
+	}
+	if err := broadcast.ValidateAudience(in.Audience, in.AudienceDays); err != nil {
+		writeInvalid(w, texts.Problem(err))
 		return nil, false
 	}
 	at, err := parseSchedule(in.ScheduledAt, s.Now())
@@ -138,7 +188,7 @@ func (s *server) createBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, created, err := s.Store.SendBroadcast(r.Context(),
-		model.BroadcastDraft{IdempotencyKey: in.IdempotencyKey, Text: in.Text, Photo: in.Photo, Audience: broadcast.AudienceAll, ScheduledAt: at},
+		model.BroadcastDraft{IdempotencyKey: in.IdempotencyKey, Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays, ScheduledAt: at},
 		s.AdminID, s.Now())
 	if err != nil {
 		broadcastError(w, r, "create broadcast", err)
@@ -187,7 +237,7 @@ func (s *server) updateBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, err := s.Store.UpdateScheduled(r.Context(), id,
-		model.BroadcastDraft{Text: in.Text, Photo: in.Photo, Audience: broadcast.AudienceAll, ScheduledAt: at})
+		model.BroadcastDraft{Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays, ScheduledAt: at})
 	if err != nil {
 		broadcastError(w, r, "update broadcast", err)
 		return
