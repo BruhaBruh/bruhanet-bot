@@ -396,16 +396,18 @@ func giftNotice(b *bot.Bot, cnt *content.Provider, rw routes.Remnawave) outbox.G
 	name := ""
 	return func(ctx context.Context, m model.OutboxMessage) (string, *models.InlineKeyboardMarkup, error) {
 		mu.Lock()
-		if name == "" {
-			me, err := b.GetMe(ctx)
-			if err != nil {
-				mu.Unlock()
-				return "", nil, err
-			}
-			name = me.Username
-		}
 		n := name
 		mu.Unlock()
+		if n == "" { // сеть — вне мьютекса; при сбое имя не кэшируется, строка outbox уйдёт на повтор
+			me, err := b.GetMe(ctx)
+			if err != nil {
+				return "", nil, err
+			}
+			n = me.Username
+			mu.Lock()
+			name = n
+			mu.Unlock()
+		}
 		text, kb := routes.GiftNotice(ctx, cnt, rw, n, m)
 		return text, kb, nil
 	}

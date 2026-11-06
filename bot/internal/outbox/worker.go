@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -112,6 +111,9 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 				}
 			}
 			stlog.Warn(ctx, "outbox message rejected", "event_type", it.EventType, "error", err)
+			if isGiftLink(it) { // ссылка потеряна для покупателя: код виден в списке подарков админки
+				stlog.Error(ctx, "gift link not delivered", "gift_code", it.GiftCode, "chat_id", it.ChatID, "error", err)
+			}
 			observability.OutboxMessages.WithLabelValues(it.EventType, "dropped").Inc()
 			return w.remove(ctx, it, false)
 		case errors.As(err, &tm):
@@ -124,7 +126,12 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 		}
 		w.attempts[it.ID]++
 		n := w.attempts[it.ID]
-		if n >= maxAttempts {
+		if isGiftLink(it) {
+			// Ссылку на оплаченный подарок не бросаем из-за временного сбоя (getMe, сеть, 5xx): повтор с потолком backoff.
+			if n%maxAttempts == 0 {
+				stlog.Error(ctx, "gift link still not delivered", "gift_code", it.GiftCode, "chat_id", it.ChatID, "attempts", n, "error", err)
+			}
+		} else if n >= maxAttempts {
 			stlog.Error(ctx, "outbox message dropped", "event_type", it.EventType, "attempts", n, "error", err)
 			observability.OutboxMessages.WithLabelValues(it.EventType, "dropped").Inc()
 			return w.remove(ctx, it, false)
@@ -136,6 +143,11 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 		return false
 	}
 	return false
+}
+
+// isGiftLink — уведомление покупателю со ссылкой на оплаченный подарок.
+func isGiftLink(it model.OutboxItem) bool {
+	return it.EventType == payflow.EventGiftResult && it.TextKey == "gift.ready"
 }
 
 // remove удаляет строку и только после этого учитывает исход (при сбое удаления строка уйдёт повторно).
@@ -256,11 +268,12 @@ func (w *Worker) count(ctx context.Context, it model.OutboxItem, ok bool) {
 	case payflow.EventAdminClosed:
 		// решение из панели: у api своего счётчика нет, бизнес-метрики платежей живут в боте
 		stage := "declined"
+		label := observability.PaymentLabel(it.PayKind, it.Months)
 		if it.Confirmed {
 			stage = "confirmed"
-			observability.PaymentsConfirmedRubles.WithLabelValues(strconv.Itoa(it.Months)).Add(float64(it.Price))
+			observability.PaymentsConfirmedRubles.WithLabelValues(label).Add(float64(it.Price))
 		}
-		observability.Payments.WithLabelValues(stage, strconv.Itoa(it.Months)).Inc()
+		observability.Payments.WithLabelValues(stage, label).Inc()
 		return
 	case "broadcast_summary":
 		observability.Broadcasts.Inc() // одна рассылка = один итог (и /a-строки тоже)

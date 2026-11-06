@@ -1,8 +1,10 @@
 package outbox
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,6 +25,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
+	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
 
 type fakeQueue struct {
@@ -678,5 +681,73 @@ func TestWorkerGiftNoticeRetriesOnHookError(t *testing.T) {
 	msgs := srv.Calls("sendMessage")
 	if len(msgs) != 1 || msgs[0].Params.Get("text") != "ссылка CODE" || calls != 3 {
 		t.Fatalf("sendMessage: %+v calls=%d", msgs, calls)
+	}
+}
+
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// runFor гоняет воркер d и останавливает; лог уходит в буфер.
+func runFor(t *testing.T, w *Worker, d time.Duration) string {
+	t.Helper()
+	w.interval, w.idle = time.Millisecond, time.Millisecond
+	w.backoff = func(int) time.Duration { return time.Millisecond }
+	buf := &syncBuf{}
+	ctx, cancel := context.WithCancel(stlog.Wrap(t.Context(), slog.New(slog.NewTextHandler(buf, nil))))
+	done := make(chan struct{})
+	go func() { defer close(done); w.Run(ctx) }()
+	time.Sleep(d)
+	cancel()
+	<-done
+	return buf.String()
+}
+
+// Ссылка на подарок не теряется при временном сбое дольше maxAttempts: строка остаётся, ошибка с кодом в логе.
+func TestWorkerGiftLinkSurvivesTransientFailure(t *testing.T) {
+	q := &fakeQueue{}
+	w := New(q, tgtest.NewServer(t).Bot(t), nil, nil)
+	calls := 0
+	w.Gift = func(context.Context, model.OutboxMessage) (string, *models.InlineKeyboardMarkup, error) {
+		calls++
+		return "", nil, errors.New("getMe failed")
+	}
+	dropped := count(payflow.EventGiftResult, "dropped")
+	q.add(model.OutboxMessage{EventType: payflow.EventGiftResult, ChatID: 7, TextKey: "gift.ready", GiftCode: "CODE9", Months: 3})
+	log := runFor(t, w, 400*time.Millisecond)
+	if calls <= maxAttempts || q.len() != 1 || count(payflow.EventGiftResult, "dropped") != dropped {
+		t.Fatalf("calls=%d rows=%d", calls, q.len())
+	}
+	if !strings.Contains(log, "gift link still not delivered") || !strings.Contains(log, "CODE9") {
+		t.Fatalf("log: %s", log)
+	}
+}
+
+// Окончательный отказ Telegram (403) снимает строку, но с error и кодом подарка в логе.
+func TestWorkerGiftLinkForbiddenLogged(t *testing.T) {
+	srv := tgtest.NewServer(t)
+	srv.FailChat(7, 403, "Forbidden: bot was blocked by the user")
+	q := &fakeQueue{}
+	w := New(q, srv.Bot(t), nil, nil)
+	w.Gift = func(context.Context, model.OutboxMessage) (string, *models.InlineKeyboardMarkup, error) {
+		return "ссылка", nil, nil
+	}
+	q.add(model.OutboxMessage{EventType: payflow.EventGiftResult, ChatID: 7, TextKey: "gift.ready", GiftCode: "CODE9", Months: 3})
+	log := runFor(t, w, 200*time.Millisecond)
+	if q.len() != 0 || !strings.Contains(log, "level=ERROR") || !strings.Contains(log, "gift link not delivered") || !strings.Contains(log, "CODE9") {
+		t.Fatalf("rows=%d log: %s", q.len(), log)
 	}
 }
