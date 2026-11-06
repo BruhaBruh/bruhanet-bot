@@ -23,6 +23,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
+	"github.com/bruhabruh/bruhanet/core/panelsync"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/app"
@@ -32,7 +33,10 @@ import (
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
 
-const contentTTL = 10 * time.Second
+const (
+	contentTTL    = 10 * time.Second
+	panelSyncCron = "*/15 * * * *"
+)
 
 func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	fatal := make(chan error, 1)
@@ -131,6 +135,11 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	if _, err = c.AddFunc(config.Notification.Cron, func() { rem.Run(stlog.Wrap(runCtx, logger, "component", "reminder")) }); err != nil {
 		cancelRun()
 		return nil, errors.Join(errors.New("failed to schedule reminders"), err)
+	}
+
+	if _, err = c.AddFunc(panelSyncCron, func() { syncPanel(stlog.Wrap(runCtx, logger, "component", "panel_sync"), rwObs, st) }); err != nil {
+		cancelRun()
+		return nil, errors.Join(errors.New("failed to schedule panel sync"), err)
 	}
 
 	// Проверки зависимостей: WithProbe выключает спаны и bot_external_* для проб (иначе 30с-проба плодит мусорные трейсы).
@@ -260,4 +269,18 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 			logger.Info("service started")
 		}),
 	), nil
+}
+
+// syncPanel — один проход по cron. Занято ручным запуском из админки — не сбой, данные и так свежие.
+func syncPanel(ctx context.Context, panel panelsync.Panel, st panelsync.Store) {
+	res, err := panelsync.Run(ctx, panel, st, time.Now)
+	switch {
+	case errors.Is(err, store.ErrSyncRunning):
+		stlog.Info(ctx, "panel sync skipped: already running")
+	case err != nil:
+		observability.PanelSyncFailures.Inc()
+		stlog.Error(ctx, "panel sync failed", "error", err)
+	default:
+		stlog.Info(ctx, "panel sync done", "total", res.Total, "updated", res.Updated)
+	}
 }

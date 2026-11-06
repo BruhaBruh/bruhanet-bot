@@ -12,4 +12,5 @@ var (
 	ErrEmptyMessage   = errors.New("outbox message needs event type and chat")
 	ErrTokenInvalid   = errors.New("login token is invalid, used or expired")
 	ErrPromoExists    = errors.New("promo code already exists")
+	ErrSyncRunning    = errors.New("panel sync is already running")
 )

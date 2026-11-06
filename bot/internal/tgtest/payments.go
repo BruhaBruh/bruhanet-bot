@@ -30,6 +30,28 @@ type Payments struct {
 	// Отдельный мьютекс: панель зовут из apply под p.mu.
 	userMu  sync.Mutex
 	touched []model.UserSeen
+	panel   []PanelWrite
+}
+
+// PanelWrite — запись SetUserPanel.
+type PanelWrite struct {
+	TelegramID int64
+	ExpireAt   time.Time
+	Status     string
+}
+
+func (p *Payments) SetUserPanel(_ context.Context, id int64, expireAt time.Time, status string, _ time.Time) error {
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	p.panel = append(p.panel, PanelWrite{TelegramID: id, ExpireAt: expireAt, Status: status})
+	return nil
+}
+
+// PanelWrites — записи SetUserPanel по порядку.
+func (p *Payments) PanelWrites() []PanelWrite {
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	return slices.Clone(p.panel)
 }
 
 func (p *Payments) TouchUser(_ context.Context, u model.UserSeen) error {

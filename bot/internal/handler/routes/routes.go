@@ -49,6 +49,7 @@ type Payments interface {
 	CancelPayment(ctx context.Context, id int64) error
 	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
 	TouchUser(ctx context.Context, u model.UserSeen) error
+	SetUserPanel(ctx context.Context, id int64, expireAt time.Time, status string, at time.Time) error
 	// Промокоды; PromoByCode нормализует ввод (trim + upper), нет кода — store.ErrNotFound.
 	PromoByCode(ctx context.Context, code string) (model.Promo, error)
 	PromoByID(ctx context.Context, id int64) (model.Promo, error)
@@ -83,7 +84,7 @@ func Register(r *router.Router, d Deps) {
 	if now == nil {
 		now = time.Now
 	}
-	h := &handlers{cfg: d.Config, fsm: d.FSM, rw: d.Remnawave, pay: d.Payments, c: d.Content, now: now}
+	h := &handlers{cfg: d.Config, fsm: d.FSM, rw: writeThrough{d.Remnawave, d.Payments}, pay: d.Payments, c: d.Content, now: now}
 	r.Callback(routeMenu, h.start)
 	r.Callback(routeInfo, h.info)
 	r.Callback(routePay, h.tariffs)

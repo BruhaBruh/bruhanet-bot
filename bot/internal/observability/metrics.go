@@ -44,6 +44,9 @@ var (
 	OutboxMessages = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "bot_outbox_messages_total", Help: "Outbox messages by delivery result.",
 	}, []string{"event_type", "result"})
+	PanelSyncFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "bot_panel_sync_failures_total", Help: "Failed scheduled syncs with the panel.",
+	})
 	Ready = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "bot_ready", Help: "1 if all dependencies are up.",
 	})
@@ -57,7 +60,7 @@ func init() {
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		Updates, UpdateDuration, ExternalRequests, ExternalDuration,
-		Payments, PaymentsConfirmedRubles, RemindersSent, Broadcasts, BroadcastMessages, OutboxMessages,
+		Payments, PaymentsConfirmedRubles, RemindersSent, Broadcasts, BroadcastMessages, OutboxMessages, PanelSyncFailures,
 		Ready, DependencyUp,
 	)
 }
