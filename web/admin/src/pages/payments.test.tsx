@@ -238,15 +238,15 @@ describe('Payments', () => {
     })
 
     // Экран + POST: posts — адреса решений; badge — сколько раз перечитали бейдж.
-    function stubReview(answer: () => Response = () => json(200, {})) {
+    function stubReview(answer: () => Response = () => json(200, {}), item = pending) {
       const posts: string[] = []
       const counters = { badge: 0, list: 0 }
-      let rows = [pending]
+      let rows = [item]
       vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
         if (init?.method === 'POST') {
           posts.push(url)
           const res = answer()
-          if (res.ok) rows = [{ ...pending, status: 'confirmed' }]
+          if (res.ok) rows = [{ ...item, status: 'confirmed' }]
           return res
         }
         if (!url.startsWith('/api/payments')) return new Promise(() => {})
@@ -297,6 +297,24 @@ describe('Payments', () => {
       expect(counters.list).toBe(list + 1)
       expect(counters.badge).toBe(badge + 1)
       expect(table().queryByRole('button', { name: 'Подтвердить' })).toBeNull()
+    })
+
+    it('confirm without a receipt says so; decline stays plain', async () => {
+      const { posts } = stubReview(undefined, { ...pending, submittedAt: null, hasPhoto: false })
+      await renderPage()
+      fireEvent.click(row().getByRole('button', { name: 'Подтвердить' }))
+      const d = screen.getByRole('alertdialog').textContent
+      expect(d).toContain('Подтвердить без чека?')
+      expect(d).toContain('Пользователь не присылал чек. Срок продлится на 1 мес. до 31 дек. 2099')
+      await accept('Всё равно подтвердить')
+      expect(posts).toEqual(['/api/payments/1/confirm'])
+    })
+
+    it('decline without a receipt keeps the usual dialog', async () => {
+      stubReview(undefined, { ...pending, submittedAt: null, hasPhoto: false })
+      await renderPage()
+      fireEvent.click(row().getByRole('button', { name: 'Отклонить' }))
+      expect(screen.getByRole('alertdialog').textContent).toContain('Отклонить платёж?')
     })
 
     it('decline names the date the term returns to', async () => {

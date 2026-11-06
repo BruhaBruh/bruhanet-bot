@@ -14,8 +14,12 @@ const MONTH_MS = 30 * 864e5
 export const extendsTo = (p: Payment, now = Date.now()) =>
   new Date(Math.max(p.prevExpireAt ? Date.parse(p.prevExpireAt) : 0, now) + p.month * MONTH_MS).toISOString()
 
+// Без чека подтвердить можно (админ может решить сам), но диалог говорит об этом прямо.
+const noReceipt = (p: Payment, approve: boolean) => approve && !p.submittedAt
+
 function consequence(p: Payment, approve: boolean) {
   const who = userLabel(p)
+  if (noReceipt(p, approve)) return `Пользователь не присылал чек. Срок продлится на ${p.month} мес. до ${formatFullDay(extendsTo(p))}.`
   if (approve) return `Подписка ${who} продлится до ${formatFullDay(extendsTo(p))}. Пользователь получит уведомление.`
   const back = p.prevExpireAt ? `Срок подписки ${who} вернётся к ${formatFullDay(p.prevExpireAt)}. ` : ''
   return `${back}Пользователь получит уведомление.`
@@ -92,12 +96,12 @@ export function usePaymentReview(onChanged: () => void, openUser?: (p: Payment) 
       <>
         {deciding && (
           <Dialog
-            title={deciding.approve ? 'Подтвердить платёж?' : 'Отклонить платёж?'}
+            title={noReceipt(deciding.payment, deciding.approve) ? 'Подтвердить без чека?' : deciding.approve ? 'Подтвердить платёж?' : 'Отклонить платёж?'}
             message={consequence(deciding.payment, deciding.approve)}
             actions={[
               { label: 'Отмена', style: 'cancel', onClick: () => setDeciding(undefined) },
               {
-                label: deciding.approve ? 'Подтвердить' : 'Отклонить',
+                label: noReceipt(deciding.payment, deciding.approve) ? 'Всё равно подтвердить' : deciding.approve ? 'Подтвердить' : 'Отклонить',
                 style: deciding.approve ? 'default' : 'destructive',
                 onClick: () => void resolve(deciding.payment, deciding.approve),
               },
