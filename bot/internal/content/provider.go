@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/texts"
+	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
 
@@ -21,6 +23,7 @@ type Source interface {
 	TextOverrides(ctx context.Context) (map[string]string, error)
 	SettingsRaw(ctx context.Context) (map[string][]byte, error)
 	UserContact(ctx context.Context, id int64) (model.UserContact, error)
+	TextStyles(ctx context.Context) (map[string]string, error)
 }
 
 // recipient — чьи данные подставлять в общие переменные текста; fromUpdate — имя уже известно из апдейта.
@@ -73,6 +76,7 @@ func FormatTime(t time.Time) string {
 type snapshot struct {
 	texts    map[string]string // только прошедшие texts.Validate
 	settings settings.Settings
+	styles   map[string]string // сохранённые стили кнопок, только из texts.Styles
 }
 
 // defaultRefreshTimeout — сколько ждать БД при обновлении кеша.
@@ -189,6 +193,14 @@ func (p *Provider) Button(ctx context.Context, key string) string {
 	return p.Text(ctx, key, nil)
 }
 
+// Style — сохранённый стиль кнопки key; не сохраняли — fallback, её вид на этом экране из кода.
+func (p *Provider) Style(ctx context.Context, key string, fallback keyboard.Style) keyboard.Style {
+	if st, ok := p.current(ctx).styles[key]; ok {
+		return keyboard.Style(st)
+	}
+	return fallback
+}
+
 func (p *Provider) Settings(ctx context.Context) settings.Settings {
 	return p.current(ctx).settings
 }
@@ -231,6 +243,16 @@ func (p *Provider) refresh(ctx context.Context) {
 		stlog.Warn(ctx, "failed to load text overrides, using cached", "error", err)
 	} else {
 		next.texts = p.validTexts(ctx, overrides, next.settings.Vars)
+	}
+	if styles, err := p.src.TextStyles(ctx); err != nil {
+		stlog.Warn(ctx, "failed to load button styles, using cached", "error", err)
+	} else {
+		next.styles = make(map[string]string, len(styles))
+		for k, st := range styles {
+			if slices.Contains(texts.Styles, st) {
+				next.styles[k] = st
+			}
+		}
 	}
 	p.snap.Store(&next)
 }

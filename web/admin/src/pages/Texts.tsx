@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { NOT_WIRED } from '@/lib/not-wired'
 import { cn } from '@/lib/utils'
 import { Button, Card, Input, MessageBubble, SearchField, Spinner, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
@@ -22,10 +21,10 @@ const counter = (n: number, limit: number) => (
 )
 
 const SWATCHES = [
-  { label: 'Обычная', className: 'bg-keyboard-btn-bg shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent),inset_0_0_0_1px_var(--separator)]' },
-  { label: 'Основная (синяя)', className: 'bg-accent-strong' },
-  { label: 'Успех (зелёная)', className: 'bg-success-strong' },
-  { label: 'Опасная (красная)', className: 'bg-destructive-strong' },
+  { value: '', label: 'Обычная', className: 'bg-keyboard-btn-bg shadow-[inset_0_0_0_1px_var(--separator)]', on: 'shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent),inset_0_0_0_1px_var(--separator)]' },
+  { value: 'primary', label: 'Основная (синяя)', className: 'bg-accent-strong', on: 'shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]' },
+  { value: 'success', label: 'Успех (зелёная)', className: 'bg-success-strong', on: 'shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]' },
+  { value: 'danger', label: 'Опасная (красная)', className: 'bg-destructive-strong', on: 'shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]' },
 ]
 
 type Action = 'save' | 'test' | 'reset'
@@ -38,6 +37,7 @@ export default function Texts() {
   const [q, setQ] = useState('')
   // черновики по ключу: переключение между текстами не теряет правки, но и не переносит их
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [styleDrafts, setStyleDrafts] = useState<Record<string, string>>({})
   const [failure, setFailure] = useState<{ key: string; message: string }>()
   const [busy, setBusy] = useState<Action>()
   const inFlight = useRef(false)
@@ -73,8 +73,11 @@ export default function Texts() {
       delete rest[key]
       return rest
     })
-  const patch = (key: string, body: string) =>
-    setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default } : i)))
+  const patch = (key: string, body: string, style?: string) =>
+    setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default, style: style ?? i.style } : i)))
+  const styleOf = (i: TextItem) => styleDrafts[i.key] ?? i.style
+  // Кнопки сообщения; у самой кнопки — она же: стиль меняется здесь.
+  const buttons = !cur ? [] : items.filter((i) => (cur.kind === 'button' ? i.key === cur.key : cur.buttons.includes(i.key)))
 
   const s = q.trim().toLowerCase()
   const groups = new Map<string, TextItem[]>()
@@ -124,6 +127,20 @@ export default function Texts() {
       dropDraft(c.key)
       toast(`Сообщение «${c.title}» сохранено`, { icon: 'check' })
     })
+  const saveButton = (b: TextItem) =>
+    run('save', cur, async () => {
+      const body = draftOf(b)
+      const style = styleOf(b)
+      await put(path(b), { body, style })
+      patch(b.key, body, style)
+      dropDraft(b.key)
+      setStyleDrafts((d) => {
+        const rest = { ...d }
+        delete rest[b.key]
+        return rest
+      })
+      toast(`Кнопка «${b.title}» сохранена`, { icon: 'check' })
+    })
   const sendTest = (c: TextItem, body: string) =>
     run('test', c, async () => {
       await post(`${path(c)}/test`, { body })
@@ -139,10 +156,10 @@ export default function Texts() {
 
   return (
     <div className="flex flex-wrap items-start gap-6">
-      <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4">
+      <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-(--spacing(12)))]">
         <SearchField placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
-        {/* Когда колонки сложены, длинный список не отодвигает редактор на несколько экранов. */}
-        <div className="flex flex-col gap-4 max-lg:max-h-72 max-lg:overflow-y-auto">
+        {/* Длинный список прокручивается сам: не отодвигает редактор и на компьютере закреплён рядом с ним. */}
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-lg:max-h-72">
           {!groups.size && <p className="admin-body px-1 text-text-secondary">Ничего не найдено</p>}
           {[...groups].map(([group, list]) => (
             <div key={group} className="flex flex-col gap-1.5">
@@ -190,7 +207,7 @@ export default function Texts() {
             <div className="flex flex-wrap items-start gap-3">
               <div className="flex min-w-0 grow flex-col gap-0.5">
                 <h2 className="title-3 text-text">{cur.title}</h2>
-                <span className="footnote text-text-secondary">—</span>
+                <span className="footnote text-text-secondary">{cur.when}</span>
               </div>
               <code className="caption-1 max-w-full truncate rounded-xs bg-fill-tertiary px-2 py-1 font-mono text-text-secondary">{cur.key}</code>
             </div>
@@ -203,7 +220,7 @@ export default function Texts() {
                 onChange={setDraft}
                 disabled={!!busy}
                 right={counter(visibleLen(draft), MESSAGE_LIMIT)}
-                hint="Переменные подставляются при отправке. Неизвестная переменная останется как есть — она подсвечена в превью."
+                hint="Переменные подставляются при отправке. Неизвестная переменная не сохранится."
               />
             ) : (
               <Input
@@ -222,27 +239,45 @@ export default function Texts() {
             <VarChips title="Этого сообщения" vars={own} disabled={!!busy} onInsert={insertVar} />
           </Card>
 
-          <Card title="Кнопки" aside={NOT_WIRED} className="gap-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <Input className="min-w-0 grow basis-50" disabled placeholder="Текст кнопки" aria-label="Текст кнопки" value="" readOnly />
-              <code className="caption-1 min-w-0 shrink basis-50 truncate font-mono text-text-secondary">—</code>
-              <div role="radiogroup" aria-label="Стиль кнопки" className="flex w-35 flex-none items-center gap-1.5">
-                {SWATCHES.map((sw, n) => (
-                  <button
-                    key={sw.label}
-                    type="button"
-                    role="radio"
-                    aria-checked={n === 0}
-                    aria-label={sw.label}
-                    title={sw.label}
-                    disabled
-                    className={cn('size-7 cursor-default rounded-full opacity-40', sw.className)}
+          {buttons.length > 0 && (
+            <Card title="Кнопки" className="gap-2.5">
+              {buttons.map((b) => (
+                <div key={b.key} className="flex flex-wrap items-center gap-2">
+                  <Input
+                    className="min-w-0 grow basis-50"
+                    placeholder={b.title}
+                    aria-label={`Текст кнопки ${b.title}`}
+                    maxLength={BUTTON_LIMIT}
+                    disabled={!!busy}
+                    value={draftOf(b)}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [b.key]: e.target.value }))}
                   />
-                ))}
-              </div>
-            </div>
-            <span className="footnote text-text-secondary">Действие кнопки задаётся в коде бота; здесь меняется только подпись и стиль.</span>
-          </Card>
+                  <code className="caption-1 min-w-0 shrink basis-30 truncate font-mono text-text-secondary" title={b.when}>
+                    {b.route}
+                  </code>
+                  <div role="radiogroup" aria-label={`Стиль кнопки ${b.title}`} className="flex w-35 flex-none items-center gap-1.5">
+                    {SWATCHES.map((sw) => (
+                      <button
+                        key={sw.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={styleOf(b) === sw.value}
+                        aria-label={sw.label}
+                        title={sw.label}
+                        disabled={!!busy}
+                        className={cn('focus-ring size-7 cursor-pointer rounded-full disabled:cursor-default', sw.className, styleOf(b) === sw.value && sw.on)}
+                        onClick={() => setStyleDrafts((d) => ({ ...d, [b.key]: sw.value }))}
+                      />
+                    ))}
+                  </div>
+                  <Button variant="gray" disabled={!!busy || (draftOf(b) === b.body && styleOf(b) === b.style)} aria-label={`Сохранить кнопку ${b.title}`} onClick={() => saveButton(b)}>
+                    Сохранить
+                  </Button>
+                </div>
+              ))}
+              <span className="footnote text-text-secondary">Действие кнопки задаётся в коде бота. Подпись и стиль общие для всех сообщений с этой кнопкой.</span>
+            </Card>
+          )}
 
           {failure?.key === cur.key && (
             <p role="alert" className="admin-body text-destructive-strong">

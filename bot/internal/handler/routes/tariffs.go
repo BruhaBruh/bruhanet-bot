@@ -34,10 +34,11 @@ func (h *handlers) tariffKeyboard(ctx context.Context) *models.InlineKeyboardMar
 	months := slices.Sorted(maps.Keys(prices))
 	buttons := make([]keyboard.Button, 0, len(months))
 	for _, m := range months {
-		buttons = append(buttons, keyboard.Callback(h.c.Text(ctx, "button.tariff", tariffVars(m, prices[m])), priceRoute.Data(m)))
+		buttons = append(buttons, keyboard.Callback(h.c.Text(ctx, "button.tariff", tariffVars(m, prices[m])), priceRoute.Data(m)).
+			Style(h.c.Style(ctx, "button.tariff", keyboard.StyleDefault)))
 	}
 	rows := keyboard.Grid(2, buttons...)
-	rows = append(rows, keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.back"), routeMenu)))
+	rows = append(rows, keyboard.Row(callbackButton(ctx, h.c, "button.back", routeMenu, keyboard.StyleDefault)))
 	return keyboard.Inline(rows...)
 }
 
@@ -60,10 +61,10 @@ func (h *handlers) price(ctx context.Context, b *bot.Bot, u *models.Update) {
 	h.leavePromo(ctx, tgupdate.UserID(u)) // «Назад»/«Убрать промокод» из ожидания кода
 	show(ctx, b, u, keyboard.Inline(
 		keyboard.Row(
-			keyboard.Callback(h.c.Button(ctx, "button.yes"), buyRoute.Data(month)).Style(keyboard.StyleSuccess),
-			keyboard.Callback(h.c.Button(ctx, "button.no"), routePay).Style(keyboard.StyleDanger),
+			callbackButton(ctx, h.c, "button.yes", buyRoute.Data(month), keyboard.StyleSuccess),
+			callbackButton(ctx, h.c, "button.no", routePay, keyboard.StyleDanger),
 		),
-		keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.have_promo"), havePromoRoute.Data(month))),
+		keyboard.Row(callbackButton(ctx, h.c, "button.have_promo", havePromoRoute.Data(month), keyboard.StyleDefault)),
 	), h.c.Text(ctx, "payment.confirm", tariffVars(month, price)))
 }
 

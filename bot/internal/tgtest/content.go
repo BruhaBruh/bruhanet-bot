@@ -13,6 +13,19 @@ type Source struct {
 	texts    map[string]string
 	settings map[string][]byte
 	contacts map[int64]model.UserContact
+	styles   map[string]string
+}
+
+func (s *Source) SetStyles(styles map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.styles = styles
+}
+
+func (s *Source) TextStyles(context.Context) (map[string]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.styles, nil
 }
 
 func (s *Source) SetContact(id int64, c model.UserContact) {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/texts"
@@ -43,6 +44,10 @@ type textItem struct {
 	Body       string    `json:"body"`
 	Overridden bool      `json:"overridden"`
 	Vars       []textVar `json:"vars"`
+	When       string    `json:"when"`
+	Buttons    []string  `json:"buttons"`
+	Route      string    `json:"route,omitempty"`
+	Style      string    `json:"style"`
 }
 
 // readJSON читает тело в v; при ошибке сам отвечает 400.
@@ -79,6 +84,11 @@ func (s *server) texts(w http.ResponseWriter, r *http.Request) {
 		internal(w, r, "list texts", err)
 		return
 	}
+	styles, err := s.Store.TextStyles(r.Context())
+	if err != nil {
+		internal(w, r, "list texts", err)
+		return
+	}
 	cur, _, err := s.current(r.Context())
 	if err != nil {
 		internal(w, r, "list texts", err)
@@ -87,7 +97,10 @@ func (s *server) texts(w http.ResponseWriter, r *http.Request) {
 	reg := texts.Registry()
 	items := make([]textItem, 0, len(reg))
 	for _, d := range reg {
-		it := textItem{Key: d.Key, Group: d.Group, Title: d.Title, Kind: string(d.Kind), Default: d.Default, Body: d.Default, Vars: toTextVars(d.Vars)}
+		it := textItem{Key: d.Key, Group: d.Group, Title: d.Title, Kind: string(d.Kind), Default: d.Default, Body: d.Default, Vars: toTextVars(d.Vars), When: d.When, Buttons: append([]string{}, d.Buttons...), Route: d.Route, Style: d.Style}
+		if st, ok := styles[d.Key]; ok {
+			it.Style = st
+		}
 		if b, ok := over[d.Key]; ok {
 			it.Body, it.Overridden = b, true
 		}
@@ -103,13 +116,18 @@ func (s *server) putText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Body *string `json:"body"`
+		Body  *string `json:"body"`
+		Style *string `json:"style"` // только у кнопок; нет — стиль не меняется
 	}
 	if !readJSONMax(w, r, &in, maxTextBody, false) {
 		return
 	}
 	if in.Body == nil {
 		writeBadRequest(w)
+		return
+	}
+	if in.Style != nil && (def.Kind != texts.KindButton || !slices.Contains(texts.Styles, *in.Style)) {
+		writeInvalid(w, "стиль можно задать только кнопке и только из списка")
 		return
 	}
 	cur, _, err := s.current(r.Context())
@@ -122,14 +140,25 @@ func (s *server) putText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if *in.Body == def.Default {
-		err := s.Store.ResetText(r.Context(), def.Key)
+		err := s.Store.ClearTextBody(r.Context(), def.Key)
 		if err != nil {
-			internal(w, r, "reset text", err)
+			internal(w, r, "clear text", err)
 			return
 		}
 	} else if err := s.Store.SetText(r.Context(), def.Key, *in.Body); err != nil {
 		internal(w, r, "set text", err)
 		return
+	}
+	if in.Style != nil {
+		// вид по умолчанию не храним: на других экранах у кнопки остаётся их вид из кода
+		style := in.Style
+		if *style == def.Style {
+			style = nil
+		}
+		if err := s.Store.SetTextStyle(r.Context(), def.Key, style); err != nil {
+			internal(w, r, "set text style", err)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

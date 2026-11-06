@@ -186,6 +186,31 @@ func TestRegistryDefaultsValid(t *testing.T) {
 	}
 }
 
+func TestRegistryDescribesEveryText(t *testing.T) {
+	for _, d := range Registry() {
+		if d.When == "" {
+			t.Errorf("%s: empty When", d.Key)
+		}
+		for _, k := range d.Buttons {
+			if b, ok := Lookup(k); !ok || b.Kind != KindButton {
+				t.Errorf("%s: %s is not a button", d.Key, k)
+			}
+		}
+		if (d.Kind == KindButton) != (d.Route != "") {
+			t.Errorf("%s: route %q for kind %s", d.Key, d.Route, d.Kind)
+		}
+		if d.Kind != KindButton && (d.Style != "" || d.Route != "") {
+			t.Errorf("%s: style or route on non-button", d.Key)
+		}
+		if !slices.Contains(Styles, d.Style) {
+			t.Errorf("%s: bad style %q", d.Key, d.Style)
+		}
+		if d.Kind != KindMessage && len(d.Buttons) > 0 {
+			t.Errorf("%s: buttons on non-message", d.Key)
+		}
+	}
+}
+
 func TestRegistryCoversCode(t *testing.T) {
 	tests := map[string]string{
 		"menu.greeting": "Здравствуйте, <b>Иван</b>",

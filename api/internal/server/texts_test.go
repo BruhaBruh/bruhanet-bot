@@ -87,6 +87,81 @@ func TestTextsList(t *testing.T) {
 }
 
 // Review Focus 1: битая разметка → 400 с человеческим message, без служебного префикса сентинела.
+func TestTextsWhenAndButtons(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.styles = map[string]string{"button.pay": "danger"}
+	w := send(h, http.MethodGet, "/api/texts", c, "")
+	var out struct {
+		Items []struct {
+			Key, When, Route, Style string
+			Buttons                 []string
+		}
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]int{}
+	for i, it := range out.Items {
+		if it.When == "" {
+			t.Errorf("%s: no when", it.Key)
+		}
+		by[it.Key] = i
+	}
+	if o := out.Items[by["payment.confirm"]]; strings.Join(o.Buttons, ",") != "button.yes,button.no,button.have_promo" {
+		t.Fatalf("buttons = %+v", o)
+	}
+	if o := out.Items[by["button.pay"]]; o.Style != "danger" || o.Route != "pay" {
+		t.Fatalf("stored style = %+v", o)
+	}
+	if o := out.Items[by["button.buy"]]; o.Style != "success" {
+		t.Fatalf("default style = %+v", o)
+	}
+	if !strings.Contains(w.Body.String(), `"buttons":[]`) {
+		t.Fatal("buttons must be [] when none")
+	}
+}
+
+func TestPutTextStyle(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	put := func(key, body string) int { return send(h, http.MethodPut, "/api/texts/"+key, c, body).Code }
+
+	if code := put("button.pay", `{"body":"Оплатить","style":"danger"}`); code != http.StatusNoContent {
+		t.Fatalf("%d", code)
+	}
+	if st.styles["button.pay"] != "danger" || len(st.overrides) != 0 {
+		t.Fatalf("styles %v overrides %v", st.styles, st.overrides)
+	}
+	// подпись без style стиль не трогает; подпись = умолчание не сбрасывает стиль
+	if code := put("button.pay", `{"body":"Платить"}`); code != http.StatusNoContent || st.styles["button.pay"] != "danger" || st.overrides["button.pay"] != "Платить" {
+		t.Fatalf("%d %v %v", code, st.styles, st.overrides)
+	}
+	if code := put("button.pay", `{"body":"Оплатить"}`); code != http.StatusNoContent || st.styles["button.pay"] != "danger" || len(st.overrides) != 0 {
+		t.Fatalf("%d %v %v", code, st.styles, st.overrides)
+	}
+	// «Обычная» при основном виде success хранится явно; вид по умолчанию — снимается
+	if code := put("button.buy", `{"body":"Купить","style":""}`); code != http.StatusNoContent {
+		t.Fatalf("%d", code)
+	}
+	if v, ok := st.styles["button.buy"]; !ok || v != "" {
+		t.Fatalf("styles = %v", st.styles)
+	}
+	if code := put("button.buy", `{"body":"Купить","style":"success"}`); code != http.StatusNoContent {
+		t.Fatalf("%d", code)
+	}
+	if _, ok := st.styles["button.buy"]; ok {
+		t.Fatalf("styles = %v", st.styles)
+	}
+	// чужой стиль и стиль не у кнопки
+	if code := put("button.pay", `{"body":"Оплатить","style":"pink"}`); code != http.StatusBadRequest {
+		t.Fatalf("%d", code)
+	}
+	if code := put("payment.tariffs", `{"body":"x","style":"danger"}`); code != http.StatusBadRequest {
+		t.Fatalf("%d", code)
+	}
+}
+
 func TestPutTextGlobals(t *testing.T) {
 	h, st := newServer(t, "http://localhost:5173")
 	c := st.addSession(t, adminID, now.Add(time.Hour))

@@ -16,11 +16,11 @@ import (
 
 func (h *handlers) info(ctx context.Context, b *bot.Bot, u *models.Update) {
 	telegramID := tgupdate.UserID(u)
-	back := keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.back"), routeMenu))
+	back := keyboard.Row(callbackButton(ctx, h.c, "button.back", routeMenu, keyboard.StyleDefault))
 	user, err := h.rw.GetUser(ctx, telegramID)
 	if errors.Is(err, remnawave.ErrUserNotFound) {
 		show(ctx, b, u, keyboard.Inline(
-			keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.buy"), routePay).Style(keyboard.StyleSuccess)),
+			keyboard.Row(callbackButton(ctx, h.c, "button.buy", routePay, keyboard.StyleSuccess)),
 			back,
 		), h.c.Text(ctx, "menu.info_not_bought", nil))
 		return
@@ -39,8 +39,8 @@ func (h *handlers) info(ctx context.Context, b *bot.Bot, u *models.Update) {
 
 	show(ctx, b, u, keyboard.Inline(
 		keyboard.Row(
-			keyboard.Callback(h.c.Button(ctx, "button.renew"), routePay),
-			keyboard.Copy(h.c.Button(ctx, "button.subscription"), user.SubscriptionUrl).Style(keyboard.StyleSuccess),
+			callbackButton(ctx, h.c, "button.renew", routePay, keyboard.StyleDefault),
+			copyButton(ctx, h.c, "button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess),
 		),
 		back,
 	), h.c.Text(ctx, "menu.info", map[string]string{

@@ -8,7 +8,7 @@ import (
 
 // TextOverrides возвращает все переопределения текстов (key → body).
 func (s *Store) TextOverrides(ctx context.Context) (map[string]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT key, body FROM texts`)
+	rows, err := s.pool.Query(ctx, `SELECT key, body FROM texts WHERE body IS NOT NULL`)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +30,38 @@ func (s *Store) SetText(ctx context.Context, key, body string) error {
 	return err
 }
 
-// ResetText удаляет переопределение; отсутствие ключа — не ошибка.
+// ClearTextBody убирает переопределение текста, сохранённый стиль остаётся.
+func (s *Store) ClearTextBody(ctx context.Context, key string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE texts SET body = NULL, updated_at = now() WHERE key = $1`, key)
+	return err
+}
+
+// TextStyles возвращает сохранённые стили кнопок (key → style).
+func (s *Store) TextStyles(ctx context.Context) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT key, style FROM texts WHERE style IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var k, st string
+		if err = rows.Scan(&k, &st); err != nil {
+			return nil, err
+		}
+		out[k] = st
+	}
+	return out, rows.Err()
+}
+
+// SetTextStyle сохраняет стиль кнопки; nil — стиль из кода.
+func (s *Store) SetTextStyle(ctx context.Context, key string, style *string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO texts (key, style) VALUES ($1, $2)
+		ON CONFLICT (key) DO UPDATE SET style = EXCLUDED.style, updated_at = now()`, key, style)
+	return err
+}
+
+// ResetText удаляет переопределение вместе со стилем; отсутствие ключа — не ошибка.
 func (s *Store) ResetText(ctx context.Context, key string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM texts WHERE key = $1`, key)
 	return err

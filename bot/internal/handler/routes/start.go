@@ -36,26 +36,26 @@ func isPrivate(u *models.Update) bool {
 }
 
 func (h *handlers) mainKeyboard(ctx context.Context, telegramID int64) *models.InlineKeyboardMarkup {
-	support := keyboard.URL(h.c.Button(ctx, "button.support"), h.c.Settings(ctx).SupportURL).Style(keyboard.StyleDanger)
-	promoBtn := keyboard.Callback(h.c.Button(ctx, "button.promo"), routePromo)
+	support := urlButton(ctx, h.c, "button.support", h.c.Settings(ctx).SupportURL, keyboard.StyleDanger)
+	promoBtn := callbackButton(ctx, h.c, "button.promo", routePromo, keyboard.StyleDefault)
 	user, err := h.rw.GetUser(ctx, telegramID)
 	switch {
 	case errors.Is(err, remnawave.ErrUserNotFound):
 		return keyboard.Inline(
-			keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.buy"), routePay).Style(keyboard.StyleSuccess)),
+			keyboard.Row(callbackButton(ctx, h.c, "button.buy", routePay, keyboard.StyleSuccess)),
 			keyboard.Row(promoBtn, support),
 		)
 	case err != nil:
 		stlog.Error(ctx, "failed to get remnawave user", "error", err)
-		return keyboard.Inline(keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.service_down"), routeMenu)))
+		return keyboard.Inline(keyboard.Row(callbackButton(ctx, h.c, "button.service_down", routeMenu, keyboard.StyleDefault)))
 	}
 	return keyboard.Inline(
 		keyboard.Row(
-			keyboard.Callback(h.c.Button(ctx, "button.info"), routeInfo).Style(keyboard.StylePrimary),
-			keyboard.Callback(h.c.Button(ctx, "button.pay"), routePay),
+			callbackButton(ctx, h.c, "button.info", routeInfo, keyboard.StylePrimary),
+			callbackButton(ctx, h.c, "button.pay", routePay, keyboard.StyleDefault),
 		),
 		keyboard.Row(
-			keyboard.Copy(h.c.Button(ctx, "button.subscription"), user.SubscriptionUrl).Style(keyboard.StyleSuccess),
+			copyButton(ctx, h.c, "button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess),
 			support,
 		),
 		keyboard.Row(promoBtn),

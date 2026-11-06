@@ -37,6 +37,52 @@ func TestTextOverrides(t *testing.T) {
 	}
 }
 
+func TestTextStyles(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	success := "success"
+	if err := s.SetTextStyle(ctx, "button.pay", &success); err != nil {
+		t.Fatal(err)
+	}
+	// стиль без правки подписи — не переопределение текста
+	if m, err := s.TextOverrides(ctx); err != nil || len(m) != 0 {
+		t.Fatalf("overrides = %v %v", m, err)
+	}
+	if m, err := s.TextStyles(ctx); err != nil || m["button.pay"] != "success" {
+		t.Fatalf("styles = %v %v", m, err)
+	}
+	// подпись и стиль независимы
+	if err := s.SetText(ctx, "button.pay", "Платить"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ClearTextBody(ctx, "button.pay"); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.TextOverrides(ctx); len(m) != 0 {
+		t.Fatalf("overrides = %v", m)
+	}
+	if m, _ := s.TextStyles(ctx); m["button.pay"] != "success" {
+		t.Fatalf("style lost: %v", m)
+	}
+	// «Обычная» — пустая строка, не то же, что нет стиля
+	plain := ""
+	if err := s.SetTextStyle(ctx, "button.buy", &plain); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.TextStyles(ctx); m["button.buy"] != "" || len(m) != 2 {
+		t.Fatalf("styles = %v", m)
+	}
+	if err := s.SetTextStyle(ctx, "button.buy", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ResetText(ctx, "button.pay"); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.TextStyles(ctx); len(m) != 0 {
+		t.Fatalf("styles = %v", m)
+	}
+}
+
 func TestSettingsRaw(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()

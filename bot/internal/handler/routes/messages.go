@@ -80,7 +80,7 @@ func show(ctx context.Context, b *bot.Bot, u *models.Update, kb *models.InlineKe
 
 func (h *handlers) showError(ctx context.Context, b *bot.Bot, u *models.Update) {
 	show(ctx, b, u, keyboard.Inline(
-		keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.back"), routeMenu)),
-		keyboard.Row(keyboard.URL(h.c.Button(ctx, "button.support"), h.c.Settings(ctx).SupportURL)),
+		keyboard.Row(callbackButton(ctx, h.c, "button.back", routeMenu, keyboard.StyleDefault)),
+		keyboard.Row(urlButton(ctx, h.c, "button.support", h.c.Settings(ctx).SupportURL, keyboard.StyleDefault)),
 	), h.c.Text(ctx, "error.generic", nil))
 }

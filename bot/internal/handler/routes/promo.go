@@ -37,7 +37,7 @@ type promoData struct {
 }
 
 func (h *handlers) backKeyboard(ctx context.Context, data string) *models.InlineKeyboardMarkup {
-	return keyboard.Inline(keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.back"), data)))
+	return keyboard.Inline(keyboard.Row(callbackButton(ctx, h.c, "button.back", data, keyboard.StyleDefault)))
 }
 
 // havePromo — «Есть промокод» на экране «Верно?»: ждём код сообщением.
@@ -92,10 +92,10 @@ func (h *handlers) paymentPromoText(ctx context.Context, b *bot.Bot, u *models.U
 	vars["code"] = p.Code
 	send(ctx, b, tgupdate.ChatID(u), keyboard.Inline(
 		keyboard.Row(
-			keyboard.Callback(h.c.Button(ctx, "button.yes"), buyPromoRoute.Data(d.Month, p.ID)).Style(keyboard.StyleSuccess),
-			keyboard.Callback(h.c.Button(ctx, "button.no"), routePay).Style(keyboard.StyleDanger),
+			callbackButton(ctx, h.c, "button.yes", buyPromoRoute.Data(d.Month, p.ID), keyboard.StyleSuccess),
+			callbackButton(ctx, h.c, "button.no", routePay, keyboard.StyleDanger),
 		),
-		keyboard.Row(keyboard.Callback(h.c.Button(ctx, "button.remove_promo"), priceRoute.Data(d.Month))),
+		keyboard.Row(callbackButton(ctx, h.c, "button.remove_promo", priceRoute.Data(d.Month), keyboard.StyleDefault)),
 	), h.c.Text(ctx, "promo.confirm_discount", vars))
 }
 

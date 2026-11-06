@@ -37,6 +37,9 @@ type Store interface {
 	TextOverrides(ctx context.Context) (map[string]string, error)
 	SetText(ctx context.Context, key, body string) error
 	ResetText(ctx context.Context, key string) error
+	ClearTextBody(ctx context.Context, key string) error
+	TextStyles(ctx context.Context) (map[string]string, error)
+	SetTextStyle(ctx context.Context, key string, style *string) error
 	SettingsRaw(ctx context.Context) (map[string][]byte, error)
 	SetSettings(ctx context.Context, values map[string][]byte) error
 	Enqueue(ctx context.Context, m model.OutboxMessage) error

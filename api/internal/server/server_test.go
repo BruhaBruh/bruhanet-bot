@@ -48,6 +48,7 @@ type fakeStore struct {
 	outbox    []model.OutboxMessage
 
 	broadcasts []fakeBroadcast // по порядку создания
+	styles     map[string]string
 	directs    []model.DirectMessage
 
 	userPromos []model.UserPromo
@@ -165,6 +166,35 @@ func (f *fakeStore) ResetText(_ context.Context, key string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.overrides, key)
+	return nil
+}
+
+func (f *fakeStore) ClearTextBody(_ context.Context, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.overrides, key)
+	return nil
+}
+
+func (f *fakeStore) TextStyles(context.Context) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]string{}
+	maps.Copy(out, f.styles)
+	return out, nil
+}
+
+func (f *fakeStore) SetTextStyle(_ context.Context, key string, style *string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.styles == nil {
+		f.styles = map[string]string{}
+	}
+	if style == nil {
+		delete(f.styles, key)
+	} else {
+		f.styles[key] = *style
+	}
 	return nil
 }
 

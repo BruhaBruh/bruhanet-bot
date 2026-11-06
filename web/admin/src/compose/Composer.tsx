@@ -302,7 +302,7 @@ export function Composer(props: ComposerProps) {
   return (
     <div className="admin-body flex flex-wrap items-start gap-6">
       <div className="flex min-w-0 grow-999 basis-130 flex-col gap-4">
-        <Card title="Фото" aside="не больше одного · JPG или PNG до 10 МБ">
+        <Card title="Фото" aside="не больше одного · JPG, PNG или WebP до 10 МБ">
           {picker}
         </Card>
 

@@ -13,6 +13,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/settings"
+	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
 
@@ -29,6 +30,7 @@ type fakeSource struct {
 	contacts     map[int64]model.UserContact
 	contactErr   error
 	contactCalls int
+	styles       map[string]string
 }
 
 func (f *fakeSource) TextOverrides(ctx context.Context) (map[string]string, error) {
@@ -60,6 +62,12 @@ func (f *fakeSource) UserContact(_ context.Context, id int64) (model.UserContact
 	defer f.mu.Unlock()
 	f.contactCalls++
 	return f.contacts[id], f.contactErr
+}
+
+func (f *fakeSource) TextStyles(context.Context) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.styles, f.err
 }
 
 func (f *fakeSource) set(fn func(f *fakeSource)) {
@@ -358,4 +366,19 @@ func TestSnapshotConsistentUnderRefresh(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	close(stop)
 	wg.Wait()
+}
+
+func TestStyle(t *testing.T) {
+	src := &fakeSource{styles: map[string]string{"button.pay": "danger", "button.buy": "", "button.info": "мусор"}}
+	p, _, ctx, _ := setup(src)
+	for key, want := range map[string]keyboard.Style{
+		"button.pay":   keyboard.StyleDanger,
+		"button.buy":   keyboard.StyleDefault, // «Обычная» сохранена явно: важнее стиля из кода
+		"button.info":  keyboard.StyleSuccess, // чужое значение игнорируется
+		"button.renew": keyboard.StyleSuccess, // не сохраняли
+	} {
+		if got := p.Style(ctx, key, keyboard.StyleSuccess); got != want {
+			t.Errorf("%s: got %q, want %q", key, got, want)
+		}
+	}
 }

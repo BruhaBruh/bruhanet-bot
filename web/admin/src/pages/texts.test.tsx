@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import type { Ref } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NOT_WIRED } from '@/lib/not-wired'
 import { ToastProvider } from '@/ui'
 import type { TgEditorHandle, TgEditorProps } from '../editor/TgEditor'
 import type { TextItem } from '../types'
@@ -37,6 +36,9 @@ const text = (key: string, title: string, body: string, over: Partial<TextItem> 
   body,
   overridden: false,
   vars: [],
+  when: `Когда ${title.slice(-1)}`,
+  buttons: [],
+  style: '',
   ...over,
 })
 
@@ -57,7 +59,8 @@ beforeEach(() => {
       text('v', 'С переменной', 'Привет, {{.name}}! <i>x</i>', {
         vars: [{ name: 'html', description: 'Разметка', sample: '<b>жир</b>', raw: true, max: 100 }],
       }),
-      text('btn', 'Кнопка', 'Оплатить', { kind: 'button', group: 'Кнопки' }),
+      text('withBtn', 'С кнопкой', 'тело', { buttons: ['btn'] }),
+      text('btn', 'Кнопка', 'Оплатить', { kind: 'button', group: 'Кнопки', route: 'pay', style: 'success' }),
     ],
     globals: [{ name: 'name', description: 'Имя', sample: 'Иван', raw: false, max: 64 }],
   })
@@ -77,6 +80,7 @@ const open = async (path: string) => {
   await flush()
 }
 const btn = (name: string) => screen.getByRole('button', { name })
+const edit = (el: HTMLElement, value: string) => fireEvent.change(el, { target: { value } })
 const list = () => within(screen.getByRole('navigation', { name: 'Сообщения бота' }))
 const preview = () => screen.getByRole('complementary', { name: 'Превью сообщения' })
 const puts = () => calls.filter((c) => c.method === 'PUT')
@@ -213,11 +217,49 @@ describe('Texts', () => {
     expect(preview().textContent).toContain('Привет, Иван')
   })
 
-  it('buttons card is drawn disabled', async () => {
+  it('«Когда отправляется» comes from the registry', async () => {
+    await open('/texts?key=b')
+    expect(screen.getByText('Когда B')).toBeTruthy()
+  })
+
+  it('message buttons: label and style saved per button through PUT', async () => {
+    replies['PUT /api/texts/btn'] = json(204)
+    await open('/texts?key=withBtn')
+    const save = screen.getByRole('button', { name: 'Сохранить кнопку Кнопка' }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    expect(screen.getByText('pay')).toBeTruthy()
+
+    const group = screen.getByRole('radiogroup', { name: 'Стиль кнопки Кнопка' })
+    expect(within(group).getByRole('radio', { name: 'Успех (зелёная)' }).getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(within(group).getByRole('radio', { name: 'Опасная (красная)' }))
+    edit(screen.getByRole('textbox', { name: 'Текст кнопки Кнопка' }), 'Платить')
+    expect(save.disabled).toBe(false)
+    fireEvent.click(save)
+    await flush()
+    expect(calls.filter((c) => c.method === 'PUT')).toEqual([{ url: '/api/texts/btn', method: 'PUT', body: { body: 'Платить', style: 'danger' } }])
+    expect(within(group).getByRole('radio', { name: 'Опасная (красная)' }).getAttribute('aria-checked')).toBe('true')
+    expect((screen.getByRole('button', { name: 'Сохранить кнопку Кнопка' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('button save error is shown on the message screen', async () => {
+    replies['PUT /api/texts/btn'] = json(400, { error: 'invalid', message: 'текст не может быть пустым' })
+    await open('/texts?key=withBtn')
+    edit(screen.getByRole('textbox', { name: 'Текст кнопки Кнопка' }), ' ')
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить кнопку Кнопка' }))
+    await flush()
+    expect(screen.getByRole('alert').textContent).toBe('текст не может быть пустым')
+  })
+
+  it('no buttons card without buttons; a button edits its own style', async () => {
     await open('/texts?key=a')
-    expect((screen.getByRole('textbox', { name: 'Текст кнопки' }) as HTMLInputElement).disabled).toBe(true)
-    for (const radio of screen.getAllByRole('radio')) expect((radio as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(NOT_WIRED)).toBeTruthy()
+    expect(screen.queryByRole('radiogroup')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Кнопка/ }))
+    expect(screen.getByRole('radiogroup', { name: 'Стиль кнопки Кнопка' })).toBeTruthy()
+  })
+
+  it('hint tells the truth about unknown variables', async () => {
+    await open('/texts?key=a')
+    expect(kids.editor.hint).toContain('Неизвестная переменная не сохранится')
   })
 
   it('load failure is reported', async () => {

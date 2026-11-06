@@ -17,7 +17,7 @@ func ReminderMessage(ctx context.Context, c *content.Provider, kind string, expi
 		key = "reminder.day"
 	}
 	return c.Text(ctx, key, map[string]string{"expireAt": formatTime(expireAt)}), keyboard.Inline(keyboard.Row(
-		keyboard.Callback(c.Button(ctx, "button.renew"), routePay).Style(keyboard.StyleSuccess),
-		keyboard.Copy(c.Button(ctx, "button.subscription"), subURL).Style(keyboard.StylePrimary),
+		callbackButton(ctx, c, "button.renew", routePay, keyboard.StyleSuccess),
+		copyButton(ctx, c, "button.subscription", subURL, keyboard.StylePrimary),
 	))
 }

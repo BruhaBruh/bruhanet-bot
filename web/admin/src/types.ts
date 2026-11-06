@@ -77,6 +77,10 @@ export interface TextItem {
   body: string
   overridden: boolean
   vars: TextVar[]
+  when: string
+  buttons: string[]
+  route?: string
+  style: string
 }
 
 export interface Settings {
