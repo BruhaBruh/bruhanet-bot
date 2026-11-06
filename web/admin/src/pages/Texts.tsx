@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Input, MessageBubble, SearchField, Spinner, toast } from '@/ui'
+import { Button, Card, Input, MessageBubble, SearchField, Spinner, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
@@ -74,7 +74,7 @@ export default function Texts() {
       return rest
     })
   const patch = (key: string, body: string, style?: string) =>
-    setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default, style: style ?? i.style } : i)))
+    setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default, inactive: false, problem: undefined, style: style ?? i.style } : i)))
   const styleOf = (i: TextItem) => styleDrafts[i.key] ?? i.style
   // Кнопки сообщения; у самой кнопки — она же: стиль меняется здесь.
   const buttons = !cur ? [] : items.filter((i) => (cur.kind === 'button' ? i.key === cur.key : cur.buttons.includes(i.key)))
@@ -184,6 +184,7 @@ export default function Texts() {
                         <span className="font-medium">{i.title}</span>
                         <span className="caption-1 truncate font-mono opacity-75">{i.key}</span>
                       </span>
+                      {i.inactive && <StatusTag tone="destructive">не применяется</StatusTag>}
                       {(i.overridden || dirty) && (
                         <span
                           role="img"
@@ -277,6 +278,12 @@ export default function Texts() {
               ))}
               <span className="footnote text-text-secondary">Действие кнопки задаётся в коде бота. Подпись и стиль общие для всех сообщений с этой кнопкой.</span>
             </Card>
+          )}
+
+          {cur.inactive && (
+            <p className="admin-body rounded-lg bg-destructive-tint px-4 py-3 text-destructive-strong">
+              Сохранённый текст не применяется, пользователи видят стандартный: {cur.problem}
+            </p>
           )}
 
           {failure?.key === cur.key && (

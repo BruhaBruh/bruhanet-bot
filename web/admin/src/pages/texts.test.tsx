@@ -56,6 +56,7 @@ beforeEach(() => {
       text('a', 'Текст A', 'тело A'),
       text('b', 'Текст B', 'тело B'),
       text('c', 'Текст C', 'своё', { default: 'станд', overridden: true }),
+      text('x', 'Текст X', 'сломано', { default: 'станд', overridden: false, inactive: true, problem: 'тег не закрыт' }),
       text('v', 'С переменной', 'Привет, {{.name}}! <i>x</i>', {
         vars: [{ name: 'html', description: 'Разметка', sample: '<b>жир</b>', raw: true, max: 100 }],
       }),
@@ -129,6 +130,23 @@ describe('Texts', () => {
     expect(kids.editor.value).toBe('станд')
     expect(list().queryByRole('img', { name: 'Изменено' })).toBeNull()
     expect((btn('Вернуть стандартный текст') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('inactive override: tag in the list, banner with the reason; saving clears both', async () => {
+    replies['PUT /api/texts/x'] = json(204)
+    await open('/texts?key=x')
+    expect(list().getAllByText('не применяется')).toHaveLength(1)
+    expect(screen.getByText(/^Сохранённый текст не применяется/).textContent).toBe('Сохранённый текст не применяется, пользователи видят стандартный: тег не закрыт')
+    act(() => kids.editor.onChange('починено'))
+    fireEvent.click(btn('Сохранить'))
+    await flush()
+    expect(screen.queryByText(/^Сохранённый текст не применяется/)).toBeNull()
+    expect(list().queryByText('не применяется')).toBeNull()
+  })
+
+  it('no banner for a healthy override', async () => {
+    await open('/texts?key=c')
+    expect(screen.queryByText(/^Сохранённый текст не применяется/)).toBeNull()
   })
 
   it('reset is disabled when the text is not overridden', async () => {

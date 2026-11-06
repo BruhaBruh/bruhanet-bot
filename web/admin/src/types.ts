@@ -78,6 +78,8 @@ export interface TextItem {
   default: string
   body: string
   overridden: boolean
+  inactive?: boolean
+  problem?: string
   vars: TextVar[]
   when: string
   buttons: string[]
