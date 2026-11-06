@@ -17,7 +17,7 @@ const s = {
   bank: 'Банк',
   comments: ['На кофе'],
   supportUrl: 'https://t.me/x',
-  reminderTime: '12:00',
+  reminderTimes: ['12:00'],
   advanceLimit: 3,
   advanceHours: 24,
   reminderWeekDays: 7,
@@ -69,14 +69,42 @@ describe('Settings', () => {
 
   it('bot card sends numbers and time', async () => {
     await open()
-    edit(field('Время напоминаний'), '09:30')
+    edit(field('Время напоминания'), '09:30')
     edit(field('Лимит авансов'), '0')
     edit(field('Длина аванса'), '48')
     edit(field('Первое напоминание'), '10')
     edit(field('Второе напоминание'), '12')
     fireEvent.click(btn('Сохранить изменения'))
     await flush()
-    expect(puts()[0].body).toMatchObject({ reminderTime: '09:30', advanceLimit: 0, advanceHours: 48, reminderWeekDays: 10, reminderDayHours: 12 })
+    expect(puts()[0].body).toMatchObject({ reminderTimes: ['09:30'], advanceLimit: 0, advanceHours: 48, reminderWeekDays: 10, reminderDayHours: 12 })
+  })
+
+  it('reminder times: add, remove, sorted on save, duplicates and empties refused', async () => {
+    await open()
+    expect(btn('Удалить время').disabled).toBe(true) // последнее не удалить
+    fireEvent.click(btn('Добавить время'))
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toEqual([])
+    expect(screen.getByRole('alert').textContent).toContain('Заполните все времена')
+    edit(screen.getAllByLabelText('Время напоминания')[1], '12:00')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toEqual([])
+    expect(screen.getByRole('alert').textContent).toContain('12:00 указано дважды')
+    edit(screen.getAllByLabelText('Время напоминания')[1], '09:00')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()[0].body).toMatchObject({ reminderTimes: ['09:00', '12:00'] })
+  })
+
+  it('reminder times: at most six', async () => {
+    await open()
+    for (let i = 0; i < 5; i++) fireEvent.click(btn('Добавить время'))
+    expect(screen.getAllByLabelText('Время напоминания')).toHaveLength(6)
+    expect(btn('Добавить время').disabled).toBe(true)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Удалить время' })[0])
+    expect(btn('Добавить время').disabled).toBe(false)
   })
 
   it('custom variables: edit, add, remove, duplicate refused', async () => {

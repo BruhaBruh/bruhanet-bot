@@ -24,6 +24,7 @@ const (
 	fallbackReminderTime = "12:00"
 	maxSupportURL        = 256 // texts: Max общей переменной supportUrl
 	maxVars              = 50
+	maxReminderTimes     = 6
 )
 
 var (
@@ -38,11 +39,11 @@ type Settings struct {
 	Comments   []string    `json:"comments"` // комментарии к переводу
 	SupportURL string      `json:"supportUrl"`
 
-	ReminderTime     string `json:"reminderTime"`     // время напоминаний по МСК, HH:MM
-	AdvanceLimit     int    `json:"advanceLimit"`     // сколько неоплаченных авансов подряд допустимо; 0 — авансов нет
-	AdvanceHours     int    `json:"advanceHours"`     // длина аванса
-	ReminderWeekDays int    `json:"reminderWeekDays"` // порог «скоро закончится»
-	ReminderDayHours int    `json:"reminderDayHours"` // порог «в течение суток»
+	ReminderTimes    []string `json:"reminderTimes"`    // времена напоминаний по МСК, HH:MM: 1..maxReminderTimes, без повторов, по возрастанию
+	AdvanceLimit     int      `json:"advanceLimit"`     // сколько неоплаченных авансов подряд допустимо; 0 — авансов нет
+	AdvanceHours     int      `json:"advanceHours"`     // длина аванса
+	ReminderWeekDays int      `json:"reminderWeekDays"` // порог «скоро закончится»
+	ReminderDayHours int      `json:"reminderDayHours"` // порог «в течение суток»
 
 	Vars map[string]string `json:"vars"` // свои переменные текстов: имя → значение
 }
@@ -55,7 +56,7 @@ func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
 		Comments:   []string{"На кофе", "Перекус", "Одолжил", "Вернул долг"},
 		SupportURL: supportURL,
 
-		ReminderTime:     fallbackReminderTime,
+		ReminderTimes:    []string{fallbackReminderTime},
 		AdvanceLimit:     3,
 		AdvanceHours:     24,
 		ReminderWeekDays: 7,
@@ -73,23 +74,34 @@ func (s Settings) TextVars() map[string]string {
 	return out
 }
 
-// WithCron берёт время напоминаний по умолчанию из NOTIFICATION_CRON.
-// Выражение не вида «M H * * *» — остаётся запасное время и непустое предупреждение для лога.
+// WithCron берёт времена напоминаний по умолчанию из NOTIFICATION_CRON: «M h1,h2,… * * *» с одной минутой.
+// Другое выражение — остаётся запасное время и непустое предупреждение для лога.
 func (s Settings) WithCron(spec string) (Settings, string) {
+	fallback := func() (Settings, string) {
+		return s, "NOTIFICATION_CRON is not a daily expression with fixed minute, using " + strings.Join(s.ReminderTimes, ",")
+	}
 	f := strings.Fields(spec)
 	if len(f) != 5 || f[2] != "*" || f[3] != "*" || f[4] != "*" {
-		return s, "NOTIFICATION_CRON is not a daily expression, using " + s.ReminderTime
+		return fallback()
 	}
-	hours := strings.Split(f[1], ",")
-	minute, merr := strconv.Atoi(f[0])
-	hour, herr := strconv.Atoi(hours[0])
-	if merr != nil || herr != nil || minute < 0 || minute > 59 || hour < 0 || hour > 23 {
-		return s, "NOTIFICATION_CRON is not a daily expression, using " + s.ReminderTime
+	minute, err := strconv.Atoi(f[0])
+	if err != nil || minute < 0 || minute > 59 {
+		return fallback()
 	}
-	s.ReminderTime = fmt.Sprintf("%02d:%02d", hour, minute)
-	if len(hours) > 1 {
-		return s, "NOTIFICATION_CRON has several hours, only the first is used: " + s.ReminderTime
+	var times []string
+	for h := range strings.SplitSeq(f[1], ",") {
+		hour, err := strconv.Atoi(h)
+		if err != nil || hour < 0 || hour > 23 {
+			return fallback()
+		}
+		times = append(times, fmt.Sprintf("%02d:%02d", hour, minute))
 	}
+	slices.Sort(times)
+	times = slices.Compact(times)
+	if len(times) > maxReminderTimes {
+		return fallback()
+	}
+	s.ReminderTimes = times
 	return s, ""
 }
 
@@ -165,7 +177,23 @@ func Merge(def Settings, raw map[string][]byte) (Settings, error) {
 		return nil
 	})
 	apply("supportUrl", str(&def.SupportURL))
-	apply("reminderTime", str(&def.ReminderTime))
+	// прежний ключ — одно время; reminderTimes, если есть, главнее
+	apply("reminderTime", func(b []byte) error {
+		var v string
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		def.ReminderTimes = []string{v}
+		return nil
+	})
+	apply("reminderTimes", func(b []byte) error {
+		var v []string
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		def.ReminderTimes = v
+		return nil
+	})
 	num := func(dst *int) func([]byte) error {
 		return func(b []byte) error { return json.Unmarshal(b, dst) }
 	}
@@ -217,9 +245,7 @@ func (s Settings) Validate() error {
 	} else if utf8.RuneCountInString(s.SupportURL) > maxSupportURL {
 		p = append(p, fmt.Sprintf("ссылка поддержки должна быть не длиннее %d символов", maxSupportURL))
 	}
-	if !clockTime.MatchString(s.ReminderTime) {
-		p = append(p, "время напоминаний должно быть в формате ЧЧ:ММ")
-	}
+	p = append(p, s.reminderTimeProblems()...)
 	if s.AdvanceLimit < 0 || s.AdvanceLimit > 100 {
 		p = append(p, "лимит авансов должен быть от 0 до 100")
 	}
@@ -247,4 +273,27 @@ func (s Settings) Validate() error {
 		}
 	}
 	return problemsErr(p)
+}
+
+func (s Settings) reminderTimeProblems() []string {
+	var p []string
+	if n := len(s.ReminderTimes); n < 1 || n > maxReminderTimes {
+		p = append(p, fmt.Sprintf("времён напоминаний должно быть от 1 до %d", maxReminderTimes))
+	}
+	seen := map[string]bool{}
+	for _, t := range s.ReminderTimes {
+		switch {
+		case !clockTime.MatchString(t):
+			p = append(p, fmt.Sprintf("время напоминаний «%s» должно быть в формате ЧЧ:ММ", t))
+		case seen[t]:
+			p = append(p, fmt.Sprintf("время напоминаний %s повторяется", t))
+		}
+		seen[t] = true
+	}
+	return p
+}
+
+// SortedReminderTimes — времена по возрастанию (копия): порядок в БД не важен.
+func (s Settings) SortedReminderTimes() []string {
+	return slices.Sorted(slices.Values(s.ReminderTimes))
 }

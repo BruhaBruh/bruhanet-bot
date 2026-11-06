@@ -91,7 +91,7 @@ export interface Settings {
   bank: string
   comments: string[]
   supportUrl: string
-  reminderTime: string
+  reminderTimes: string[]
   advanceLimit: number
   advanceHours: number
   reminderWeekDays: number

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const botKeys = `"reminderTime":"09:30","advanceLimit":2,"advanceHours":48,"reminderWeekDays":5,"reminderDayHours":12`
+const botKeys = `"reminderTimes":["18:00","09:30"],"advanceLimit":2,"advanceHours":48,"reminderWeekDays":5,"reminderDayHours":12`
 
 const goodSettings = `{"prices":{"1":200,"3":500},"phone":"+7 111","bank":"Сбер","comments":[" Кофе ","Чай"],"supportUrl":"https://t.me/new",` + botKeys + `}`
 
@@ -44,7 +44,7 @@ func TestSettingsPutThenGet(t *testing.T) {
 		Comments   []string
 		SupportURL string
 
-		ReminderTime     string
+		ReminderTimes    []string
 		AdvanceLimit     int
 		AdvanceHours     int
 		ReminderWeekDays int
@@ -53,7 +53,7 @@ func TestSettingsPutThenGet(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.ReminderTime != "09:30" || out.AdvanceLimit != 2 || out.AdvanceHours != 48 || out.ReminderWeekDays != 5 || out.ReminderDayHours != 12 {
+	if strings.Join(out.ReminderTimes, ",") != "09:30,18:00" || out.AdvanceLimit != 2 || out.AdvanceHours != 48 || out.ReminderWeekDays != 5 || out.ReminderDayHours != 12 {
 		t.Fatalf("bot keys: %s", w.Body)
 	}
 	if out.Prices["3"] != 500 || len(out.Prices) != 2 || out.Phone != "+7 111" || out.Bank != "Сбер" ||

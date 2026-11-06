@@ -90,6 +90,7 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	for i, c := range in.Comments {
 		in.Comments[i] = strings.TrimSpace(c)
 	}
+	in.ReminderTimes = in.SortedReminderTimes()
 	if in.Vars == nil {
 		in.Vars = map[string]string{} // null в БД Merge считает битым значением
 	}
@@ -111,7 +112,7 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	vals := map[string][]byte{}
 	for k, v := range map[string]any{
 		"prices": in.Prices, "phone": in.Phone, "bank": in.Bank, "comments": in.Comments, "supportUrl": in.SupportURL,
-		"reminderTime": in.ReminderTime, "advanceLimit": in.AdvanceLimit, "advanceHours": in.AdvanceHours,
+		"reminderTimes": in.ReminderTimes, "advanceLimit": in.AdvanceLimit, "advanceHours": in.AdvanceHours,
 		"reminderWeekDays": in.ReminderWeekDays, "reminderDayHours": in.ReminderDayHours,
 		"vars": in.Vars,
 	} {

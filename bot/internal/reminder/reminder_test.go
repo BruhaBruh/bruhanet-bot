@@ -153,6 +153,18 @@ func TestReminderDedup(t *testing.T) {
 	}
 }
 
+// Несколько запусков в день (напоминания в 12:00, 15:00, 18:00): юзер получает одно напоминание на дату окончания.
+func TestSeveralRunsPerDayDoNotDoubleSend(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(userID, now.Add(3*24*time.Hour))
+	for _, h := range []time.Duration{0, 3 * time.Hour, 6 * time.Hour} {
+		e.at(now.Add(h)).Run(t.Context())
+	}
+	if len(e.n.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(e.n.calls))
+	}
+}
+
 func TestAfterRenewal(t *testing.T) {
 	e := newEnv(t)
 	e.rw.AddUser(userID, now.Add(3*24*time.Hour))

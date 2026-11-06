@@ -143,7 +143,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	done := make(chan struct{})
 
 	remJob := &reminderJob{c: c, run: func() { rem.Run(stlog.Wrap(runCtx, logger, "component", "reminder")) }}
-	if err = remJob.reschedule(cnt.Settings(context.Background()).ReminderTime); err != nil {
+	if err = remJob.reschedule(cnt.Settings(context.Background()).SortedReminderTimes()); err != nil {
 		cancelRun()
 		return nil, errors.Join(errors.New("failed to schedule reminders"), err)
 	}
@@ -264,8 +264,8 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		app.WithComponent("reminder", lifecycle.New(
 			func(context.Context) error {
 				c.Start()
-				go remJob.follow(stlog.Wrap(runCtx, logger, "component", "reminder"), contentTTL, func(ctx context.Context) string {
-					return cnt.Settings(ctx).ReminderTime
+				go remJob.follow(stlog.Wrap(runCtx, logger, "component", "reminder"), contentTTL, func(ctx context.Context) []string {
+					return cnt.Settings(ctx).SortedReminderTimes()
 				})
 				return nil
 			},
@@ -285,36 +285,43 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	), nil
 }
 
-// reminderJob держит задачу напоминаний на времени из настроек.
+// reminderJob держит по задаче cron на каждое время напоминаний из настроек.
 type reminderJob struct {
 	c   *cron.Cron
 	run func()
-	id  cron.EntryID
-	at  string
+	ids []cron.EntryID
+	at  []string
 }
 
-// reschedule ставит задачу на at (HH:MM по зоне cron); при ошибке прежняя задача остаётся.
-func (j *reminderJob) reschedule(at string) error {
-	if at == j.at {
+// reschedule ставит задачи на times (HH:MM по зоне cron); при ошибке прежние задачи остаются.
+func (j *reminderJob) reschedule(times []string) error {
+	if slices.Equal(times, j.at) {
 		return nil
 	}
-	t, err := time.Parse("15:04", at)
-	if err != nil {
+	var ids []cron.EntryID
+	for _, at := range times {
+		t, err := time.Parse("15:04", at)
+		if err == nil {
+			var id cron.EntryID
+			if id, err = j.c.AddFunc(fmt.Sprintf("%d %d * * *", t.Minute(), t.Hour()), j.run); err == nil {
+				ids = append(ids, id)
+				continue
+			}
+		}
+		for _, id := range ids {
+			j.c.Remove(id)
+		}
 		return err
 	}
-	id, err := j.c.AddFunc(fmt.Sprintf("%d %d * * *", t.Minute(), t.Hour()), j.run)
-	if err != nil {
-		return err
+	for _, id := range j.ids {
+		j.c.Remove(id)
 	}
-	if j.id != 0 {
-		j.c.Remove(j.id)
-	}
-	j.id, j.at = id, at
+	j.ids, j.at = ids, slices.Clone(times)
 	return nil
 }
 
-// follow переставляет задачу, когда время в настройках изменилось.
-func (j *reminderJob) follow(ctx context.Context, every time.Duration, at func(context.Context) string) {
+// follow переставляет задачи, когда времена в настройках изменились.
+func (j *reminderJob) follow(ctx context.Context, every time.Duration, at func(context.Context) []string) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -323,14 +330,14 @@ func (j *reminderJob) follow(ctx context.Context, every time.Duration, at func(c
 			return
 		case <-t.C:
 			next := at(ctx)
-			if next == j.at {
+			if slices.Equal(next, j.at) {
 				continue
 			}
 			if err := j.reschedule(next); err != nil {
-				stlog.Error(ctx, "failed to reschedule reminders", "error", err, "time", next)
+				stlog.Error(ctx, "failed to reschedule reminders", "error", err, "times", next)
 				continue
 			}
-			stlog.Info(ctx, "reminders rescheduled", "time", next)
+			stlog.Info(ctx, "reminders rescheduled", "times", next)
 		}
 	}
 }

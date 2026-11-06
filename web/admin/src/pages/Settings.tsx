@@ -13,7 +13,7 @@ type Form = {
   bank: string
   comments: string[]
   supportUrl: string
-  reminderTime: string
+  reminderTimes: string[]
   advanceLimit: string
   advanceHours: string
   reminderWeekDays: string
@@ -29,7 +29,7 @@ const toForm = (s: S): Form => ({
   bank: s.bank,
   comments: [...s.comments],
   supportUrl: s.supportUrl,
-  reminderTime: s.reminderTime,
+  reminderTimes: [...s.reminderTimes],
   advanceLimit: String(s.advanceLimit),
   advanceHours: String(s.advanceHours),
   reminderWeekDays: String(s.reminderWeekDays),
@@ -61,6 +61,16 @@ function tariffsError(tariffs: Tariff[]): string {
 function varsError(vars: CustomVar[]): string {
   const dup = vars.map((v) => v.name.trim()).find((n, i, a) => a.indexOf(n) !== i)
   return dup === undefined ? '' : `Переменная ${dup || '(без имени)'} указана дважды`
+}
+
+const MAX_TIMES = 6
+
+// Времена напоминаний: от 1 до 6, заполнены, без повторов.
+function timesError(times: string[]): string {
+  if (times.length < 1) return 'Нужно хотя бы одно время напоминаний'
+  if (times.some((t) => !/^([01]\d|2[0-3]):[0-5]\d$/.test(t))) return 'Заполните все времена напоминаний'
+  const dup = times.find((t, i, a) => a.indexOf(t) !== i)
+  return dup === undefined ? '' : `Время напоминаний ${dup} указано дважды`
 }
 
 const removeButton = 'w-10 flex-none px-0'
@@ -111,7 +121,7 @@ export default function Settings() {
   async function save() {
     if (inFlight.current || !form) return
     setProblems([])
-    const invalid = tariffsError(form.tariffs) || varsError(form.vars)
+    const invalid = tariffsError(form.tariffs) || timesError(form.reminderTimes) || varsError(form.vars)
     setError(invalid)
     if (invalid) return
     const body: S = {
@@ -120,7 +130,7 @@ export default function Settings() {
       bank: form.bank,
       comments: form.comments,
       supportUrl: form.supportUrl,
-      reminderTime: form.reminderTime,
+      reminderTimes: [...form.reminderTimes].sort(),
       advanceLimit: Number(form.advanceLimit),
       advanceHours: Number(form.advanceHours),
       reminderWeekDays: Number(form.reminderWeekDays),
@@ -250,8 +260,35 @@ export default function Settings() {
       </Card>
 
       <Card title="Бот" aside="применяется без перезапуска">
+        <div className="flex flex-col gap-2.5">
+          <span className="admin-label text-text-secondary">Время напоминаний</span>
+          {form.reminderTimes.map((t, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                className="min-w-0 max-w-60 grow"
+                type="time"
+                aria-label="Время напоминания"
+                value={t}
+                onChange={(e) => patch({ reminderTimes: form.reminderTimes.map((x, j) => (j === i ? e.target.value : x)) })}
+              />
+              <Button
+                variant="gray"
+                icon="trash"
+                className={removeButton}
+                aria-label="Удалить время"
+                disabled={form.reminderTimes.length <= 1}
+                onClick={() => patch({ reminderTimes: form.reminderTimes.filter((_, j) => j !== i) })}
+              />
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="tinted" icon="plus" disabled={form.reminderTimes.length >= MAX_TIMES} onClick={() => patch({ reminderTimes: [...form.reminderTimes, ''] })}>
+              Добавить время
+            </Button>
+            <span className="text-text-secondary">По Москве, до {MAX_TIMES} раз в день; одно напоминание на дату окончания</span>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-3">
-          <Input className="min-w-0 grow basis-60" label="Время напоминаний" type="time" value={form.reminderTime} onChange={(e) => patch({ reminderTime: e.target.value })} hint="По Москве, раз в день" />
           <Input className="min-w-0 grow basis-60" label="Первое напоминание" type="number" min={1} max={60} after="дн. до конца" value={form.reminderWeekDays} onChange={(e) => patch({ reminderWeekDays: e.target.value })} />
           <Input className="min-w-0 grow basis-60" label="Второе напоминание" type="number" min={1} after="ч. до конца" value={form.reminderDayHours} onChange={(e) => patch({ reminderDayHours: e.target.value })} />
           <Input className="min-w-0 grow basis-60" label="Длина аванса" type="number" min={1} max={720} after="ч." value={form.advanceHours} onChange={(e) => patch({ advanceHours: e.target.value })} hint="Доступ на время проверки платежа" />
