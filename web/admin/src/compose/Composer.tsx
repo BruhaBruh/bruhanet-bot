@@ -110,6 +110,7 @@ export function Composer(props: ComposerProps) {
   const len = worstLen(text, globals)
   const limit = photo ? 1024 : 4096
   const over = len - limit
+  const hasVars = /\{\{\s*\.[^{}\s]+\s*\}\}/.test(text)
   const blank = visibleText(text).trim() === ''
   const valid = !uploading && over <= 0 && (!!photo || !blank)
   // Для кода после await: файл из уже открытого окна выбора может прийти и под busy.
@@ -206,7 +207,7 @@ export function Composer(props: ComposerProps) {
       error={
         over <= 0
           ? undefined
-          : `${photo ? 'С фото текст становится подписью — не больше 1024 символов' : 'Текст не должен быть длиннее 4096 символов'}. Сократите на ${formatCount(over)}.`
+          : `${photo ? 'С фото текст становится подписью — не больше 1024 символов' : 'Текст не должен быть длиннее 4096 символов'}${hasVars ? ' (с самыми длинными значениями переменных)' : ''}. Сократите на ${formatCount(over)}.`
       }
       hint="Жирный, курсив, подчёркнутый, зачёркнутый, код в строке, блок кода, спойлер, цитата и ссылки — как в Telegram. Длина считается с самыми длинными значениями переменных."
     />

@@ -108,6 +108,16 @@ describe('Composer', () => {
     expect(disabled(btn(SEND))).toBe(false)
   })
 
+  it('limit message mentions substitution only when the text has variables', async () => {
+    replies['GET /api/texts'] = [json(200, { items: [], globals })]
+    const { r, setText, setPhoto } = await setup()
+    await setPhoto('file1')
+    await setText('a'.repeat(1025))
+    expect(r.container.textContent).not.toContain('с самыми длинными значениями переменных)')
+    await setText('a'.repeat(1000) + '{{.name}}')
+    expect(r.container.textContent).toContain('1024 символов (с самыми длинными значениями переменных). Сократите на 40.')
+  })
+
   it('empty text without photo cannot be sent, photo alone can', async () => {
     const { setText, setPhoto, btn } = await setup()
     await setText(' ')
