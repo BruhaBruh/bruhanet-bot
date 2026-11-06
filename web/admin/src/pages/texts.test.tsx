@@ -161,7 +161,7 @@ describe('Texts', () => {
     await open('/texts?key=v')
     fireEvent.click(btn('{{.html}}'))
     expect(kids.inserted).toEqual(['{{.html}}'])
-    expect(btn('{{.name}}').title).toBe('Имя — например, Иван')
+    expect(btn('{{.name}}').hasAttribute('title')).toBe(false)
 
     const p = within(preview())
     expect(preview().querySelector('i')!.textContent).toBe('x')
