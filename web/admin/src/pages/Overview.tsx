@@ -44,7 +44,7 @@ function revenuePaths() {
 export default function Overview() {
   const navigate = useNavigate()
   const [paths] = useState(revenuePaths)
-  const users = useGet<{ count: number }>('/api/broadcasts/recipients')
+  const users = useGet<{ total: number }>('/api/users')
   const promos = useGet<{ items: Promo[] }>('/api/promos?status=active')
   const week = useGet<PaymentsPage>(paths.week)
   const prevWeek = useGet<PaymentsPage>(paths.prevWeek)
@@ -60,7 +60,7 @@ export default function Overview() {
           icon="users"
           iconColor="blue"
           label="Пользователи"
-          value={users ? formatCount(users.count) : DASH}
+          value={users ? formatCount(users.total) : DASH}
           delta={users ? DASH : undefined}
           deltaTone="neutral"
           hint={users ? 'за 7 дней' : undefined}

@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { BOT_NAME, OWNER_USERNAME } from '@/brand'
 import { cn } from '@/lib/utils'
-import { NOT_WIRED } from '@/lib/not-wired'
 import { Avatar, Button, Card, Dialog, Icon, Input, MessageBubble, Radio, RadioGroup, Switch, toast } from '@/ui'
-import { ApiError, get, post } from '../api'
+import { ApiError, get, post, put } from '../api'
 import { previewHtml, renderPreview, varLabel, visibleText, worstLen } from '../editor/serialize'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
@@ -11,6 +10,7 @@ import { formatCount, plural } from '../format'
 import type { Audience, Broadcast, BroadcastButton, DirectMessage, TextVar } from '../types'
 import { AUDIENCES, audienceLabel, daysValid, DEFAULT_DAYS, MAX_DAYS, MIN_DAYS } from './audience'
 import { PhotoPicker } from './PhotoPicker'
+import { formatSchedule, isoToMskLocal, mskLocalNow, scheduleInFuture, scheduleShapeOk } from './schedule'
 
 export interface ComposerDraft {
   text: string
@@ -19,11 +19,20 @@ export interface ComposerDraft {
   audienceDays?: number | null
   silent?: boolean
   buttons?: BroadcastButton[]
+  scheduledAt?: string | null // ISO
 }
 
 // broadcast — всем из панели; direct — одному юзеру (userId)
 export type ComposerProps =
-  | { mode: 'broadcast'; initial?: ComposerDraft | null; onSent?(b: Broadcast): void }
+  | {
+      mode: 'broadcast'
+      initial?: ComposerDraft | null
+      // открыта существующая рассылка: черновик (автосохранение) или запланированная («Сохранить изменения»)
+      broadcastId?: string
+      status?: 'draft' | 'scheduled'
+      onSent?(b: Broadcast): void
+      onSaved?(b: Broadcast): void
+    }
   | { mode: 'direct'; userId: number; onSent?(m: DirectMessage): void }
 
 type Counts = Partial<Record<Audience, number>>
@@ -52,20 +61,21 @@ function buttonsProblem(buttons: BroadcastButton[]): { text: string; warn: boole
 const note = 'footnote text-text-secondary'
 const separator = 'shadow-[inset_0_-0.5px_0_var(--separator)]'
 
-const NotWiredHint = () => <p className={cn(note, 'py-2')}>{NOT_WIRED}</p>
-
-function Toggle({ title, subtitle, last, checked, onChange, disabled }: { title: string; subtitle: string; last?: boolean; checked?: boolean; onChange?: (v: boolean) => void; disabled?: boolean }) {
-  const wired = !!onChange
+function Toggle({ title, subtitle, last, checked, onChange, disabled }: { title: string; subtitle: string; last?: boolean; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <div className={cn('flex min-h-14 items-center gap-3', !last && separator)} title={wired ? undefined : NOT_WIRED}>
+    <div className={cn('flex min-h-14 items-center gap-3', !last && separator)}>
       <div className="flex grow flex-col">
         <span>{title}</span>
         <span className={note}>{subtitle}</span>
       </div>
-      <Switch checked={checked} onChange={onChange} disabled={!wired || disabled} aria-label={title} />
+      <Switch checked={checked} onChange={onChange} disabled={disabled} aria-label={title} />
     </div>
   )
 }
+
+const AUTOSAVE_MS = 1500
+
+const savedTime = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 // Все аудитории сразу (expiring — за days дней); undefined — не удалось получить
 const fetchCounts = (days: string) =>
@@ -85,6 +95,8 @@ export function Composer(props: ComposerProps) {
   const { mode } = props
   const isBroadcast = mode === 'broadcast'
   const initial = props.mode === 'broadcast' ? props.initial : undefined
+  const existing = props.mode === 'broadcast' ? props.broadcastId : undefined
+  const scheduledEdit = props.mode === 'broadcast' && props.status === 'scheduled'
   const [text, setText] = useState(initial?.text ?? '')
   const [photo, setPhoto] = useState(initial?.photo)
   const [photoUrl, setPhotoUrl] = useState<string>()
@@ -94,6 +106,8 @@ export function Composer(props: ComposerProps) {
   const [audience, setAudience] = useState<Audience>(initial?.audience ?? 'all')
   const [buttons, setButtons] = useState<BroadcastButton[]>(initial?.buttons ?? [])
   const [silent, setSilent] = useState(initial?.silent ?? false)
+  const [later, setLater] = useState(scheduledEdit || !!initial?.scheduledAt)
+  const [at, setAt] = useState(initial?.scheduledAt ? isoToMskLocal(initial.scheduledAt) : '')
   const [days, setDays] = useState(initial?.audienceDays ? String(initial.audienceDays) : DEFAULT_DAYS)
   // null — грузится, undefined — не удалось получить
   const [counts, setCounts] = useState<Counts | null | undefined>(null)
@@ -108,6 +122,7 @@ export function Composer(props: ComposerProps) {
   const inFlight = useRef(false)
 
   const daysOk = daysValid(days)
+  const atOk = !later || scheduleInFuture(at)
   useEffect(() => {
     if (isBroadcast) void fetchCounts(daysOk ? days : '').then(setCounts)
   }, [isBroadcast, days, daysOk])
@@ -148,6 +163,14 @@ export function Composer(props: ComposerProps) {
     draftChanged()
     setSilent(next)
   }
+  function changeLater(next: boolean) {
+    draftChanged()
+    setLater(next)
+  }
+  function changeAt(next: string) {
+    draftChanged()
+    setAt(next)
+  }
   function changePhoto(next?: string, url?: string) {
     draftChanged()
     setPhoto(next)
@@ -161,7 +184,7 @@ export function Composer(props: ComposerProps) {
   const hasVars = /\{\{\s*\.[^{}\s]+\s*\}\}/.test(text)
   const blank = visibleText(text).trim() === ''
   const buttonsIssue = isBroadcast ? buttonsProblem(buttons) : undefined
-  const valid = !uploading && over <= 0 && (!!photo || !blank) && (audience !== 'expiring' || daysOk) && !buttonsIssue
+  const valid = !uploading && over <= 0 && (!!photo || !blank) && (audience !== 'expiring' || daysOk) && !buttonsIssue && (!isBroadcast || atOk) && (!scheduledEdit || (later && at !== ''))
   // Для кода после await: файл из уже открытого окна выбора может прийти и под busy.
   const validNow = useRef(valid)
   useEffect(() => {
@@ -172,7 +195,65 @@ export function Composer(props: ComposerProps) {
   const recipients = counts == null ? counts : (counts[audience] ?? null)
 
   const body = () => ({ text, ...(photo ? { photo } : {}) })
-  const broadcastBody = () => ({ ...body(), audience, audienceDays: audience === 'expiring' ? Number(days) : null, silent, buttons })
+  const broadcastBody = () => ({
+    ...body(),
+    audience,
+    audienceDays: audience === 'expiring' && daysOk ? Number(days) : null,
+    silent,
+    buttons,
+    scheduledAt: later ? at : '',
+  })
+
+  // Автосохранение черновика: PUT с id, выбранным клиентом (повторы и гонки не плодят строки). Запросы идут по цепочке,
+  // чтобы порядок сохранений совпадал с порядком правок. Открытый пустой редактор черновика не создаёт — только правка.
+  const draftId = useRef(existing ?? crypto.randomUUID())
+  const draftExists = useRef(!!existing)
+  const chain = useRef<Promise<void>>(Promise.resolve())
+  const finished = useRef(false) // отправлено: черновика больше нет
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const [saveFailed, setSaveFailed] = useState(false)
+  const draftPayload = () => {
+    const b = broadcastBody()
+    return { ...b, scheduledAt: later && scheduleShapeOk(at) ? at : '' }
+  }
+  const snapshot = isBroadcast && !scheduledEdit ? JSON.stringify(draftPayload()) : ''
+  const lastSaved = useRef(snapshot)
+  const pending = useRef<string>('')
+  const saveNow = useRef<() => void>(() => {})
+  const save = () => {
+    const snap = pending.current
+    if (!snap || snap === lastSaved.current || finished.current) return
+    pending.current = ''
+    const next = chain.current.then(async () => {
+      if (finished.current) return
+      try {
+        await put(`/api/broadcasts/${draftId.current}`, JSON.parse(snap))
+        draftExists.current = true
+        lastSaved.current = snap
+        setSavedAt(new Date())
+        setSaveFailed(false)
+      } catch {
+        setSaveFailed(true)
+      }
+    })
+    chain.current = next
+  }
+  useEffect(() => {
+    saveNow.current = save
+  })
+  useEffect(() => {
+    if (!snapshot || snapshot === lastSaved.current) return
+    pending.current = snapshot
+    const timer = setTimeout(() => saveNow.current(), AUTOSAVE_MS)
+    return () => clearTimeout(timer)
+  }, [snapshot])
+  // Ушли со страницы в пределах задержки — не теряем последние правки.
+  useEffect(
+    () => () => {
+      saveNow.current()
+    },
+    [],
+  )
 
   async function run(fn: () => Promise<void>) {
     if (inFlight.current) return
@@ -216,9 +297,26 @@ export function Composer(props: ComposerProps) {
     run(async () => {
       setConfirming(false)
       if (!valid) return
-      const { broadcast } = await post<{ broadcast: Broadcast }>('/api/broadcasts', { idempotencyKey: key.current, ...broadcastBody() })
+      // Отправка не должна гоняться с автосохранением: дожидаемся уже начатого и гасим отложенное.
+      pending.current = ''
+      await chain.current
+      const { broadcast } = await post<{ broadcast: Broadcast }>('/api/broadcasts', {
+        idempotencyKey: key.current,
+        ...(draftExists.current ? { draftId: draftId.current } : {}),
+        ...broadcastBody(),
+        scheduledAt: later ? at : undefined,
+      })
+      finished.current = true
       reset()
       if (props.mode === 'broadcast') props.onSent?.(broadcast)
+    })
+
+  // Правка запланированной рассылки: до старта, время обязательно.
+  const saveScheduled = () =>
+    run(async () => {
+      const { broadcast } = await put<{ broadcast: Broadcast }>(`/api/broadcasts/${existing}`, { ...broadcastBody(), scheduledAt: at })
+      toast('Изменения сохранены', { icon: 'check' })
+      if (props.mode === 'broadcast') props.onSaved?.(broadcast)
     })
 
   const direct = () =>
@@ -323,6 +421,15 @@ export function Composer(props: ComposerProps) {
       {error && (
         <p role="alert" className="text-destructive-strong">
           {error}
+        </p>
+      )}
+      {isBroadcast && !scheduledEdit && (
+        <p className={cn(note, saveFailed && 'text-destructive-strong')} role={saveFailed ? 'alert' : undefined}>
+          {saveFailed
+            ? 'Не удалось сохранить черновик — проверьте соединение, правки сохранятся при следующем изменении'
+            : savedAt
+              ? `Черновик сохранён · ${savedTime.format(savedAt)}`
+              : 'Черновик сохраняется автоматически'}
         </p>
       )}
     </>
@@ -473,20 +580,48 @@ export function Composer(props: ComposerProps) {
         </Card>
 
         <Card className="gap-0 px-5 py-1">
-          <Toggle title="Отправить позже" subtitle="по времени Екатеринбурга (UTC+5)" />
+          <Toggle
+            title="Отправить позже"
+            subtitle="по московскому времени (UTC+3)"
+            checked={later}
+            onChange={changeLater}
+            disabled={busy || scheduledEdit}
+          />
+          {later && (
+            <div className={cn('py-3', separator)}>
+              <Input
+                type="datetime-local"
+                aria-label="Дата и время отправки"
+                min={mskLocalNow()}
+                step={60}
+                disabled={busy}
+                value={at}
+                error={at !== '' && !atOk ? 'Это время уже прошло — выберите будущее' : undefined}
+                hint={at === '' ? 'Время по Москве' : undefined}
+                onChange={(e) => changeAt(e.target.value)}
+              />
+            </div>
+          )}
           <Toggle title="Без звука" subtitle="сообщение придёт без уведомления" last checked={silent} onChange={changeSilent} disabled={busy} />
-          <NotWiredHint />
         </Card>
 
         {messages}
 
         <div className="flex flex-wrap items-center justify-end gap-3">
           {sendTestButton}
-          <Button loading={busy} disabled={!valid || !recipients} onClick={askSend}>
-            {recipients == null
-              ? 'Отправить'
-              : `Отправить ${formatCount(recipients)} ${plural(recipients, ['получателю', 'получателям', 'получателям'])}`}
-          </Button>
+          {scheduledEdit ? (
+            <Button loading={busy} disabled={!valid} onClick={saveScheduled}>
+              Сохранить изменения
+            </Button>
+          ) : (
+            <Button loading={busy} disabled={!valid || !recipients} onClick={askSend}>
+              {later
+                ? 'Запланировать'
+                : recipients == null
+                  ? 'Отправить'
+                  : `Отправить ${formatCount(recipients)} ${plural(recipients, ['получателю', 'получателям', 'получателям'])}`}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -498,11 +633,15 @@ export function Composer(props: ComposerProps) {
 
       {confirming && (
         <Dialog
-          title="Отправить рассылку?"
-          message={`Сообщение сразу получат ${formatCount(count)} ${plural(count, ['пользователь', 'пользователя', 'пользователей'])} из группы «${audienceLabel(audience, days)}». ${silent ? 'Придёт без звука. ' : ''}Отменить отправленное нельзя.`}
+          title={later ? 'Запланировать рассылку?' : 'Отправить рассылку?'}
+          message={
+            later
+              ? `Сообщение получат ${formatCount(count)} ${plural(count, ['пользователь', 'пользователя', 'пользователей'])} из группы «${audienceLabel(audience, days)}» — ${formatSchedule(at)} по Москве. ${silent ? 'Придёт без звука. ' : ''}Получатели пересчитаются в момент отправки. До отправки рассылку можно изменить или отменить.`
+              : `Сообщение сразу получат ${formatCount(count)} ${plural(count, ['пользователь', 'пользователя', 'пользователей'])} из группы «${audienceLabel(audience, days)}». ${silent ? 'Придёт без звука. ' : ''}Отменить отправленное нельзя.`
+          }
           actions={[
             { label: 'Отмена', style: 'cancel', onClick: () => setConfirming(false) },
-            { label: 'Отправить', onClick: broadcast },
+            { label: later ? 'Запланировать' : 'Отправить', onClick: broadcast },
           ]}
         />
       )}

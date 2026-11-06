@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -49,6 +50,11 @@ func (s *server) readMessage(w http.ResponseWriter, r *http.Request, in any, m *
 	if !readJSONMax(w, r, in, maxTextBody, false) {
 		return false
 	}
+	return s.checkMessage(w, r, m)
+}
+
+// checkMessage проверяет уже прочитанный message.
+func (s *server) checkMessage(w http.ResponseWriter, r *http.Request, m *message) bool {
 	if strings.TrimSpace(m.Text) == "" {
 		m.Text = ""
 	}
@@ -162,6 +168,7 @@ func parseSchedule(v string, now time.Time) (*time.Time, error) {
 // broadcastIn — тело POST/PUT рассылки.
 type broadcastIn struct {
 	IdempotencyKey uuid.UUID `json:"idempotencyKey"`
+	DraftID        uuid.UUID `json:"draftId"` // отправка черновика
 	message
 	Audience     string             `json:"audience"` // пусто — all
 	AudienceDays *int               `json:"audienceDays"`
@@ -170,8 +177,16 @@ type broadcastIn struct {
 	ScheduledAt  string             `json:"scheduledAt"` // МСК, пусто — сразу
 }
 
+// readBroadcast читает и полностью проверяет тело отправки или правки запланированной; при ошибке сам отвечает 400.
 func (s *server) readBroadcast(w http.ResponseWriter, r *http.Request, in *broadcastIn) (*time.Time, bool) {
-	if !s.readMessage(w, r, in, &in.message) {
+	if !readJSONMax(w, r, in, maxTextBody, false) {
+		return nil, false
+	}
+	return s.checkBroadcast(w, r, in)
+}
+
+func (s *server) checkBroadcast(w http.ResponseWriter, r *http.Request, in *broadcastIn) (*time.Time, bool) {
+	if !s.checkMessage(w, r, &in.message) {
 		return nil, false
 	}
 	if in.Audience == "" {
@@ -193,6 +208,53 @@ func (s *server) readBroadcast(w http.ResponseWriter, r *http.Request, in *broad
 	return at, true
 }
 
+// Границы полей черновика: он может быть неполным и невалидным (идёт автосохранением), но не безразмерным.
+const (
+	draftButtonText = 200
+	draftButtonURL  = 2048
+)
+
+// normalizeDraft приводит тело черновика к хранимому виду. Содержимое не проверяется на правила отправки (они
+// сработают при отправке), но неизвестная аудитория, плохое время или слишком длинные поля — 400; кривые дни
+// у expiring просто не сохраняются.
+func normalizeDraft(in *broadcastIn) (*time.Time, error) {
+	if strings.TrimSpace(in.Text) == "" {
+		in.Text = ""
+	}
+	if in.Audience == "" {
+		in.Audience = broadcast.AudienceAll
+	}
+	if !slices.Contains(broadcast.Audiences, in.Audience) {
+		return nil, errors.New("неизвестная аудитория")
+	}
+	if in.Audience != broadcast.AudienceExpiring || in.AudienceDays == nil || *in.AudienceDays < broadcast.MinDays || *in.AudienceDays > broadcast.MaxDays {
+		in.AudienceDays = nil
+	}
+	if len(in.Buttons) > broadcast.MaxButtons {
+		return nil, errors.New("кнопок может быть не больше 3")
+	}
+	for i, b := range in.Buttons {
+		if utf8.RuneCountInString(b.Text) > draftButtonText || len(b.URL) > draftButtonURL {
+			return nil, errors.New("слишком длинная кнопка")
+		}
+		if !slices.Contains(texts.Styles, b.Style) {
+			in.Buttons[i].Style = ""
+		}
+	}
+	if len(in.Photo) > 512 {
+		return nil, errors.New("некорректное фото")
+	}
+	if in.ScheduledAt == "" {
+		return nil, nil //nolint:nilnil // у черновика времени может не быть
+	}
+	t, err := time.ParseInLocation(scheduleLayout, in.ScheduledAt, moscow)
+	if err != nil {
+		return nil, errors.New("время отправки: формат ГГГГ-ММ-ДДTЧЧ:ММ по московскому времени")
+	}
+	t = t.UTC()
+	return &t, nil
+}
+
 func (s *server) createBroadcast(w http.ResponseWriter, r *http.Request) {
 	var in broadcastIn
 	at, ok := s.readBroadcast(w, r, &in)
@@ -205,7 +267,7 @@ func (s *server) createBroadcast(w http.ResponseWriter, r *http.Request) {
 	}
 	b, created, err := s.Store.SendBroadcast(r.Context(),
 		model.BroadcastDraft{
-			IdempotencyKey: in.IdempotencyKey, Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
+			IdempotencyKey: in.IdempotencyKey, DraftID: in.DraftID, Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
 			Silent: in.Silent, Buttons: in.Buttons, ScheduledAt: at,
 		},
 		s.AdminID, s.Now())
@@ -240,26 +302,51 @@ func broadcastID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	return id, err == nil
 }
 
-// updateBroadcast меняет запланированную рассылку до старта; стартовала — 409.
+// updateBroadcast: черновик (или ещё не существующий id — создаётся) сохраняется без проверки содержимого, повтор
+// идемпотентен; запланированная проверяется полностью, как при отправке; стартовала или отменена — 409.
 func (s *server) updateBroadcast(w http.ResponseWriter, r *http.Request) {
 	id, ok := broadcastID(w, r)
 	if !ok {
 		return
 	}
 	var in broadcastIn
-	at, ok := s.readBroadcast(w, r, &in)
-	if !ok {
+	if !readJSONMax(w, r, &in, maxTextBody, false) {
 		return
 	}
-	if at == nil {
-		writeInvalid(w, "у запланированной рассылки нужно время отправки")
+	cur, err := s.Store.Broadcast(r.Context(), id)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		internal(w, r, "get broadcast", err)
 		return
 	}
-	b, err := s.Store.UpdateScheduled(r.Context(), id,
-		model.BroadcastDraft{
+	var b model.Broadcast
+	switch {
+	case errors.Is(err, store.ErrNotFound) || cur.Status == broadcast.StatusDraft:
+		at, nerr := normalizeDraft(&in)
+		if nerr != nil {
+			writeInvalid(w, nerr.Error())
+			return
+		}
+		b, err = s.Store.SaveDraft(r.Context(), id, model.BroadcastDraft{
 			Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
 			Silent: in.Silent, Buttons: in.Buttons, ScheduledAt: at,
 		})
+	case cur.Status == broadcast.StatusScheduled:
+		at, ok := s.checkBroadcast(w, r, &in)
+		if !ok {
+			return
+		}
+		if at == nil {
+			writeInvalid(w, "у запланированной рассылки нужно время отправки")
+			return
+		}
+		b, err = s.Store.UpdateScheduled(r.Context(), id, model.BroadcastDraft{
+			Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
+			Silent: in.Silent, Buttons: in.Buttons, ScheduledAt: at,
+		})
+	default:
+		writeError(w, http.StatusConflict, "locked")
+		return
+	}
 	if err != nil {
 		broadcastError(w, r, "update broadcast", err)
 		return

@@ -314,7 +314,7 @@ func TestBroadcastEditCancelGet(t *testing.T) {
 		"past":          {sched.ID, map[string]any{"text": "x", "scheduledAt": "2026-11-02T10:00"}, http.StatusBadRequest},
 		"empty text":    {sched.ID, map[string]any{"text": "", "scheduledAt": "2026-11-04T09:15"}, http.StatusBadRequest},
 		"already sent":  {sent.ID, map[string]any{"text": "x", "scheduledAt": "2026-11-04T09:15"}, http.StatusConflict},
-		"unknown":       {uuid.New(), map[string]any{"text": "x", "scheduledAt": "2026-11-04T09:15"}, http.StatusNotFound},
+		"unknown id":    {uuid.New(), map[string]any{"text": "x", "scheduledAt": "2026-11-04T09:15"}, http.StatusOK}, // PUT создаёт черновик
 		"bad id":        {"nope", map[string]any{"text": "x", "scheduledAt": "2026-11-04T09:15"}, http.StatusBadRequest},
 		"unclosed html": {sched.ID, map[string]any{"text": "<b>x", "scheduledAt": "2026-11-04T09:15"}, http.StatusBadRequest},
 	} {
@@ -509,5 +509,96 @@ func TestBroadcastPreviewSendButtons(t *testing.T) {
 	bad := jsonBody(t, map[string]any{"text": "x", "buttons": []any{map[string]any{"text": "a", "url": "javascript:1"}}})
 	if w := send(h, http.MethodPost, "/api/broadcasts/preview-send", c, bad); w.Code != http.StatusBadRequest {
 		t.Fatalf("bad: %d", w.Code)
+	}
+}
+
+func putBC(t *testing.T, h http.Handler, c string, id any, in map[string]any) (int, model.Broadcast) {
+	t.Helper()
+	w := send(h, http.MethodPut, "/api/broadcasts/"+fmt.Sprint(id), c, jsonBody(t, in))
+	var out bcResp
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	return w.Code, out.Broadcast
+}
+
+// Черновик создаётся по id клиента и принимает неполное содержимое; повтор — тот же черновик.
+func TestBroadcastDraftAutosave(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	id := uuid.New()
+	code, b := putBC(t, h, c, id, map[string]any{"text": "<b>не закрыто", "buttons": []any{map[string]any{"text": "", "url": "javascript:1", "style": "x"}}, "scheduledAt": "2020-01-01T10:00"})
+	if code != http.StatusOK || b.ID != id || b.Status != "draft" || b.Text != "<b>не закрыто" || len(b.Buttons) != 1 || b.Buttons[0].Style != "" ||
+		b.ScheduledAt == nil || b.Audience != "all" {
+		t.Fatalf("%d %+v", code, b)
+	}
+	if len(st.outbox) != 0 {
+		t.Fatal("a draft must not enqueue")
+	}
+	// пустой черновик допустим, второй PUT обновляет ту же строку
+	if code, b = putBC(t, h, c, id, map[string]any{"text": " "}); code != http.StatusOK || b.Text != "" || len(st.broadcasts) != 1 {
+		t.Fatalf("update: %d %+v n=%d", code, b, len(st.broadcasts))
+	}
+	// дни у expiring: корректные сохраняются, кривые и чужие — нет
+	if _, b = putBC(t, h, c, id, map[string]any{"audience": "expiring", "audienceDays": 5}); b.AudienceDays == nil || *b.AudienceDays != 5 {
+		t.Fatalf("days: %+v", b)
+	}
+	for _, in := range []map[string]any{{"audience": "expiring", "audienceDays": 99}, {"audience": "active", "audienceDays": 5}, {"audience": "expiring"}} {
+		if _, b = putBC(t, h, c, id, in); b.AudienceDays != nil {
+			t.Fatalf("%v: days kept: %+v", in, b)
+		}
+	}
+	for name, in := range map[string]map[string]any{
+		"audience":    {"audience": "trial"},
+		"four":        {"buttons": []any{map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}}},
+		"long button": {"buttons": []any{map[string]any{"text": strings.Repeat("я", 201)}}},
+		"long url":    {"buttons": []any{map[string]any{"url": "https://e.com/" + strings.Repeat("a", 2048)}}},
+		"bad time":    {"scheduledAt": "завтра"},
+		"photo":       {"photo": strings.Repeat("a", 513)},
+	} {
+		if code, _ := putBC(t, h, c, id, in); code != http.StatusBadRequest {
+			t.Errorf("%s: %d", name, code)
+		}
+	}
+	if w := send(h, http.MethodGet, "/api/broadcasts?status=draft", c, ""); !strings.Contains(w.Body.String(), id.String()) {
+		t.Fatalf("list: %s", w.Body)
+	}
+}
+
+// Отправка черновика: строка получает ключ, повтор — 200, другой ключ после ухода — 409, чужой id — 404.
+func TestBroadcastSendDraft(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	st.bcRecipients = []int64{5}
+	id := uuid.New()
+	putBC(t, h, c, id, map[string]any{"text": "черновик"})
+	key := uuid.New()
+	in := map[string]any{"idempotencyKey": key, "draftId": id, "text": "готово"}
+	code, b := postBC(t, h, c, in)
+	if code != http.StatusCreated || b.ID != id || b.Status != "sending" || b.Text != "готово" || len(st.broadcasts) != 1 {
+		t.Fatalf("send: %d %+v", code, b)
+	}
+	if code, again := postBC(t, h, c, in); code != http.StatusOK || again.ID != id {
+		t.Fatalf("repeat: %d %+v", code, again)
+	}
+	in["idempotencyKey"] = uuid.New()
+	if code, _ := postBC(t, h, c, in); code != http.StatusConflict {
+		t.Fatalf("new key after send: %d", code)
+	}
+	if code, _ := putBC(t, h, c, id, map[string]any{"text": "поздно"}); code != http.StatusConflict {
+		t.Fatalf("edit sent: %d", code)
+	}
+	if code, _ := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "draftId": uuid.New(), "text": "x"}); code != http.StatusNotFound {
+		t.Fatalf("unknown draft: %d", code)
+	}
+	// отправка черновика проверяется полностью
+	id2 := uuid.New()
+	putBC(t, h, c, id2, map[string]any{"text": "ok"})
+	if code, _ := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "draftId": id2, "text": "<b>x"}); code != http.StatusBadRequest {
+		t.Fatalf("invalid draft send: %d", code)
+	}
+	// ...и в расписание: черновик → запланированная → правка и отмена
+	code, sched := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "draftId": id2, "text": "ok", "scheduledAt": "2026-11-05T10:00"})
+	if code != http.StatusCreated || sched.Status != "scheduled" || sched.ID != id2 {
+		t.Fatalf("schedule draft: %d %+v", code, sched)
+	}
+	if code, _ := putBC(t, h, c, id2, map[string]any{"text": "ok2", "scheduledAt": "2026-11-05T11:00"}); code != http.StatusOK {
+		t.Fatalf("edit scheduled: %d", code)
 	}
 }

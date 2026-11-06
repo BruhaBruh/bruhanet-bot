@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { notWired } from '@/lib/not-wired'
 import { cn } from '@/lib/utils'
-import { Button, DataTable, Icon, RowAction, SegmentedControl, StatusTag, toast, type DataTableColumn } from '@/ui'
+import { Button, DataTable, Icon, RowAction, SegmentedControl, StatusTag, toast, type DataTableColumn, type Tone } from '@/ui'
 import { get } from '../api'
 import { audienceLabel } from '../compose/audience'
 import { visibleText } from '../editor/serialize'
@@ -17,6 +17,8 @@ const SEGMENTS = [
   { value: 'sent', label: 'Отправленные' },
   { value: 'draft', label: 'Черновики' },
 ]
+// вкладка → фильтр статусов на сервере; «Отправленные» включают идущие прямо сейчас
+const STATUSES: Record<string, string> = { all: '', scheduled: 'scheduled', sent: 'sending,sent', draft: 'draft' }
 const EMPTY: Record<string, string> = {
   all: 'Рассылок ещё не было',
   scheduled: 'Запланированных рассылок нет',
@@ -30,10 +32,32 @@ const titleOf = (b: Broadcast) =>
     .find((line) => line.trim())
     ?.trim() ?? 'Без названия'
 
-const stats = (b: Broadcast) => `доставлено ${formatCount(b.sent)} из ${formatCount(b.total)}, не доставлено ${formatCount(b.failed)}`
+const stats = (b: Broadcast) => {
+  switch (b.status) {
+    case 'draft':
+      return 'черновик, не отправлялась'
+    case 'scheduled':
+      return b.scheduledAt ? `уйдёт ${formatShortDate(b.scheduledAt)} (МСК)` : 'запланирована'
+    case 'cancelled':
+      return 'отменена, не отправлялась'
+    default:
+      return `доставлено ${formatCount(b.sent)} из ${formatCount(b.total)}, не доставлено ${formatCount(b.failed)}`
+  }
+}
 
-const statusTag = (b: Broadcast) =>
-  b.finishedAt ? <StatusTag tone="success">Отправлено</StatusTag> : <StatusTag tone="accent">Отправляется</StatusTag>
+const TAGS: Record<Broadcast['status'], { tone: Tone; label: string }> = {
+  draft: { tone: 'neutral', label: 'Черновик' },
+  scheduled: { tone: 'warning', label: 'Запланирована' },
+  sending: { tone: 'accent', label: 'Отправляется' },
+  sent: { tone: 'success', label: 'Отправлена' },
+  cancelled: { tone: 'neutral', label: 'Отменена' },
+}
+const statusTag = (b: Broadcast) => <StatusTag tone={TAGS[b.status].tone}>{TAGS[b.status].label}</StatusTag>
+
+// Когда ушла или уйдёт; у черновика — когда менялся
+const whenOf = (b: Broadcast) => formatShortDate(b.status === 'scheduled' && b.scheduledAt ? b.scheduledAt : b.status === 'draft' ? b.updatedAt : b.createdAt)
+
+const delivered = (b: Broadcast) => b.status === 'sending' || b.status === 'sent'
 
 const columns: DataTableColumn<Broadcast>[] = [
   {
@@ -61,10 +85,10 @@ const columns: DataTableColumn<Broadcast>[] = [
     },
   },
   { key: 'audience', title: 'Аудитория', secondary: true, truncate: true, maxWidth: 220, render: (b) => audienceLabel(b.audience, String(b.audienceDays ?? '')) },
-  { key: 'total', title: 'Получатели', numeric: true, sortable: true, width: 120, render: (b) => formatCount(b.total) },
+  { key: 'total', title: 'Получатели', numeric: true, sortable: true, width: 120, render: (b) => (delivered(b) ? formatCount(b.total) : DASH) },
   { key: 'opens', title: 'Открыли', numeric: true, sortable: true, width: 100, render: () => DASH },
   { key: 'buttons', title: 'Кнопки', numeric: true, width: 90, render: () => DASH },
-  { key: 'date', title: 'Отправка', secondary: true, width: 140, render: (b) => formatShortDate(b.createdAt) },
+  { key: 'date', title: 'Отправка', secondary: true, width: 140, render: whenOf },
   { key: 'status', title: 'Статус', width: 160, render: statusTag },
 ]
 
@@ -84,7 +108,8 @@ export default function Broadcasts() {
 
   const load = useCallback(() => {
     const s = ++seq.current
-    return get<Page>(`/api/broadcasts?page=${page}`).then(
+    const status = STATUSES[segment]
+    return get<Page>(`/api/broadcasts?page=${page}${status ? `&status=${status}` : ''}`).then(
       (r) => {
         if (s !== seq.current) return
         setData(r)
@@ -94,14 +119,14 @@ export default function Broadcasts() {
         if (s === seq.current) setLoadError(true)
       },
     )
-  }, [page])
+  }, [page, segment])
 
   useEffect(() => {
     void load()
   }, [load])
 
   // автообновление, пока есть незавершённые и вкладка видна
-  const sending = !!data?.items.some((b) => !b.finishedAt)
+  const sending = !!data?.items.some((b) => b.status === 'sending')
   useEffect(() => {
     if (!sending) return
     const timer = setInterval(() => {
@@ -114,33 +139,36 @@ export default function Broadcasts() {
     setData(undefined)
     setPage(next)
   }
+  const pick = (next: string) => {
+    if (next === segment) return
+    setData(undefined)
+    setPage(1)
+    setSegment(next)
+  }
+
+  const open = (b: Broadcast) => {
+    if (b.status === 'draft' || b.status === 'scheduled') navigate(`/broadcasts/${b.id}/edit`)
+    else notWired()
+  }
 
   const duplicate = (b: Broadcast) => {
-    navigate('/broadcasts/new', { state: { text: b.text, photo: b.photo } })
+    navigate('/broadcasts/new', {
+      state: { text: b.text, photo: b.photo, audience: b.audience, audienceDays: b.audienceDays, silent: b.silent, buttons: b.buttons },
+    })
     toast(`Копия «${titleOf(b)}» открыта в редакторе`, { icon: 'check' })
   }
 
-  // Отложенных рассылок и черновиков в API нет: эти сегменты всегда пустые.
-  const hasData = segment === 'all' || segment === 'sent'
-  const items = data?.items ?? []
-  // ponytail: «Отправленные» фильтруются на клиенте в пределах страницы, фильтра статуса в API нет.
-  const rows = !hasData ? [] : segment === 'sent' ? items.filter((b) => b.finishedAt) : items
+  const rows = data?.items ?? []
   const total = data?.total ?? 0
   const from = (page - 1) * PAGE_SIZE
 
-  const empty = !hasData
-    ? EMPTY[segment]
-    : loadError
-      ? 'Не удалось загрузить рассылки'
-      : data
-        ? EMPTY[segment]
-        : 'Загрузка…'
+  const empty = loadError ? 'Не удалось загрузить рассылки' : data ? EMPTY[segment] : 'Загрузка…'
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-3">
         <div className="max-w-full overflow-x-auto">
-          <SegmentedControl options={SEGMENTS} value={segment} onChange={setSegment} />
+          <SegmentedControl options={SEGMENTS} value={segment} onChange={pick} />
         </div>
         <div className="grow" />
         <Button variant="gray" icon="filter" onClick={notWired}>
@@ -155,14 +183,14 @@ export default function Broadcasts() {
           columns={columns}
           rows={rows}
           empty={empty}
-          onRowClick={notWired}
+          onRowClick={open}
           pagination={
-            hasData && data
+            data
               ? {
                   page,
                   pages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
-                  from: items.length ? from + 1 : 0,
-                  to: from + items.length,
+                  from: rows.length ? from + 1 : 0,
+                  to: from + rows.length,
                   total: formatCount(total),
                   onPrev: () => goTo(page - 1),
                   onNext: () => goTo(page + 1),
@@ -178,12 +206,13 @@ export default function Broadcasts() {
           mobileRow={(b) => ({
             title: titleOf(b),
             // Счётчики — суть строки: переносятся, а не режутся.
-            subtitle: <span className="block whitespace-normal">{`${formatShortDate(b.createdAt)} · ${stats(b)}`}</span>,
-            // Строка не кликается (onClick перекрывает onRowClick): в ней кнопка «Дублировать».
+            subtitle: <span className="block whitespace-normal">{`${whenOf(b)} · ${stats(b)}`}</span>,
+            // Строка не кликается (onClick перекрывает onRowClick): внутри кнопки «Изменить»/«Дублировать».
             onClick: undefined,
             after: (
               <>
                 {statusTag(b)}
+                {(b.status === 'draft' || b.status === 'scheduled') && <RowAction icon="edit" label="Изменить" onClick={() => open(b)} />}
                 <RowAction icon="copy" label="Дублировать" onClick={() => duplicate(b)} />
               </>
             ),

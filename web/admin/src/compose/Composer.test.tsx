@@ -3,7 +3,7 @@ import type { Ref } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/ui'
 import type { TgEditorHandle, TgEditorProps } from '../editor/TgEditor'
-import { Composer } from './Composer'
+import { Composer, type ComposerDraft } from './Composer'
 import type { PhotoPickerProps } from './PhotoPicker'
 
 // Редактор и выбор фото подменены: тест управляет ими через пропсы, как в Vue-версии через $emit.
@@ -64,11 +64,16 @@ const SEND = 'Отправить 3 получателям'
 const CONFIRM = 'Отправить'
 const TEST = 'Отправить мне'
 
-async function setup(props: { mode: 'broadcast'; initial?: { text: string } } | { mode: 'direct'; userId: number } = { mode: 'broadcast' }) {
+async function setup(
+  props:
+    | { mode: 'broadcast'; initial?: ComposerDraft; broadcastId?: string; status?: 'draft' | 'scheduled' }
+    | { mode: 'direct'; userId: number } = { mode: 'broadcast' },
+) {
   const onSent = vi.fn()
+  const onSaved = vi.fn()
   const r = render(
     props.mode === 'broadcast' ? (
-      <Composer mode="broadcast" initial={props.initial} onSent={onSent} />
+      <Composer mode="broadcast" initial={props.initial} broadcastId={props.broadcastId} status={props.status} onSent={onSent} onSaved={onSaved} />
     ) : (
       <Composer mode="direct" userId={props.userId} onSent={onSent} />
     ),
@@ -90,7 +95,7 @@ async function setup(props: { mode: 'broadcast'; initial?: { text: string } } | 
   }
   const count = () => screen.getByTestId('count').firstElementChild!
   const countText = () => count().textContent!.replace(/\s/g, ' ')
-  return { r, onSent, setText, setPhoto, btn, click, count, countText }
+  return { r, onSent, onSaved, setText, setPhoto, btn, click, count, countText }
 }
 
 const posts = () => calls.filter((c) => c.method === 'POST' && c.url === '/api/broadcasts')
@@ -382,9 +387,179 @@ describe('Composer', () => {
     expect(screen.getByRole('status').textContent).toContain('Тестовое сообщение отправлено вам')
   })
 
-  it('schedule is not wired yet and stays disabled', async () => {
-    await setup()
-    expect(screen.getByRole('switch', { name: 'Отправить позже' }).hasAttribute('disabled')).toBe(true)
+  describe('send later (МСК)', () => {
+    const FUTURE = '2099-01-02T10:30'
+
+    it('the switch reveals a datetime field; past time blocks sending, future allows it', async () => {
+      const { setText, btn } = await setup()
+      await setText('hi')
+      expect(screen.queryByLabelText('Дата и время отправки')).toBeNull()
+      expect(screen.getByText('по московскому времени (UTC+3)')).toBeTruthy()
+      fireEvent.click(screen.getByRole('switch', { name: 'Отправить позже' }))
+      await flush()
+      const field = screen.getByLabelText('Дата и время отправки') as HTMLInputElement
+      expect(field.type).toBe('datetime-local')
+      expect(disabled(btn('Запланировать'))).toBe(true) // времени нет
+      fireEvent.change(field, { target: { value: '2020-01-01T10:00' } })
+      await flush()
+      expect(screen.getByText('Это время уже прошло — выберите будущее')).toBeTruthy()
+      expect(disabled(btn('Запланировать'))).toBe(true)
+      fireEvent.change(field, { target: { value: FUTURE } })
+      await flush()
+      expect(disabled(btn('Запланировать'))).toBe(false)
+    })
+
+    it('schedules with the Moscow time string; the dialog names the time', async () => {
+      replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1', status: 'scheduled' } })]
+      replies['GET /api/broadcasts/recipients?audience=all'] = [json(200, { count: 3 })]
+      const { onSent, setText, click } = await setup()
+      await setText('hi')
+      fireEvent.click(screen.getByRole('switch', { name: 'Отправить позже' }))
+      fireEvent.change(screen.getByLabelText('Дата и время отправки'), { target: { value: FUTURE } })
+      await flush()
+      await click('Запланировать')
+      const dialog = screen.getByRole('alertdialog')
+      expect(within(dialog).getByText('Запланировать рассылку?')).toBeTruthy()
+      expect(dialog.textContent!.replace(/\s/g, ' ')).toContain('2 янв. 2099 в 10:30 по Москве')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Запланировать' }))
+      await flush()
+      expect(posts()[0].body).toMatchObject({ text: 'hi', scheduledAt: FUTURE })
+      expect(onSent).toHaveBeenCalledTimes(1)
+    })
+
+    it('without «later» the request has no scheduledAt', async () => {
+      replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
+      const { setText, click } = await setup()
+      await setText('hi')
+      await click(SEND)
+      await click(CONFIRM)
+      expect(posts()[0].body).not.toHaveProperty('scheduledAt')
+    })
+
+    it('changing the time renews the idempotency key', async () => {
+      replies['POST /api/broadcasts'] = [json(500, { error: 'internal' })]
+      const { setText, click } = await setup()
+      await setText('hi')
+      fireEvent.click(screen.getByRole('switch', { name: 'Отправить позже' }))
+      const field = screen.getByLabelText('Дата и время отправки')
+      for (const v of [FUTURE, '2099-01-02T10:31']) {
+        fireEvent.change(field, { target: { value: v } })
+        await flush()
+        await click('Запланировать')
+        fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Запланировать' }))
+        await flush()
+      }
+      expect(new Set(posts().map((c) => c.body?.idempotencyKey)).size).toBe(2)
+    })
+
+    it('editing a scheduled broadcast saves with PUT, no autosave, switch is locked on', async () => {
+      replies['PUT /api/broadcasts/s1'] = [json(200, { broadcast: { id: 's1', status: 'scheduled' } })]
+      const { onSaved, setText, click } = await setup({
+        mode: 'broadcast',
+        broadcastId: 's1',
+        status: 'scheduled',
+        initial: { text: 'old', scheduledAt: '2099-01-02T07:30:00Z' },
+      })
+      expect((screen.getByLabelText('Дата и время отправки') as HTMLInputElement).value).toBe(FUTURE)
+      expect(screen.getByRole('switch', { name: 'Отправить позже' }).hasAttribute('disabled')).toBe(true)
+      expect(screen.queryByText(/Черновик/)).toBeNull()
+      expect(screen.queryByRole('button', { name: /Отправить \d/ })).toBeNull()
+      await setText('new')
+      await click('Сохранить изменения')
+      const put = calls.find((c) => c.method === 'PUT')
+      expect(put?.url).toBe('/api/broadcasts/s1')
+      expect(put?.body).toMatchObject({ text: 'new', scheduledAt: FUTURE })
+      expect(onSaved).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('draft autosave', () => {
+    const puts = () => calls.filter((c) => c.method === 'PUT')
+    const advance = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)))
+    const open = async (props?: Parameters<typeof setup>[0]) => {
+      const s = await setup(props)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      return s
+    }
+    afterEach(() => vi.useRealTimers())
+
+    it('opening the editor and waiting saves nothing', async () => {
+      await open()
+      await advance(10_000)
+      expect(puts()).toEqual([])
+      expect(screen.getByText('Черновик сохраняется автоматически')).toBeTruthy()
+    })
+
+    it('saves only changes, debounced, always to the same id', async () => {
+      vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000001')
+      replies['PUT /api/broadcasts/00000000-0000-4000-8000-000000000001'] = [json(200, { broadcast: { id: 'x', status: 'draft' } })]
+      await open()
+      act(() => kids.editor.onChange('a'))
+      await advance(1000)
+      act(() => kids.editor.onChange('ab'))
+      await advance(1000)
+      expect(puts()).toHaveLength(0) // задержка сдвинулась правкой
+      await advance(600)
+      expect(puts()).toHaveLength(1)
+      expect(puts()[0]).toMatchObject({ url: '/api/broadcasts/00000000-0000-4000-8000-000000000001', body: { text: 'ab', audience: 'all', buttons: [], silent: false, scheduledAt: '' } })
+      expect(screen.getByText(/^Черновик сохранён · \d\d:\d\d$/)).toBeTruthy()
+      act(() => kids.editor.onChange('ab')) // тот же текст — не правка
+      await advance(5000)
+      expect(puts()).toHaveLength(1)
+      act(() => kids.editor.onChange('abc'))
+      await advance(1600)
+      expect(puts()).toHaveLength(2)
+      expect(puts()[1].url).toBe(puts()[0].url)
+      vi.restoreAllMocks()
+    })
+
+    it('a failed save is shown and retried by the next change', async () => {
+      replies['PUT /api/broadcasts/00000000-0000-4000-8000-000000000002'] = [json(500, {}), json(200, { broadcast: {} })]
+      vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000002')
+      await open()
+      act(() => kids.editor.onChange('a'))
+      await advance(1600)
+      expect(screen.getByRole('alert').textContent).toContain('Не удалось сохранить черновик')
+      act(() => kids.editor.onChange('ab'))
+      await advance(1600)
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.getByText(/^Черновик сохранён/)).toBeTruthy()
+      vi.restoreAllMocks()
+    })
+
+    it('an opened draft keeps its id and is not rewritten until changed', async () => {
+      replies['PUT /api/broadcasts/d1'] = [json(200, { broadcast: { id: 'd1' } })]
+      await open({ mode: 'broadcast', broadcastId: 'd1', status: 'draft', initial: { text: 'saved' } })
+      await advance(5000)
+      expect(puts()).toEqual([])
+      act(() => kids.editor.onChange('saved!'))
+      await advance(1600)
+      expect(puts().map((c) => c.url)).toEqual(['/api/broadcasts/d1'])
+    })
+
+    it('sending a saved draft passes draftId; a pending autosave is dropped', async () => {
+      replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'd1' } })]
+      replies['PUT /api/broadcasts/d1'] = [json(200, { broadcast: { id: 'd1' } })]
+      await open({ mode: 'broadcast', broadcastId: 'd1', status: 'draft', initial: { text: 'saved' } })
+      act(() => kids.editor.onChange('final'))
+      const send = (label: string) => act(async () => void fireEvent.click(screen.getAllByRole('button').find((b) => b.textContent === label)!))
+      await send(SEND)
+      await advance(10)
+      await send(CONFIRM)
+      await advance(5000)
+      expect(posts()).toHaveLength(1)
+      expect(posts()[0].body).toMatchObject({ draftId: 'd1', text: 'final' })
+      expect(puts()).toEqual([]) // отложенное сохранение не уехало после отправки
+    })
+
+    it('leaving the page flushes the pending change', async () => {
+      replies['PUT /api/broadcasts/d1'] = [json(200, { broadcast: { id: 'd1' } })]
+      const { r } = await open({ mode: 'broadcast', broadcastId: 'd1', status: 'draft', initial: { text: 'saved' } })
+      act(() => kids.editor.onChange('typed just now'))
+      r.unmount()
+      await advance(0)
+      expect(puts().map((c) => (c.body as Body).text)).toEqual(['typed just now'])
+    })
   })
 
   describe('buttons and silent', () => {

@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from 'react-router'
-import { Button, toast } from '@/ui'
+import { Button } from '@/ui'
 import { Composer, type ComposerDraft } from '../compose/Composer'
-import { formatCount, plural } from '../format'
+import { announceSent } from '../compose/announce'
 
 export default function BroadcastNew() {
   const navigate = useNavigate()
@@ -18,9 +18,7 @@ export default function BroadcastNew() {
         mode="broadcast"
         initial={state as ComposerDraft | null}
         onSent={(b) => {
-          toast(`Рассылка запущена — ${formatCount(b.total)} ${plural(b.total, ['получатель', 'получателя', 'получателей'])}`, {
-            icon: 'check',
-          })
+          announceSent(b)
           navigate('/broadcasts', { replace: true })
         }}
       />

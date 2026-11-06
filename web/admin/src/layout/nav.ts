@@ -29,4 +29,5 @@ const pageTitles: Record<string, string> = {
   '/promos/new': 'Новый промокод',
 }
 
-export const pageTitle = (pathname: string) => pageTitles[pathname] ?? sectionOf(pathname).label
+export const pageTitle = (pathname: string) =>
+  pageTitles[pathname] ?? (/^\/broadcasts\/[^/]+\/edit$/.test(pathname) ? 'Редактирование рассылки' : sectionOf(pathname).label)

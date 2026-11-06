@@ -22,7 +22,7 @@ const payment = (id: number, status: string, over = {}) => ({
 
 type Reply = () => Response
 interface Replies {
-  recipients?: Reply
+  users?: Reply
   promos?: Reply
   week?: Reply
   prevWeek?: Reply
@@ -33,7 +33,7 @@ function stub(r: Replies = {}) {
   const now = new Date()
   const page = (revenue: number, items: unknown[] = []) => json(200, { items, total: items.length, revenue })
   const fetchMock = vi.fn(async (url: string) => {
-    if (url === '/api/broadcasts/recipients') return r.recipients ? r.recipients() : json(200, { count: 3214 })
+    if (url === '/api/users') return r.users ? r.users() : json(200, { items: [], total: 3214 })
     if (url === '/api/promos?status=active') return r.promos ? r.promos() : json(200, { items: [{ id: 1 }, { id: 2 }] })
     if (url === `/api/payments?from=${mskDate(now, -6)}&to=${mskDate(now)}`) return r.week ? r.week() : page(84300)
     if (url === `/api/payments?from=${mskDate(now, -13)}&to=${mskDate(now, -7)}`) return r.prevWeek ? r.prevWeek() : page(75268)
@@ -103,7 +103,7 @@ describe('Overview cards', () => {
   })
 
   it('one failure leaves the other cards alone', async () => {
-    stub({ recipients: () => json(502, { error: 'panel_unavailable' }) })
+    stub({ users: () => json(500, {}) })
     await renderPage()
     expect(within(card('Пользователи')).getByText('—')).toBeTruthy()
     expect(screen.queryByText('за 7 дней')).toBeNull()
