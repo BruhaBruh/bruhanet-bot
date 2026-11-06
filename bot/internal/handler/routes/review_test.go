@@ -35,7 +35,7 @@ func inReview(t *testing.T, e *env, base time.Time) model.Payment {
 	t.Helper()
 	e.rw.AddUser(userID, base.Add(24*time.Hour))
 	p := awaitPhoto(t, e, base)
-	if err := e.pay.SubmitPayment(t.Context(), p.ID, adminMessageID, now); err != nil {
+	if err := e.pay.SubmitPayment(t.Context(), p.ID, adminMessageID, "file", now); err != nil {
 		t.Fatalf("SubmitPayment: %v", err)
 	}
 	if err := e.pay.MarkAdvance(t.Context(), p.ID); err != nil {

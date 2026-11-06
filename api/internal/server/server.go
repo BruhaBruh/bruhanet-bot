@@ -32,6 +32,7 @@ type Store interface {
 	UserByID(ctx context.Context, id int64) (model.UserSummary, error)
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	PaymentsByUser(ctx context.Context, id int64) ([]model.Payment, error)
+	PaymentByID(ctx context.Context, id int64) (model.Payment, error)
 	ListPayments(ctx context.Context, f model.PaymentFilter) ([]model.Payment, int, error)
 	Revenue(ctx context.Context, from, to time.Time) (int, error)
 	TextOverrides(ctx context.Context) (map[string]string, error)
@@ -61,9 +62,10 @@ type Panel interface {
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
 }
 
-// PhotoSender — загрузка фото в Telegram (api/internal/telegram); возвращает file_id.
+// PhotoSender — фото в Telegram (api/internal/telegram): загрузка возвращает file_id, чтение — поток файла.
 type PhotoSender interface {
 	SendPhoto(ctx context.Context, chatID int64, r io.Reader, filename, caption string) (fileID string, err error)
+	OpenFile(ctx context.Context, fileID string) (io.ReadCloser, error)
 }
 
 type Deps struct {
@@ -105,6 +107,7 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("GET /api/sync", s.lastSync)
 	apiMux.HandleFunc("POST /api/sync", s.runSync)
 	apiMux.HandleFunc("GET /api/payments", s.payments)
+	apiMux.HandleFunc("GET /api/payments/{id}/photo", s.paymentPhoto)
 	apiMux.HandleFunc("GET /api/texts", s.texts)
 	apiMux.HandleFunc("PUT /api/texts/{key}", s.putText)
 	apiMux.HandleFunc("DELETE /api/texts/{key}", s.deleteText)

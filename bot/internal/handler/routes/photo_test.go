@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot/models"
+
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
@@ -124,7 +126,7 @@ func TestPhotoMarkAdvanceFailureSkipsGrant(t *testing.T) {
 func TestPhotoAwaitStateAlreadySubmittedRetriesReview(t *testing.T) {
 	e := newEnv(t)
 	p := awaitPhoto(t, e, now)
-	if err := e.pay.SubmitPayment(t.Context(), p.ID, 77, now); err != nil {
+	if err := e.pay.SubmitPayment(t.Context(), p.ID, 77, "file", now); err != nil {
 		t.Fatal(err)
 	}
 	e.process(t, tgtest.Photo(userID))
@@ -143,7 +145,7 @@ func TestPhotoAwaitStateAlreadySubmittedRetriesReview(t *testing.T) {
 func TestPhotoInReviewForwardsSilently(t *testing.T) {
 	e := newEnv(t)
 	p := awaitPhoto(t, e, now)
-	if err := e.pay.SubmitPayment(t.Context(), p.ID, 77, now); err != nil {
+	if err := e.pay.SubmitPayment(t.Context(), p.ID, 77, "file", now); err != nil {
 		t.Fatal(err)
 	}
 	if err := fsm.Put(t.Context(), fsm.For(e.fsm, userID), "in_review", nil); err != nil {
@@ -235,5 +237,23 @@ func TestSubmitRace(t *testing.T) {
 	edits := e.srv.Calls("editMessageReplyMarkup")
 	if len(edits) != 1 || strings.Contains(edits[0].Params.Get("reply_markup"), "adm_ok") {
 		t.Fatalf("проигравший навесил кнопки: %v", edits)
+	}
+}
+
+// В платеж сохраняется самый большой размер чека: панель покажет его.
+func TestPhotoStoresLargestFileID(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(userID, now)
+	p := awaitPhoto(t, e, now)
+	u := tgtest.Photo(userID)
+	u.Message.Photo = []models.PhotoSize{
+		{FileID: "small", Width: 90, Height: 90},
+		{FileID: "big", Width: 1280, Height: 960},
+		{FileID: "mid", Width: 320, Height: 240},
+	}
+	e.process(t, u)
+	got, err := e.pay.PaymentByID(t.Context(), p.ID)
+	if err != nil || got.PhotoFileID != "big" {
+		t.Fatalf("file = %q, err = %v", got.PhotoFileID, err)
 	}
 }

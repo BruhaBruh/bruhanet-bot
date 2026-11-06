@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -104,7 +105,7 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 
 	// ponytail: гонка «купить» vs «фото» может выдать день на только что отменённый платёж;
 	// следующий confirm/decline вернёт prev_expire_at, MarkAdvance всё равно его посчитает.
-	if err := h.pay.SubmitPayment(ctx, p.ID, msg.ID, h.now()); err != nil {
+	if err := h.pay.SubmitPayment(ctx, p.ID, msg.ID, largestPhoto(u.Message.Photo), h.now()); err != nil {
 		if errors.Is(err, store.ErrNotPending) {
 			stlog.Warn(ctx, "payment photo lost the race", "error", err)
 			h.closeAdminMessage(ctx, b, msg.ID, "Повторное фото этого платежа")
@@ -133,6 +134,13 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 	if err := fsm.Put(ctx, f, stateInReview, nil); err != nil {
 		stlog.Error(ctx, "failed to set review state", "error", err)
 	}
+}
+
+// largestPhoto — file_id самого большого размера; роут фото гарантирует непустой список.
+func largestPhoto(sizes []models.PhotoSize) string {
+	return slices.MaxFunc(sizes, func(a, b models.PhotoSize) int {
+		return cmp.Compare(a.Width*a.Height, b.Width*b.Height)
+	}).FileID
 }
 
 // grantAdvance выдаёт аванс на время проверки: от прежнего срока или от now, если он в прошлом.

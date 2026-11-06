@@ -2,6 +2,7 @@ package telegram_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -50,5 +51,58 @@ func TestSendPhoto(t *testing.T) {
 	_, err = tg.SendPhoto(context.Background(), 42, strings.NewReader("IMG"), "a.png", "")
 	if err == nil || strings.Contains(err.Error(), "secret-token") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestOpenFile(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getFile"):
+			switch r.FormValue("file_id") {
+			case "big":
+				_, _ = w.Write([]byte(`{"ok":true,"result":{"file_id":"big","file_size":99999999,"file_path":"photos/b.jpg"}}`))
+			case "gone":
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: wrong file_id"}`))
+			case "denied":
+				_, _ = w.Write([]byte(`{"ok":true,"result":{"file_id":"denied","file_path":"photos/denied.jpg"}}`))
+			default:
+				_, _ = w.Write([]byte(`{"ok":true,"result":{"file_id":"ok","file_size":3,"file_path":"photos/a.jpg"}}`))
+			}
+		case r.URL.Path == "/file/botsecret-token/photos/a.jpg":
+			_, _ = w.Write([]byte("IMG"))
+		default:
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer srv.Close()
+	tg, err := telegram.New("secret-token", bot.WithServerURL(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := tg.OpenFile(context.Background(), "ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(f)
+	_ = f.Close()
+	if err != nil || string(b) != "IMG" {
+		t.Fatalf("body = %q, err = %v", b, err)
+	}
+
+	if _, err = tg.OpenFile(context.Background(), "big"); !errors.Is(err, telegram.ErrFileTooBig) {
+		t.Fatalf("big: %v", err)
+	}
+	if _, err = tg.OpenFile(context.Background(), "gone"); !errors.Is(err, bot.ErrorBadRequest) {
+		t.Fatalf("gone: %v", err)
+	}
+	if _, err = tg.OpenFile(context.Background(), "denied"); !errors.Is(err, telegram.ErrFileRefused) || strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("denied: %v", err)
+	}
+
+	srv.Close()
+	if _, err = tg.OpenFile(context.Background(), "ok"); err == nil || strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("token in error: %v", err)
 	}
 }

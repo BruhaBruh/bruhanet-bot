@@ -385,6 +385,17 @@ func (f *fakeStore) PaymentsByUser(_ context.Context, id int64) ([]model.Payment
 	return out, nil
 }
 
+func (f *fakeStore) PaymentByID(_ context.Context, id int64) (model.Payment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, p := range f.payments {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return model.Payment{}, store.ErrNotFound
+}
+
 func (f *fakeStore) UserStats(_ context.Context, id, _ int64) (model.UserStats, error) {
 	return model.UserStats{Confirmed: 1, ConfirmedSum: 150}, nil
 }
@@ -494,6 +505,20 @@ type fakeTG struct {
 	data    []byte
 	fileID  string
 	err     error
+
+	file    string // содержимое OpenFile
+	opened  string
+	openErr error
+}
+
+func (f *fakeTG) OpenFile(_ context.Context, fileID string) (io.ReadCloser, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.opened = fileID
+	if f.openErr != nil {
+		return nil, f.openErr
+	}
+	return io.NopCloser(strings.NewReader(f.file)), nil
 }
 
 func (f *fakeTG) SendPhoto(_ context.Context, chatID int64, r io.Reader, filename, caption string) (string, error) {

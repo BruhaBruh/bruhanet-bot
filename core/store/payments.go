@@ -14,7 +14,8 @@ import (
 )
 
 const paymentCols = `id, telegram_id, username, months, price, status, prev_expire_at, advance_granted,
-	coalesce(admin_message_id, 0), created_at, submitted_at, resolved_at, promo_id, base_price`
+	coalesce(admin_message_id, 0), created_at, submitted_at, resolved_at, promo_id, base_price,
+	coalesce(photo_file_id, '')`
 
 // unpaidAdvance — условие на строку payments: выданный и неоплаченный аванс, считается после последнего confirmed.
 const unpaidAdvance = `status IN ('declined', 'cancelled') AND advance_granted`
@@ -22,7 +23,8 @@ const unpaidAdvance = `status IN ('declined', 'cancelled') AND advance_granted`
 func scanPayment(row pgx.Row) (model.Payment, error) {
 	var p model.Payment
 	err := row.Scan(&p.ID, &p.TelegramID, &p.Username, &p.Month, &p.Price, &p.Status, &p.PrevExpireAt,
-		&p.AdvanceGranted, &p.AdminMessageID, &p.CreatedAt, &p.SubmittedAt, &p.ResolvedAt, &p.PromoID, &p.BasePrice)
+		&p.AdvanceGranted, &p.AdminMessageID, &p.CreatedAt, &p.SubmittedAt, &p.ResolvedAt, &p.PromoID, &p.BasePrice, &p.PhotoFileID)
+	p.HasPhoto = p.PhotoFileID != ""
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -84,10 +86,10 @@ func (s *Store) PaymentByID(ctx context.Context, id int64) (model.Payment, error
 }
 
 // SubmitPayment фиксирует отправку чека; повторный вызов даёт ErrNotPending.
-func (s *Store) SubmitPayment(ctx context.Context, id int64, adminMessageID int, at time.Time) error {
+func (s *Store) SubmitPayment(ctx context.Context, id int64, adminMessageID int, photoFileID string, at time.Time) error {
 	tag, err := s.pool.Exec(ctx,
-		`UPDATE payments SET admin_message_id = $2, submitted_at = $3
-		 WHERE id = $1 AND status = 'pending' AND submitted_at IS NULL`, id, adminMessageID, at)
+		`UPDATE payments SET admin_message_id = $2, photo_file_id = $3, submitted_at = $4
+		 WHERE id = $1 AND status = 'pending' AND submitted_at IS NULL`, id, adminMessageID, photoFileID, at)
 	if err != nil {
 		return err
 	}

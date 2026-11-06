@@ -177,7 +177,7 @@ func (p *Payments) PaymentByID(_ context.Context, id int64) (model.Payment, erro
 	return *x, nil
 }
 
-func (p *Payments) SubmitPayment(_ context.Context, id int64, adminMessageID int, at time.Time) error {
+func (p *Payments) SubmitPayment(_ context.Context, id int64, adminMessageID int, photoFileID string, at time.Time) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.failSubmitOnce {
@@ -188,7 +188,7 @@ func (p *Payments) SubmitPayment(_ context.Context, id int64, adminMessageID int
 	if err != nil || x.Status != model.PaymentPending || x.SubmittedAt != nil {
 		return store.ErrNotPending
 	}
-	x.AdminMessageID, x.SubmittedAt = adminMessageID, &at
+	x.AdminMessageID, x.SubmittedAt, x.PhotoFileID = adminMessageID, &at, photoFileID
 	return nil
 }
 

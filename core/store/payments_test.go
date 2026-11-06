@@ -89,14 +89,14 @@ func TestSubmitPaymentOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SubmitPayment(ctx, p.ID, 77, time.Now()); err != nil {
+	if err = s.SubmitPayment(ctx, p.ID, 77, "file-77", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SubmitPayment(ctx, p.ID, 78, time.Now()); !errors.Is(err, ErrNotPending) {
+	if err = s.SubmitPayment(ctx, p.ID, 78, "file-78", time.Now()); !errors.Is(err, ErrNotPending) {
 		t.Fatalf("want ErrNotPending, got %v", err)
 	}
 	got, err := s.PendingPayment(ctx, 1)
-	if err != nil || got.AdminMessageID != 77 || got.SubmittedAt == nil {
+	if err != nil || got.AdminMessageID != 77 || got.SubmittedAt == nil || got.PhotoFileID != "file-77" || !got.HasPhoto {
 		t.Fatalf("got %+v err=%v", got, err)
 	}
 	if err = s.MarkAdvance(ctx, p.ID); err != nil {

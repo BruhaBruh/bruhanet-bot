@@ -1,13 +1,24 @@
 package server
 
 import (
+	"bufio"
+	"context"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strconv"
 	"time"
 
+	"github.com/go-telegram/bot"
+
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
+
+const photoTimeout = 30 * time.Second
 
 // moscow — Europe/Moscow; без DST, так что фиксированный сдвиг — безопасный запасной вариант.
 var moscow = func() *time.Location {
@@ -68,4 +79,50 @@ func (s *server) payments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "revenue": revenue})
+}
+
+// paymentPhoto отдаёт чек платежа потоком через Bot API: токен и ссылка на файл не выходят за api.
+// Тип определяется по содержимому и только картинка: заголовок Telegram не показываем.
+func (s *server) paymentPhoto(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	p, err := s.Store.PaymentByID(r.Context(), id)
+	switch {
+	case errors.Is(err, store.ErrNotFound), err == nil && p.PhotoFileID == "":
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	case err != nil:
+		internal(w, r, "payment photo", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), photoTimeout)
+	defer cancel()
+	file, err := s.Telegram.OpenFile(ctx, p.PhotoFileID)
+	if errors.Is(err, bot.ErrorBadRequest) { // file_id устарел
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		stlog.Warn(r.Context(), "open payment photo", "error", err)
+		writeError(w, http.StatusBadGateway, "telegram_unavailable")
+		return
+	}
+	defer func() { _ = file.Close() }()
+	br := bufio.NewReader(file)
+	head, _ := br.Peek(512) // короткий файл — не ошибка, битый определится ниже как не картинка
+	ct := http.DetectContentType(head)
+	if !slices.Contains(photoTypes, ct) {
+		stlog.Warn(r.Context(), "payment photo is not an image", "content_type", ct)
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if _, err = io.Copy(w, br); err != nil {
+		stlog.Warn(r.Context(), "stream payment photo", "error", err)
+	}
 }
