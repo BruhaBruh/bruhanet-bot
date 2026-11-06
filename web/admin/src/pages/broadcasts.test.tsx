@@ -6,7 +6,10 @@ import BroadcastEdit from './BroadcastEdit'
 import BroadcastNew from './BroadcastNew'
 import Broadcasts from './Broadcasts'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.useRealTimers()
+})
 
 const flush = () => act(() => new Promise((r) => setTimeout(r, 0)))
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
@@ -69,6 +72,9 @@ const table = () => within(screen.getByRole('table'))
 
 describe('Broadcasts', () => {
   it('shows a tag per status, the audience and the delivery counters', async () => {
+    // Дата в ожиданиях — 7 нояб.: без заморозки часов тест ломается в сам этот день («сегодня»).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-05T12:00:00Z'))
     stub({
       1: {
         items: [
