@@ -1,9 +1,30 @@
 export interface UserSummary {
   telegramId: number
   username: string
+  name: string
   createdAt: string
   confirmed: number
   confirmedSum: number
+  expireAt: string | null
+  panelStatus: string | null
+  blockedBotAt: string | null
+  tariffMonths: number | null
+  lastSeenAt: string | null
+  broadcastsReceived: number
+}
+
+export interface UserPage {
+  items: UserSummary[]
+  total: number
+  page: number
+  pages: number
+}
+
+export interface UserPromo {
+  code: string
+  kind: 'percent' | 'rub' | 'days'
+  value: number
+  activatedAt: string
 }
 
 export interface Payment {
@@ -34,8 +55,9 @@ export interface UserDetail {
     hasHistory: boolean
   }
   payments: Payment[]
-  panel: { expireAt: string | null; status: string | null; error: 'panel_unavailable' | null }
+  panel: { id: number | null; expireAt: string | null; status: string | null; error: 'panel_unavailable' | null }
   messages: DirectMessage[]
+  promos: UserPromo[]
 }
 
 export interface TextVar {

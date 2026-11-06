@@ -1,3 +1,5 @@
+import type { Tone } from '@/ui'
+
 // 2 350 ₽ (неразрывные пробелы)
 export function formatRub(n: number): string {
   return `${new Intl.NumberFormat('ru-RU').format(n)}\u00a0₽`
@@ -41,6 +43,14 @@ export function formatDelta(current: number, previous: number): string | undefin
 }
 
 // статус юзера в Remnawave (+ not_found от api)
+export const panelStatusTones: Record<string, Tone> = {
+  ACTIVE: 'success',
+  DISABLED: 'destructive',
+  LIMITED: 'warning',
+  EXPIRED: 'neutral',
+  not_found: 'neutral',
+}
+
 export const panelStatusLabels: Record<string, string> = {
   ACTIVE: 'активна',
   DISABLED: 'отключена',

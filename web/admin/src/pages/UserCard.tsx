@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { notWired } from '@/lib/not-wired'
-import { Avatar, Button, Card, DataTable, Spinner, StatusTag, toast, type Tone } from '@/ui'
+import { Avatar, Button, Card, DataTable, RowAction, Spinner, StatusTag, toast, type Tone } from '@/ui'
 import { ApiError, get } from '../api'
 import { snippet } from '../editor/serialize'
-import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabels } from '../format'
+import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabels, panelStatusTones } from '../format'
 import { usePageTitle } from '../layout/page-title'
 import { userLabel } from '../promo'
 import type { DirectMessage, UserDetail } from '../types'
@@ -17,14 +17,6 @@ const DASH = '—'
 const PANEL_UNAVAILABLE = 'панель недоступна'
 const separator = 'shadow-[inset_0_-0.5px_0_var(--separator)]'
 
-const PANEL_TONES: Record<string, Tone> = {
-  ACTIVE: 'success',
-  DISABLED: 'destructive',
-  LIMITED: 'warning',
-  EXPIRED: 'neutral',
-  not_found: 'neutral',
-}
-
 const MESSAGE_STATUS: Record<DirectMessage['status'], [Tone, string]> = {
   pending: ['warning', 'В очереди'],
   sent: ['success', 'Отправлено'],
@@ -34,11 +26,20 @@ const MESSAGE_STATUS: Record<DirectMessage['status'], [Tone, string]> = {
 const day = (iso: string | null) => (iso ? formatFullDay(iso) : DASH)
 const panelStatusLabel = (status: string) => panelStatusLabels[status] ?? status
 
+async function copyPanelId(id: number) {
+  try {
+    await navigator.clipboard.writeText(String(id))
+    toast('ID скопирован', { icon: 'check' })
+  } catch {
+    toast('Не удалось скопировать ID')
+  }
+}
+
 function PanelTag({ panel }: { panel: UserDetail['panel'] }) {
   if (panel.error) return <StatusTag tone="warning" dot>{PANEL_UNAVAILABLE}</StatusTag>
   if (!panel.status) return null
   return (
-    <StatusTag tone={PANEL_TONES[panel.status] ?? 'neutral'} dot>
+    <StatusTag tone={panelStatusTones[panel.status] ?? 'neutral'} dot>
       {panelStatusLabel(panel.status)}
     </StatusTag>
   )
@@ -52,7 +53,7 @@ function Facts({ title, rows }: { title: string; rows: Array<[string, ReactNode]
         {rows.map(([k, v]) => (
           <div key={k} className={`flex justify-between gap-3 py-2.5 ${separator}`}>
             <dt className="text-text-secondary">{k}</dt>
-            <dd className="text-right font-medium">{v}</dd>
+            <dd className="min-w-0 text-right font-medium">{v}</dd>
           </div>
         ))}
       </dl>
@@ -79,7 +80,7 @@ function UserCardInner({ id }: { id?: string }) {
     )
   }, [id])
 
-  const name = d && userLabel(d.user)
+  const name = d && (d.user.name || userLabel(d.user))
   usePageTitle(name)
 
   function onSent(m: DirectMessage) {
@@ -111,7 +112,7 @@ function UserCardInner({ id }: { id?: string }) {
     )
   }
 
-  const { user, stats, panel, messages } = d
+  const { user, stats, panel, messages, promos } = d
   // Средний чек — по подтверждённым: только у них есть сумма в stats.
   const average = stats.confirmed ? formatRub(Math.round(stats.confirmedSum / stats.confirmed)) : DASH
 
@@ -124,6 +125,11 @@ function UserCardInner({ id }: { id?: string }) {
           <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="title-2 min-w-0 break-all">{name}</h2>
             <PanelTag panel={panel} />
+            {user.blockedBotAt && (
+              <StatusTag tone="destructive" dot>
+                заблокировал бота
+              </StatusTag>
+            )}
           </div>
           <div className="admin-table flex flex-wrap gap-x-4 gap-y-1.5 text-text-secondary">
             {user.username && (
@@ -135,7 +141,6 @@ function UserCardInner({ id }: { id?: string }) {
               ID <code className="mono text-text">{user.telegramId}</code>
             </span>
             <span>с нами с {formatFullDay(user.createdAt)}</span>
-            <span>язык: {DASH}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -167,9 +172,19 @@ function UserCardInner({ id }: { id?: string }) {
           rows={[
             ['Срок до', panel.error ? PANEL_UNAVAILABLE : day(panel.expireAt)],
             ['Статус', !panel.error && panel.status ? panelStatusLabel(panel.status) : DASH],
-            ['Тариф', DASH],
+            ['Тариф', user.tariffMonths ? `${user.tariffMonths} мес.` : DASH],
             ['Устройства', DASH],
-            ['Автопродление', DASH],
+            [
+              'ID в панели',
+              panel.id == null ? (
+                DASH
+              ) : (
+                <span className="inline-flex items-center gap-1">
+                  <code className="mono break-all">{panel.id}</code>
+                  <RowAction icon="copy" label="Скопировать ID в панели" onClick={() => void copyPanelId(panel.id!)} />
+                </span>
+              ),
+            ],
           ]}
         />
         <Facts
@@ -178,7 +193,7 @@ function UserCardInner({ id }: { id?: string }) {
             ['Оплачено всего', formatRub(stats.confirmedSum)],
             ['Платежей', formatCount(stats.confirmed)],
             ['Средний чек', average],
-            ['Промокоды', DASH],
+            ['Промокоды', promos.length ? <span className="mono break-all">{promos.map((p) => p.code).join(', ')}</span> : DASH],
             ['Неоплаченные авансы', formatCount(stats.unpaidAdvances)],
             ['Первая оплата', day(stats.firstConfirmedAt)],
             ['Последняя оплата', day(stats.lastConfirmedAt)],
@@ -187,10 +202,9 @@ function UserCardInner({ id }: { id?: string }) {
         <Facts
           title="Активность"
           rows={[
-            ['Последний визит', DASH],
-            ['Откуда пришёл', DASH],
+            ['Последний визит', user.lastSeenAt ? formatShortDate(user.lastSeenAt) : DASH],
             ['Пригласил друзей', DASH],
-            ['Получил рассылок', DASH],
+            ['Получил рассылок', formatCount(user.broadcastsReceived)],
           ]}
         />
       </div>
