@@ -33,6 +33,10 @@ func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option)
 	if deps.FSM == nil || deps.InFlight == nil || deps.Remnawave == nil || deps.Payments == nil || deps.Content == nil {
 		return nil, errors.New("handler: deps.FSM, deps.InFlight, deps.Remnawave, deps.Payments and deps.Content are required")
 	}
+	now := deps.Now
+	if now == nil {
+		now = time.Now
+	}
 	r := router.New()
 	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Payments: deps.Payments, Content: deps.Content, Now: deps.Now})
 
@@ -52,6 +56,8 @@ func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option)
 			middleware.Recovery,
 			middleware.RequestID,
 			middleware.TelegramID,
+			// снаружи Observe: запись в БД не попадает в длительность апдейта
+			middleware.LastSeen(deps.Payments.TouchUser, middleware.LastSeenEvery, now),
 			middleware.Observe,
 			middleware.Logger,
 			middleware.AutoAnswer(),

@@ -26,6 +26,24 @@ type Payments struct {
 	loginTokens    []LoginToken
 	promos         []model.Promo // индекс = ID-1
 	activations    []model.PromoActivation
+
+	// Отдельный мьютекс: панель зовут из apply под p.mu.
+	userMu  sync.Mutex
+	touched []model.UserSeen
+}
+
+func (p *Payments) TouchUser(_ context.Context, u model.UserSeen) error {
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	p.touched = append(p.touched, u)
+	return nil
+}
+
+// Touched — записи TouchUser по порядку.
+func (p *Payments) Touched() []model.UserSeen {
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	return slices.Clone(p.touched)
 }
 
 // LoginToken — токен входа, созданный через CreateLoginToken.

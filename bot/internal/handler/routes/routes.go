@@ -48,6 +48,7 @@ type Payments interface {
 		apply func(model.Payment) (model.OutboxMessage, error)) (model.Payment, error)
 	CancelPayment(ctx context.Context, id int64) error
 	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
+	TouchUser(ctx context.Context, u model.UserSeen) error
 	// Промокоды; PromoByCode нормализует ввод (trim + upper), нет кода — store.ErrNotFound.
 	PromoByCode(ctx context.Context, code string) (model.Promo, error)
 	PromoByID(ctx context.Context, id int64) (model.Promo, error)

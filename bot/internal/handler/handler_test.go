@@ -155,3 +155,25 @@ func TestStartIgnoresGroupChat(t *testing.T) {
 		t.Fatalf("sendMessage calls = %d", n)
 	}
 }
+
+func TestUpdateSavesUserName(t *testing.T) {
+	srv := tgtest.NewServer(t)
+	logger, _ := tgtest.Logger()
+	cfg := &config.Config{Telegram: coreconfig.TelegramConfig{Token: tgtest.Token, AdminID: 1}}
+	pay := tgtest.NewPayments()
+	b, err := New(logger, cfg, Deps{
+		FSM: fsm.NewInMemory(), InFlight: &sync.WaitGroup{}, Remnawave: tgtest.NewRemnawave(time.Now), Payments: pay,
+		Content: content.New(&tgtest.Source{}, settings.Defaults(map[int]int{1: 150}, "+7", "Банк", ""), 0, nil),
+	}, srv.Options()...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := tgtest.Message(42, "/start")
+	u.Message.From.FirstName = "Анна"
+	b.ProcessUpdate(t.Context(), u)
+	b.ProcessUpdate(t.Context(), u)
+	got := pay.Touched()
+	if len(got) != 1 || got[0].TelegramID != 42 || got[0].FirstName != "Анна" {
+		t.Fatalf("touched = %+v", got)
+	}
+}
