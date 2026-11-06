@@ -58,9 +58,13 @@ function tariffsError(tariffs: Tariff[]): string {
 }
 
 // Одинаковые имена схлопнулись бы в один ключ объекта; остальное проверяет сервер.
+const MAX_VAR = 96
+
 function varsError(vars: CustomVar[]): string {
   const dup = vars.map((v) => v.name.trim()).find((n, i, a) => a.indexOf(n) !== i)
-  return dup === undefined ? '' : `Переменная ${dup || '(без имени)'} указана дважды`
+  if (dup !== undefined) return `Переменная ${dup || '(без имени)'} указана дважды`
+  const long = vars.find((v) => v.value.length > MAX_VAR)
+  return long ? `Переменная ${long.name.trim() || '(без имени)'} длиннее ${MAX_VAR} символов: сократите` : ''
 }
 
 const MAX_TIMES = 6
@@ -79,6 +83,7 @@ export default function Settings() {
   const [form, setForm] = useState<Form>()
   const [saved, setSaved] = useState<Form>()
   const [stored, setStored] = useState<string[] | null>(null)
+  const [tooLong, setTooLong] = useState<string[]>([])
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -92,6 +97,7 @@ export default function Settings() {
         setForm(loaded)
         setSaved(loaded)
         if (s.usingDefaults) setStored(s.problems ?? [])
+        else setTooLong(s.problems ?? [])
       },
       () => setLoadError(true),
     )
@@ -143,6 +149,7 @@ export default function Settings() {
       await put('/api/settings', body)
       setSaved(form)
       setStored(null)
+      setTooLong([])
       toast('Настройки сохранены', { icon: 'check' })
     } catch (e) {
       if (e instanceof ApiError && e.body.message) {
@@ -164,6 +171,12 @@ export default function Settings() {
         void save()
       }}
     >
+      {tooLong.length > 0 && (
+        <div role="alert" className="flex flex-col gap-1 rounded-lg bg-warning-tint p-4">
+          <span className="headline">Сохранить настройки нельзя, пока значения не сокращены</span>
+          <span>{tooLong.join('; ')}.</span>
+        </div>
+      )}
       {stored && (
         <div role="alert" className="flex flex-col gap-1 rounded-lg bg-warning-tint p-4">
           <span className="headline">Сохранённые настройки некорректны</span>
@@ -310,7 +323,7 @@ export default function Settings() {
               className="min-w-0 grow-3 basis-60"
               placeholder="Значение"
               aria-label="Значение переменной"
-              maxLength={256}
+              maxLength={MAX_VAR}
               value={v.value}
               onChange={(e) => patch({ vars: form.vars.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
             />
@@ -322,7 +335,7 @@ export default function Settings() {
             Добавить переменную
           </Button>
         </div>
-        <span className="footnote text-text-secondary">Имя — латиница, цифры и _, первая буква. Значение — простой текст без разметки, до 256 символов. Переменную из сохранённого текста удалить нельзя.</span>
+        <span className="footnote text-text-secondary">Имя — латиница, цифры и _, первая буква. Значение — простой текст без разметки, до 96 символов. Переменную из сохранённого текста удалить нельзя.</span>
       </Card>
 
       {error && (

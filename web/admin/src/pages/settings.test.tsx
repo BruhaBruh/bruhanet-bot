@@ -124,6 +124,23 @@ describe('Settings', () => {
     expect((puts()[0].body as typeof s).vars).toEqual({ promoLink: 'https://y.io', note: 'текст' })
   })
 
+  it('stored variable over 96 chars: warning, save refused until shortened, 96 passes', async () => {
+    const long = 'a'.repeat(97)
+    replies['GET /api/settings'] = json(200, { ...s, vars: { promoLink: long }, problems: ['Переменная promoLink длиннее 96 символов: сократите'] })
+    await open()
+    expect(screen.getByText(/Сохранить настройки нельзя/)).toBeTruthy()
+    expect(screen.getByText(/Переменная promoLink длиннее 96 символов: сократите/)).toBeTruthy()
+    edit(field('Банк'), 'Т-Банк')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toEqual([])
+    edit(field('Значение переменной'), 'a'.repeat(96))
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toHaveLength(1)
+    expect(screen.queryByText(/Сохранить настройки нельзя/)).toBeNull()
+  })
+
   it('refused removal shows the keys from the server', async () => {
     replies['PUT /api/settings'] = json(400, { error: 'invalid', message: 'переменная promoLink используется в текстах: payment.tariffs', problems: ['переменная promoLink используется в текстах: payment.tariffs'] })
     await open()

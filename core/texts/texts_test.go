@@ -293,6 +293,13 @@ func TestWorstCaseCountsGlobals(t *testing.T) {
 	if err := Validate(d, strings.Repeat("b", 4096-MaxCustomVar+1)+"{{.my}}", custom); !errors.Is(err, ErrTooLong) {
 		t.Fatalf("custom: err = %v", err)
 	}
+	// своя переменная: граница 96; значение, сохранённое длиннее (до лимита), считается по факту
+	if got := Globals(map[string]string{"my": "a"}); got[len(got)-1].Max != 96 {
+		t.Fatalf("max = %d", got[len(got)-1].Max)
+	}
+	if got := Globals(map[string]string{"my": strings.Repeat("a", 200)}); got[len(got)-1].Max != 200 {
+		t.Fatalf("legacy max = %d", got[len(got)-1].Max)
+	}
 	if n := WorstLen(d, "ab{{.name}}", nil); n != 66 {
 		t.Fatalf("WorstLen = %d", n)
 	}

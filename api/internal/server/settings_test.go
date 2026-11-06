@@ -200,3 +200,33 @@ func TestSettingsVarValueMustFitSavedButtons(t *testing.T) {
 		t.Fatalf("unchanged: %d %s", w.Code, w.Body)
 	}
 }
+
+// Значение своей переменной: 96 сохраняется, 97 — 400 с русским сообщением; уже сохранённое длиннее не роняет бота на
+// дефолты, панель показывает problems, а сохранить настройки, не сократив, нельзя.
+func TestSettingsVarLengthLimit(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	put := func(v string) *httptest.ResponseRecorder {
+		body := strings.TrimSuffix(goodSettings, "}") + `,"vars":{"my":"` + v + `"}}`
+		return send(h, http.MethodPut, "/api/settings", c, body)
+	}
+	if w := put(strings.Repeat("a", 96)); w.Code != http.StatusNoContent {
+		t.Fatalf("96: %d %s", w.Code, w.Body)
+	}
+	w := put(strings.Repeat("a", 97))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "Переменная my длиннее 96 символов: сократите") {
+		t.Fatalf("97: %d %s", w.Code, w.Body)
+	}
+
+	st.setRaw = map[string][]byte{"vars": []byte(`{"my":"` + strings.Repeat("a", 200) + `"}`), "phone": []byte(`"+7 222"`)}
+	var out struct {
+		UsingDefaults bool
+		Problems      []string
+		Phone         string
+	}
+	w = send(h, http.MethodGet, "/api/settings", c, "")
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || out.UsingDefaults || out.Phone != "+7 222" ||
+		len(out.Problems) != 1 || out.Problems[0] != "Переменная my длиннее 96 символов: сократите" {
+		t.Fatalf("legacy: %s", w.Body)
+	}
+}

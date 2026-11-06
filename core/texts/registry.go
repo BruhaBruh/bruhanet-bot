@@ -5,6 +5,7 @@ package texts
 import (
 	"maps"
 	"slices"
+	"unicode/utf16"
 )
 
 type Kind string
@@ -56,7 +57,7 @@ const (
 )
 
 // MaxCustomVar — наибольшая длина значения своей переменной (core/settings), UTF-16.
-const MaxCustomVar = 256
+const MaxCustomVar = 96
 
 // globals — общие переменные: есть в каждом тексте любого вида. Значения подставляет вызывающий
 // (бот — content.Provider, на примерах — Samples). С переменными текстов имена не пересекаются (тест реестра).
@@ -240,7 +241,8 @@ var registry = []Def{
 func Globals(custom map[string]string) []Var {
 	out := slices.Clone(globals)
 	for _, name := range slices.Sorted(maps.Keys(custom)) {
-		out = append(out, Var{Name: name, Description: "Своя переменная из настроек", Sample: custom[name], Max: MaxCustomVar})
+		// сохранённое до лимита длинное значение считаем по факту: худший случай не должен занижаться
+		out = append(out, Var{Name: name, Description: "Своя переменная из настроек", Sample: custom[name], Max: max(MaxCustomVar, len(utf16.Encode([]rune(custom[name]))))})
 	}
 	return out
 }

@@ -45,11 +45,15 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 		internal(w, r, "settings raw", err)
 		return
 	}
+	usingDefaults := problems != nil
+	if !usingDefaults {
+		problems = cur.LongVarProblems() // бот их применяет, но сохранить настройки, не сократив, нельзя
+	}
 	out := struct {
 		settings.Settings
 		UsingDefaults bool     `json:"usingDefaults,omitempty"`
 		Problems      []string `json:"problems,omitempty"`
-	}{Settings: cur, UsingDefaults: problems != nil, Problems: problems}
+	}{Settings: cur, UsingDefaults: usingDefaults, Problems: problems}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -127,7 +131,7 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	invalid := func(p []string) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid", "message": strings.Join(p, "; "), "problems": p})
 	}
-	if err := in.Validate(); err != nil {
+	if err := in.ValidateForSave(); err != nil {
 		invalid(settings.Problems(err))
 		return
 	}

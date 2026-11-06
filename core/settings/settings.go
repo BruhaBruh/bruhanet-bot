@@ -268,11 +268,32 @@ func (s Settings) Validate() error {
 		case texts.Reserved(name):
 			p = append(p, fmt.Sprintf("имя переменной «%s» занято системной", name))
 		}
-		if v := s.Vars[name]; strings.TrimSpace(v) == "" || len(utf16.Encode([]rune(v))) > texts.MaxCustomVar {
-			p = append(p, fmt.Sprintf("значение переменной «%s» должно быть от 1 до %d символов", name, texts.MaxCustomVar))
+		if strings.TrimSpace(s.Vars[name]) == "" {
+			p = append(p, fmt.Sprintf("значение переменной «%s» не может быть пустым", name))
 		}
 	}
 	return problemsErr(p)
+}
+
+// ValidateForSave — Validate плюс лимит длины значений своих переменных. При загрузке лимит не проверяется:
+// значения, сохранённые до его появления, не должны сбрасывать бота на env-дефолты.
+func (s Settings) ValidateForSave() error {
+	var p []string
+	if ve, ok := errors.AsType[*ValidationError](s.Validate()); ok {
+		p = ve.Items
+	}
+	return problemsErr(append(p, s.LongVarProblems()...))
+}
+
+// LongVarProblems — свои переменные, значение которых длиннее texts.MaxCustomVar (UTF-16).
+func (s Settings) LongVarProblems() []string {
+	var p []string
+	for _, name := range slices.Sorted(maps.Keys(s.Vars)) {
+		if len(utf16.Encode([]rune(s.Vars[name]))) > texts.MaxCustomVar {
+			p = append(p, fmt.Sprintf("Переменная %s длиннее %d символов: сократите", name, texts.MaxCustomVar))
+		}
+	}
+	return p
 }
 
 func (s Settings) reminderTimeProblems() []string {

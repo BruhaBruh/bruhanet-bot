@@ -127,7 +127,6 @@ func TestVars(t *testing.T) {
 		"system collision": {"name": "x"},
 		"registry var":     {"months": "x"},
 		"empty value":      {"a": " "},
-		"long value":       {"a": strings.Repeat("я", 257)},
 	} {
 		s := def()
 		s.Vars = vars
@@ -136,10 +135,31 @@ func TestVars(t *testing.T) {
 		}
 	}
 	s := def()
-	s.Vars = map[string]string{"a_1": strings.Repeat("я", 256)}
-	if err := s.Validate(); err != nil {
+	s.Vars = map[string]string{"a_1": strings.Repeat("я", 96)}
+	if err := s.ValidateForSave(); err != nil {
 		t.Fatal(err)
 	}
+	// 97: при сохранении отказ, при загрузке настройки остаются валидными (иначе бот уйдёт на env-дефолты)
+	s.Vars = map[string]string{"a_1": strings.Repeat("я", 97), "ok": "x"}
+	if err := s.ValidateForSave(); !errors.Is(err, ErrInvalidSetting) || !strings.Contains(err.Error(), "Переменная a_1 длиннее 96 символов: сократите") {
+		t.Fatalf("save long: %v", err)
+	}
+	if err := s.Validate(); err != nil {
+		t.Fatalf("load long: %v", err)
+	}
+	if got := s.LongVarProblems(); len(got) != 1 || got[0] != "Переменная a_1 длиннее 96 символов: сократите" {
+		t.Fatalf("long problems = %v", got)
+	}
+	// эмодзи — 2 единицы UTF-16: 48 помещаются, 49 нет
+	s.Vars = map[string]string{"e": strings.Repeat("😀", 48)}
+	if len(s.LongVarProblems()) != 0 {
+		t.Fatal("48 emoji")
+	}
+	s.Vars = map[string]string{"e": strings.Repeat("😀", 49)}
+	if len(s.LongVarProblems()) != 1 {
+		t.Fatal("49 emoji")
+	}
+	s.Vars = nil
 	s.SupportURL = "https://x.io/" + strings.Repeat("a", 256)
 	if err := s.Validate(); !errors.Is(err, ErrInvalidSetting) {
 		t.Fatalf("long url: %v", err)

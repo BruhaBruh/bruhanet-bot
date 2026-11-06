@@ -239,11 +239,11 @@ func TestMessageWorstCaseNamesVar(t *testing.T) {
 	mk := func(text, photo string) map[string]any {
 		return map[string]any{"idempotencyKey": uuid.New(), "text": text, "photo": photo}
 	}
-	// my считается по максимуму (256): 768 + 256 = 1024 в подпись, на единицу больше — 400 с именем
-	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 768)+"{{.my}}", "AgAD")); code != http.StatusCreated {
+	// my считается по максимуму (96): 928 + 96 = 1024 в подпись, на единицу больше — 400 с именем
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 928)+"{{.my}}", "AgAD")); code != http.StatusCreated {
 		t.Fatalf("%d %s", code, body)
 	}
-	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 769)+"{{.my}}", "AgAD")); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 929)+"{{.my}}", "AgAD")); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
 		t.Fatalf("%d %s", code, body)
 	}
 	// эмодзи — 2 единицы: 512 помещаются, 513 нет
@@ -254,13 +254,13 @@ func TestMessageWorstCaseNamesVar(t *testing.T) {
 		t.Fatalf("%d %s", code, body)
 	}
 	// без фото — 4096
-	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 3840)+"{{.my}}", "")); code != http.StatusCreated {
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 4000)+"{{.my}}", "")); code != http.StatusCreated {
 		t.Fatalf("%d %s", code, body)
 	}
-	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 3841)+"{{.my}}", "")); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 4001)+"{{.my}}", "")); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
 		t.Fatalf("%d %s", code, body)
 	}
-	if code, body := post("/api/users/7/messages", map[string]any{"text": strings.Repeat("a", 3841) + "{{.my}}"}); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
+	if code, body := post("/api/users/7/messages", map[string]any{"text": strings.Repeat("a", 4001) + "{{.my}}"}); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
 		t.Fatalf("direct: %d %s", code, body)
 	}
 }
