@@ -33,7 +33,8 @@ func scanPayment(row pgx.Row) (model.Payment, error) {
 
 // lockUserTerm — первая инструкция любой транзакции, меняющей срок юзера: CreatePayment, GrantDays, ActivateDaysPromo.
 // Порядок блокировок везде один: advisory (юзер) -> строка users -> строка payments -> строка промокода.
-// ResolvePayment и GrantAdvance advisory не берут (сроком юзера не распоряжаются, ждать им нечего).
+// ResolvePayment(Ref) тоже берёт его первым (id платежа -> владелец -> advisory); GrantAdvance не берёт
+// (сроком юзера не распоряжается, ждать ему нечего).
 // Ключ включает схему (как panel_sync): тестовые схемы не мешают друг другу.
 func lockUserTerm(ctx context.Context, tx pgx.Tx, telegramID int64) error {
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('user_term:' || current_schema() || ':' || $1::bigint::text, 0))`,
@@ -80,6 +81,9 @@ func (s *Store) CreatePayment(
 			p.TelegramID))
 		switch {
 		case err == nil && p.Kind != model.KindTariff:
+			return ErrPendingExists
+		case err == nil && old.Kind != model.KindTariff && old.SubmittedAt != nil:
+			// чек докупки/подарка уже у админа: тариф его не отменяет (иначе оплаченное пропадёт)
 			return ErrPendingExists
 		case err == nil:
 			if err = rollback(old); err != nil {
@@ -156,7 +160,7 @@ func (s *Store) GrantAdvance(ctx context.Context, id int64, apply func(p model.P
 		if err != nil {
 			return err
 		}
-		if p.Status != model.PaymentPending {
+		if p.Status != model.PaymentPending || p.Kind != model.KindTariff {
 			return ErrNotPending
 		}
 		// Заблокированному аванс не выдаётся, флаг не ставится (не считается неоплаченным авансом); обычная оплата идёт.

@@ -316,7 +316,7 @@ func (p *Payments) CreatePayment(
 	var cancelled *model.Payment
 	if i := p.pendingIdx(np.TelegramID); i >= 0 {
 		old := &p.payments[i]
-		if np.Kind != model.KindTariff {
+		if np.Kind != model.KindTariff || (old.Kind != model.KindTariff && old.SubmittedAt != nil) {
 			return model.Payment{}, nil, store.ErrPendingExists
 		}
 		if err := rollback(*old); err != nil {

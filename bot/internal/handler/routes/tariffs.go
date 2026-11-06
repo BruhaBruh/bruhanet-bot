@@ -157,7 +157,13 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 		return model.Payment{}, false
 	}
 	if errors.Is(err, store.ErrPendingExists) { // докупка устройств или подарок при открытой оплате
-		if np.Kind == model.KindGift {
+		busy := np.Kind
+		if busy == "" || busy == model.KindTariff { // тариф упёрся в оплаченную докупку/подарок с отправленным чеком
+			if old, perr := h.pay.PendingPayment(ctx, np.TelegramID); perr == nil {
+				busy = old.Kind
+			}
+		}
+		if busy == model.KindGift {
 			h.giftBusy(ctx, b, u)
 		} else {
 			h.devicesBusy(ctx, b, u)

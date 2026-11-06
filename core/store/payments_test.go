@@ -277,3 +277,63 @@ func TestUserStats(t *testing.T) {
 		})
 	}
 }
+
+func TestTariffVsPendingOtherKinds(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		kind      model.PaymentKind
+		submitted bool
+		busy      bool
+	}{
+		{"devices not submitted", model.KindDevices, false, false},
+		{"devices submitted", model.KindDevices, true, true},
+		{"gift not submitted", model.KindGift, false, false},
+		{"gift submitted", model.KindGift, true, true},
+		{"tariff submitted", model.KindTariff, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := testStore(t)
+			ctx := t.Context()
+			old := model.Payment{TelegramID: 1, Username: "u", Month: 1, Price: 150, Kind: tc.kind, PrevExpireAt: time.Now()}
+			switch tc.kind {
+			case model.KindDevices:
+				old.Month, old.ExtraDevices = 0, 1
+			}
+			first, _, err := s.CreatePayment(ctx, old, noRollback, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.submitted {
+				if err := s.SubmitPayment(ctx, first.ID, 7, "f", time.Now()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			second, cancelled, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
+			if tc.busy {
+				if !errors.Is(err, ErrPendingExists) {
+					t.Fatalf("err = %v", err)
+				}
+				if got, err := s.PendingPayment(ctx, 1); err != nil || got.ID != first.ID {
+					t.Fatalf("pending %+v %v", got, err)
+				}
+				return
+			}
+			if err != nil || cancelled == nil || cancelled.ID != first.ID || second.ID == first.ID {
+				t.Fatalf("second %+v cancelled %+v err %v", second, cancelled, err)
+			}
+		})
+	}
+}
+
+func TestGrantAdvanceRefusesNonTariff(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	p, _, err := s.CreatePayment(ctx, devicesPay(1, 1), noRollback, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	if err := s.GrantAdvance(ctx, p.ID, func(model.Payment) { called = true }); !errors.Is(err, ErrNotPending) || called {
+		t.Fatalf("err = %v called = %v", err, called)
+	}
+}
