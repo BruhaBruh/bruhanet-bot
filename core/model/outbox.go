@@ -8,7 +8,7 @@ import (
 
 // OutboxMessage — исходящее сообщение Telegram; payload-колонка хранит всё, кроме EventType.
 type OutboxMessage struct {
-	EventType string `json:"-"` // payment_result | payment_admin_closed | reminder | broadcast | broadcast_summary | direct | text_test
+	EventType string `json:"-"` // payment_result | payment_admin_closed | grant_days | reminder | broadcast | broadcast_summary | direct | text_test
 
 	ChatID    int64                        `json:"chat_id"`
 	Text      string                       `json:"text,omitempty"`
@@ -32,6 +32,7 @@ type OutboxMessage struct {
 	// (строки до этой версии несут готовые Text и Keyboard).
 	TextKey  string    `json:"text_key,omitempty"`
 	ExpireAt time.Time `json:"expire_at,omitzero"`
+	Days     int       `json:"days,omitempty"` // grant_days: сколько дней выдано (переменная {{.days}})
 
 	// payment_admin_closed: решение из панели закрывает MessageID у админа; 0 — чека не было, закрывать нечего.
 	Confirmed bool `json:"confirmed,omitempty"`

@@ -22,7 +22,7 @@ func (s *server) users(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := model.UserFilter{Q: q.Get("q"), Tab: model.UserTab(q.Get("tab")), Now: s.Now(), Limit: pageSize}
 	switch f.Tab {
-	case model.UserTabAll, model.UserTabActive, model.UserTabTrial, model.UserTabBlockedBot:
+	case model.UserTabAll, model.UserTabActive, model.UserTabTrial, model.UserTabBlockedBot, model.UserTabBlocked:
 	default:
 		writeBadRequest(w)
 		return
@@ -113,6 +113,7 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	var payments []model.Payment
 	var messages []model.DirectMessage
 	var promos []model.UserPromo
+	var grants []model.Grant
 	if err == nil {
 		stats, err = s.Store.UserStats(ctx, id, 0)
 	}
@@ -124,6 +125,9 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil {
 		promos, err = s.Store.UserPromos(ctx, id)
+	}
+	if err == nil {
+		grants, err = s.Store.UserGrants(ctx, id, 20)
 	}
 	if err != nil {
 		stlog.L(ctx).Error("user card", slog.Any("error", err))
@@ -144,7 +148,7 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	default:
 		p.ID, p.ExpireAt, p.Status = ptr(info.ID), ptr(info.ExpireAt.UTC()), ptr(string(info.Status))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": u, "stats": stats, "payments": payments, "messages": messages, "promos": promos, "panel": p})
+	writeJSON(w, http.StatusOK, map[string]any{"user": u, "stats": stats, "payments": payments, "messages": messages, "promos": promos, "grants": grants, "panel": p})
 }
 
 func ptr[T any](v T) *T { return &v }

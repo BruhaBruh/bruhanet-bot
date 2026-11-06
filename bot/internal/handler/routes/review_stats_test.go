@@ -2,6 +2,7 @@ package routes
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,5 +71,17 @@ func TestPromoLine(t *testing.T) {
 		if got := promoLine(tc.p); got != tc.want {
 			t.Errorf("promoLine = %q, want %q", got, tc.want)
 		}
+	}
+}
+
+func TestFormatStatsBlocked(t *testing.T) {
+	for _, in := range []model.UserStats{{Blocked: true}, {Blocked: true, HasHistory: true, Confirmed: 1}} {
+		rows := formatStats(in, 3)
+		if last := rows[len(rows)-1]; !strings.Contains(last, "🚫 заблокирован") {
+			t.Fatalf("rows = %q", rows)
+		}
+	}
+	if rows := formatStats(model.UserStats{}, 3); len(rows) != 1 {
+		t.Fatalf("rows = %q", rows)
 	}
 }

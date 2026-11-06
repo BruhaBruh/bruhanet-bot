@@ -110,8 +110,8 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		return nil, errors.Join(errors.New("failed to load Europe/Moscow"), err)
 	}
 
-	ow := outbox.New(st, b, cnt.Render, func(ctx context.Context, id int64, key string, expireAt time.Time) (string, *models.InlineKeyboardMarkup) {
-		return routes.PaymentNotice(ctx, cnt, rwObs, id, key, expireAt)
+	ow := outbox.New(st, b, cnt.Render, func(ctx context.Context, id int64, key string, expireAt time.Time, days int) (string, *models.InlineKeyboardMarkup) {
+		return routes.PaymentNotice(ctx, cnt, rwObs, id, key, expireAt, days)
 	})
 	outboxDone := make(chan struct{})
 	bcDone := make(chan struct{})

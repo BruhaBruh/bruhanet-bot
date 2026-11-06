@@ -14,4 +14,5 @@ var (
 	ErrPromoExists     = errors.New("promo code already exists")
 	ErrBroadcastLocked = errors.New("broadcast has already started or is cancelled")
 	ErrSyncRunning     = errors.New("panel sync is already running")
+	ErrBlocked         = errors.New("user is blocked by admin: no free grants")
 )

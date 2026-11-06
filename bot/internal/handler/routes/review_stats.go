@@ -10,8 +10,12 @@ import (
 
 // formatStats — блок статистики юзера в сообщении проверки; строки уже экранированы для HTML.
 func formatStats(s model.UserStats, advanceLimit int) []string {
+	var blocked []string
+	if s.Blocked {
+		blocked = []string{"🚫 заблокирован: без авансов и промокодов"}
+	}
 	if !s.HasHistory {
-		return []string{"🆕 первая оплата"}
+		return append([]string{"🆕 первая оплата"}, blocked...)
 	}
 	paid := fmt.Sprintf("📊 Оплат: %d на %s ₽", s.Confirmed, groupThousands(s.ConfirmedSum))
 	if s.Confirmed > 0 && s.LastConfirmedAt != nil {
@@ -25,6 +29,7 @@ func formatStats(s model.UserStats, advanceLimit int) []string {
 	if s.FirstConfirmedAt != nil {
 		rows = append(rows, "🕐 Клиент с "+s.FirstConfirmedAt.In(moscow).Format("01.2006"))
 	}
+	rows = append(rows, blocked...)
 	for i, r := range rows {
 		rows[i] = html.EscapeString(r)
 	}

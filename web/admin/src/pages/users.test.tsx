@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { MemoryRouter, useLocation, useNavigate, type NavigateFunction } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
+import { grantedExpire, parseDays } from '../grant'
 
 vi.mock('../compose/Composer', () => ({
   Composer: ({ onSent }: { onSent: (m: unknown) => void }) => (
@@ -25,6 +26,7 @@ const user = (id: number, username: string, confirmed = 0, over = {}) => ({
   expireAt: null,
   panelStatus: null,
   blockedBotAt: null,
+  blockedAt: null,
   tariffMonths: null,
   lastSeenAt: null,
   broadcastsReceived: 0,
@@ -34,17 +36,18 @@ const page = (items: unknown[], over = {}) => ({ items, total: items.length, pag
 
 const detail = (over = {}) => ({
   user: user(7, 'bob', 2),
-  stats: { confirmed: 2, confirmedSum: 600, unpaidAdvances: 1, lastConfirmedAt: '2026-10-05T10:00:00Z', firstConfirmedAt: '2026-09-15T10:00:00Z', hasHistory: true },
+  stats: { confirmed: 2, confirmedSum: 600, unpaidAdvances: 1, lastConfirmedAt: '2026-10-05T10:00:00Z', firstConfirmedAt: '2026-09-15T10:00:00Z', hasHistory: true, blocked: false },
   payments: [{ id: 31, telegramId: 7, username: 'bob', month: 3, price: 900, status: 'confirmed', createdAt: '2026-11-01T10:00:00Z' }],
   panel: { id: 1234, expireAt: '2027-01-20T10:00:00Z', status: 'ACTIVE', error: null },
   messages: [],
   promos: [],
+  grants: [],
   ...over,
 })
 
 // ответы по префиксу пути; бейдж платежей в шапке отвечает сам
 function stub(routes: Record<string, () => Response | Promise<Response>>) {
-  const fetchMock = vi.fn(async (url: string) => {
+  const fetchMock = vi.fn(async (...[url]: [string, RequestInit?]) => {
     if (url.startsWith('/api/payments')) return json(200, { items: [], total: 0, revenue: 0 })
     const k = Object.keys(routes).find((p) => url.startsWith(p))
     return k ? routes[k]() : json(500, {})
@@ -359,11 +362,112 @@ describe('UserCard', () => {
     expect(screen.getByRole('button', { name: 'Послать' })).toBe(composer)
   })
 
-  it('shows «Выдать дни» and «Заблокировать» as not wired', async () => {
-    stub({ '/api/users/7': () => json(200, detail()) })
+  it('grants days: preview date, one POST on double click, toast, refetch, history', async () => {
+    let grants: unknown[] = []
+    const f = stub({
+      '/api/users/7/grant': () => {
+        grants = [{ id: 1, days: 14, createdAt: '2026-11-06T10:00:00Z' }]
+        return json(200, { expireAt: '2027-02-03T10:00:00Z', days: 14 })
+      },
+      '/api/users/7': () => json(200, detail({ grants })),
+    })
     await renderAt('/users/7')
+    expect(screen.queryByText('Выдачи')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Выдать дни' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '14' }))
+    // срок в панели 20.01.2027 + 14 дней
+    expect(within(dialog).getByText(/Подписка продлится до 3 февр\. 2027/)).toBeTruthy()
+    const ok = within(dialog).getByRole('button', { name: 'Выдать' })
+    fireEvent.click(ok)
+    fireEvent.click(ok)
+    await flush()
+    const posts = f.mock.calls.filter(([u, init]) => u === '/api/users/7/grant' && init?.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect(JSON.parse((posts[0][1] as RequestInit).body as string)).toEqual({ days: 14 })
+    expect(screen.getByText('Добавлено 14 дней')).toBeTruthy()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByText('Выдачи')).toBeTruthy()
+    expect(screen.getByText('+14 дн.')).toBeTruthy()
+  })
+
+  it('refuses a bad number of days without a request', async () => {
+    const f = stub({ '/api/users/7/grant': () => json(200, {}), '/api/users/7': () => json(200, detail()) })
+    await renderAt('/users/7')
+    fireEvent.click(screen.getByRole('button', { name: 'Выдать дни' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.change(within(dialog).getByLabelText('Сколько дней'), { target: { value: '366' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Выдать' }))
+    expect(within(dialog).getByText('От 1 до 365')).toBeTruthy()
+    expect(f.mock.calls.some(([u]) => u === '/api/users/7/grant')).toBe(false)
+  })
+
+  it('shows the server message when the grant fails and keeps the dialog', async () => {
+    stub({
+      '/api/users/7/grant': () => json(502, { error: 'panel_unavailable', message: 'Панель не ответила, дни не выданы' }),
+      '/api/users/7': () => json(200, detail()),
+    })
+    await renderAt('/users/7')
+    fireEvent.click(screen.getByRole('button', { name: 'Выдать дни' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Выдать' }))
+    await flush()
+    expect(screen.getByText('Панель не ответила, дни не выданы')).toBeTruthy()
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+  })
+
+  it('blocks through a dialog with the consequence and toggles to unblock', async () => {
+    let blockedAt: string | null = null
+    const f = stub({
+      '/api/users/7/block': () => {
+        blockedAt = '2026-11-06T10:00:00Z'
+        return new Response(null, { status: 204 })
+      },
+      '/api/users/7/unblock': () => {
+        blockedAt = null
+        return new Response(null, { status: 204 })
+      },
+      '/api/users/7': () => json(200, detail({ user: user(7, 'bob', 2, { blockedAt }) })),
+    })
+    await renderAt('/users/7')
+    expect(screen.queryByText('Заблокирован')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Заблокировать' }))
-    expect(screen.getByText('Пока не подключено')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Выдать дни' })).toBeTruthy()
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Заблокировать @bob? Он не сможет получать авансы и промокоды. Обычная оплата останется доступна.')).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Заблокировать' }))
+    await flush()
+    expect(f.mock.calls.some(([u, init]) => u === '/api/users/7/block' && init?.method === 'POST')).toBe(true)
+    expect(screen.getByText('Пользователь заблокирован')).toBeTruthy()
+    expect(screen.getByText('Заблокирован')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Снять блокировку' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Снять блокировку' }))
+    await flush()
+    expect(f.mock.calls.some(([u]) => u === '/api/users/7/unblock')).toBe(true)
+    expect(screen.getByText('Блокировка снята')).toBeTruthy()
+    expect(screen.queryByText('Заблокирован')).toBeNull()
+  })
+
+  it('shows «Заблокирован» in the list over the panel status and has a tab', async () => {
+    const f = stub({ '/api/users?': () => json(200, page([user(1, 'ann', 0, { blockedAt: '2026-11-06T10:00:00Z', panelStatus: 'ACTIVE' })])) })
+    await renderAt('/users')
+    const row = within(within(screen.getByRole('table')).getByText('@ann').closest('tr')!)
+    expect(row.getByText('Заблокирован')).toBeTruthy()
+    expect(row.queryByText('активна')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: 'Заблокированы мной' }))
+    await flush()
+    expect(userCalls(f).at(-1)).toBe('/api/users?q=&tab=blocked')
+  })
+})
+
+describe('grant helpers', () => {
+  it('counts from the later of expire and now', () => {
+    const now = Date.parse('2026-11-06T00:00:00Z')
+    expect(grantedExpire('2026-11-10T00:00:00Z', 7, now)).toBe('2026-11-17T00:00:00.000Z')
+    expect(grantedExpire('2026-01-01T00:00:00Z', 7, now)).toBe('2026-11-13T00:00:00.000Z')
+    expect(grantedExpire(null, 1, now)).toBe('2026-11-07T00:00:00.000Z')
+  })
+  it('accepts only whole 1..365', () => {
+    expect(['1', '365', '30'].map(parseDays)).toEqual([1, 365, 30])
+    expect(['', '0', '366', '1.5', '-1', 'abc', '1000'].map(parseDays)).toEqual([undefined, undefined, undefined, undefined, undefined, undefined, undefined])
   })
 })

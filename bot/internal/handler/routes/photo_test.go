@@ -277,3 +277,36 @@ func TestPhotoWithoutUsername(t *testing.T) {
 		t.Fatalf("admin message = %q", admin)
 	}
 }
+
+// Заблокированный админом юзер получает обычное «на проверке» без аванса и без намёка на блокировку,
+// а админу в сообщении проверки видна пометка.
+func TestPhotoBlockedUserGetsNoAdvance(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(userID, now)
+	e.pay.SetBlocked(userID, true)
+	awaitPhoto(t, e, now)
+
+	e.process(t, tgtest.Photo(userID))
+
+	if n := len(e.rw.Updates()); n != 0 {
+		t.Fatalf("UpdateUser calls = %d", n)
+	}
+	p := e.pending(t, userID)
+	if p.AdvanceGranted || p.SubmittedAt == nil {
+		t.Fatalf("payment = %+v", p)
+	}
+	if st := e.state(t, userID); st != "in_review" {
+		t.Fatalf("state = %q", st)
+	}
+	text := e.last(t, "sendMessage").Params.Get("text")
+	if !strings.Contains(text, "на проверку") || strings.Contains(text, "доступ") || strings.Contains(strings.ToLower(text), "блок") {
+		t.Fatalf("user message = %s", text)
+	}
+	if admin := e.srv.Calls("sendMessage")[0].Params.Get("text"); !strings.Contains(admin, "🚫 заблокирован") {
+		t.Fatalf("admin message = %s", admin)
+	}
+	// кнопки проверки на месте: обычная оплата доступна
+	if kb := e.last(t, "editMessageReplyMarkup").Params.Get("reply_markup"); !strings.Contains(kb, "adm_ok") {
+		t.Fatalf("keyboard = %s", kb)
+	}
+}

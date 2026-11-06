@@ -12,7 +12,9 @@ var (
 	ErrNotYours    = errors.New("promo is personal for another user")
 	ErrOnlyNew     = errors.New("promo is for new users only")
 	ErrAlreadyUsed = errors.New("promo already used by this user")
-	ErrWrongPlace  = errors.New("promo kind does not fit this place")
+	// ErrBlocked — юзер заблокирован админом: промокоды (скидки и дни) ему не выдаются. Снаружи неотличим от ErrNotFound.
+	ErrBlocked    = errors.New("promo unavailable: user is blocked")
+	ErrWrongPlace = errors.New("promo kind does not fit this place")
 
 	// ErrInvalid — новый код не прошёл ValidateNew; текст причины — в обёрнутой ошибке.
 	ErrInvalid = errors.New("invalid promo")

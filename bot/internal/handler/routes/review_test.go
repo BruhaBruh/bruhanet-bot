@@ -153,7 +153,7 @@ func TestConfirmQueuesNotice(t *testing.T) {
 				t.Fatalf("outbox message = %+v", m)
 			}
 			// текст и клавиатуру рендерит воркер: те же, что раньше клал бот
-			text, kb := routes.PaymentNotice(t.Context(), e.c, e.rw, m.ChatID, m.TextKey, m.ExpireAt)
+			text, kb := routes.PaymentNotice(t.Context(), e.c, e.rw, m.ChatID, m.TextKey, m.ExpireAt, 0)
 			if text != tc.text || kb == nil {
 				t.Fatalf("notice = %q, keyboard = %v", text, kb)
 			}

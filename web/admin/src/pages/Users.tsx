@@ -16,16 +16,26 @@ const SEGMENTS = [
   { value: 'active', label: 'Активные' },
   { value: 'trial', label: 'Пробный период' },
   { value: 'blocked_bot', label: 'Заблокировали' },
+  { value: 'blocked', label: 'Заблокированы мной' },
 ]
 const EMPTY: Record<string, string> = {
   active: 'Активных пользователей нет',
   trial: 'Пользователей на пробном периоде нет',
   blocked_bot: 'Заблокировавших бота нет',
+  blocked: 'Вы никого не блокировали',
 }
 
 const displayName = (u: UserSummary) => u.name || userLabel(u)
 
 function UserStatus({ user: u }: { user: UserSummary }) {
+  // ручная блокировка важнее статуса панели
+  if (u.blockedAt) {
+    return (
+      <StatusTag tone="destructive" dot>
+        Заблокирован
+      </StatusTag>
+    )
+  }
   if (u.blockedBotAt) {
     return (
       <StatusTag tone="destructive" dot>

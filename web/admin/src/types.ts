@@ -8,6 +8,7 @@ export interface UserSummary {
   expireAt: string | null
   panelStatus: string | null
   blockedBotAt: string | null
+  blockedAt: string | null
   tariffMonths: number | null
   lastSeenAt: string | null
   broadcastsReceived: number
@@ -25,6 +26,12 @@ export interface UserPromo {
   kind: 'percent' | 'rub' | 'days'
   value: number
   activatedAt: string
+}
+
+export interface UserGrant {
+  id: number
+  days: number
+  createdAt: string
 }
 
 export interface Payment {
@@ -55,11 +62,13 @@ export interface UserDetail {
     lastConfirmedAt: string | null
     firstConfirmedAt: string | null
     hasHistory: boolean
+    blocked: boolean
   }
   payments: Payment[]
   panel: { id: number | null; expireAt: string | null; status: string | null; error: 'panel_unavailable' | null }
   messages: DirectMessage[]
   promos: UserPromo[]
+  grants: UserGrant[]
 }
 
 export interface TextVar {

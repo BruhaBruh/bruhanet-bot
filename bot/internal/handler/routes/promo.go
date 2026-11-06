@@ -262,6 +262,13 @@ func (h *handlers) payByPromo(ctx context.Context, b *bot.Bot, u *models.Update,
 }
 
 func (h *handlers) checkPaymentPromo(ctx context.Context, p model.Promo, userID int64) error {
+	// Раннее чтение, чтобы не показывать скидку, которую потом не выдадут; окончательно решает транзакция (CreatePayment).
+	if blocked, err := h.pay.UserBlocked(ctx, userID); err != nil || blocked {
+		if err == nil {
+			err = promo.ErrBlocked
+		}
+		return err
+	}
 	used, already, err := h.pay.PromoUsage(ctx, p.ID, userID)
 	if err != nil {
 		return err
@@ -287,7 +294,8 @@ func (h *handlers) rejectPromo(ctx context.Context, b *bot.Bot, u *models.Update
 
 func promoErrorKey(err error, place promo.Place) string {
 	switch {
-	case errors.Is(err, promo.ErrNotFound), errors.Is(err, store.ErrNotFound):
+	// блокировку не раскрываем: для юзера это «такого кода нет»
+	case errors.Is(err, promo.ErrNotFound), errors.Is(err, store.ErrNotFound), errors.Is(err, promo.ErrBlocked):
 		return "promo.not_found"
 	case errors.Is(err, promo.ErrDisabled):
 		return "promo.disabled"

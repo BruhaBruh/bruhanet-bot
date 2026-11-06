@@ -171,6 +171,15 @@ func checkPromoLocked(
 	if err != nil {
 		return p, err
 	}
+	// Ручная блокировка: первой причиной, чтобы не раскрывать её другими отказами. Чтение без FOR SHARE:
+	// блокировка строки юзера в порядке «платёж → юзер» встала бы в дедлок с CreatePayment (юзер → платёж).
+	blocked, err := userBlocked(ctx, tx, telegramID)
+	if err != nil {
+		return p, err
+	}
+	if blocked {
+		return p, promo.ErrBlocked
+	}
 	used, already, err := promoUsage(ctx, tx, promoID, telegramID)
 	if err != nil {
 		return p, err

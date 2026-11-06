@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { notWired } from '@/lib/not-wired'
 import { Avatar, Button, Card, DataTable, RowAction, Spinner, StatusTag, toast, type Tone } from '@/ui'
 import { ApiError, get } from '../api'
 import { snippet } from '../editor/serialize'
@@ -10,6 +9,7 @@ import { userLabel } from '../promo'
 import type { DirectMessage, UserDetail } from '../types'
 import { userPayColumns, userPayMobileRow } from './payment-columns'
 import { usePaymentReview } from './payment-review'
+import { BlockDialog, GrantDialog } from './user-actions'
 
 // tiptap — отдельным чанком
 const Composer = lazy(() => import('../compose/Composer').then((m) => ({ default: m.Composer })))
@@ -74,10 +74,12 @@ function UserCardInner({ id }: { id?: string }) {
   const [error, setError] = useState('')
   // hidden — скрыт, но смонтирован: черновик не пропадает при повторном клике.
   const [composer, setComposer] = useState<'none' | 'open' | 'hidden'>('none')
+  const [dialog, setDialog] = useState<'grant' | 'block'>()
 
   const syncKey = useSyncKey()
   const [reloads, setReloads] = useState(0)
-  const review = usePaymentReview(() => setReloads((n) => n + 1))
+  const reload = () => setReloads((n) => n + 1)
+  const review = usePaymentReview(reload)
   useEffect(() => {
     get<UserDetail>(`/api/users/${id}`).then(setD, (e) =>
       setError(e instanceof ApiError && e.status === 404 ? 'Пользователь не найден' : 'Не удалось загрузить пользователя'),
@@ -116,7 +118,7 @@ function UserCardInner({ id }: { id?: string }) {
     )
   }
 
-  const { user, stats, panel, messages, promos } = d
+  const { user, stats, panel, messages, promos, grants } = d
   // Средний чек — по подтверждённым: только у них есть сумма в stats.
   const average = stats.confirmed ? formatRub(Math.round(stats.confirmedSum / stats.confirmed)) : DASH
 
@@ -129,6 +131,11 @@ function UserCardInner({ id }: { id?: string }) {
           <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="title-2 min-w-0 break-all">{name}</h2>
             <PanelTag panel={panel} />
+            {user.blockedAt && (
+              <StatusTag tone="destructive" dot>
+                Заблокирован
+              </StatusTag>
+            )}
             {user.blockedBotAt && (
               <StatusTag tone="destructive" dot>
                 заблокировал бота
@@ -151,11 +158,11 @@ function UserCardInner({ id }: { id?: string }) {
           <Button variant="tinted" aria-expanded={composer === 'open'} onClick={() => setComposer(composer === 'open' ? 'hidden' : 'open')}>
             Написать
           </Button>
-          <Button variant="gray" icon="gift" onClick={notWired}>
+          <Button variant="gray" icon="gift" onClick={() => setDialog('grant')}>
             Выдать дни
           </Button>
-          <Button variant="destructive" icon="block" onClick={notWired}>
-            Заблокировать
+          <Button variant="destructive" icon="block" onClick={() => setDialog('block')}>
+            {user.blockedAt ? 'Снять блокировку' : 'Заблокировать'}
           </Button>
         </div>
       </section>
@@ -225,6 +232,19 @@ function UserCardInner({ id }: { id?: string }) {
         />
       </div>
 
+      {grants.length > 0 && (
+        <Card title="Выдачи" className="admin-body">
+          <ul>
+            {grants.map((g) => (
+              <li key={g.id} className={`flex items-center justify-between gap-3 py-2.5 ${separator}`}>
+                <span className="text-text-secondary">{formatShortDate(g.createdAt)}</span>
+                <span className="font-medium">+{g.days} дн.</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <Card title="Сообщения" className="admin-body">
         {!messages.length ? (
           <p className="text-text-secondary">Сообщений пока нет</p>
@@ -246,6 +266,10 @@ function UserCardInner({ id }: { id?: string }) {
         )}
       </Card>
       {review.dialogs}
+      {dialog === 'grant' && (
+        <GrantDialog user={user} expireAt={panel.expireAt ?? user.expireAt} onClose={() => setDialog(undefined)} onDone={reload} />
+      )}
+      {dialog === 'block' && <BlockDialog user={user} onClose={() => setDialog(undefined)} onDone={reload} />}
     </>
   )
 }

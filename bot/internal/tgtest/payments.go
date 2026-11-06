@@ -23,6 +23,7 @@ type Payments struct {
 	failSubmitOnce bool
 	failAdvance    bool
 	failDaysOnce   bool
+	blocked        map[int64]bool // ручная блокировка админом
 	loginTokens    []LoginToken
 	promos         []model.Promo // индекс = ID-1
 	activations    []model.PromoActivation
@@ -99,6 +100,22 @@ func (p *Payments) FailSubmitNotPendingOnce() {
 	p.failSubmitOnce = true
 }
 
+// SetBlocked ставит или снимает ручную блокировку юзера (users.blocked_at).
+func (p *Payments) SetBlocked(id int64, blocked bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.blocked == nil {
+		p.blocked = map[int64]bool{}
+	}
+	p.blocked[id] = blocked
+}
+
+func (p *Payments) UserBlocked(_ context.Context, id int64) (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.blocked[id], nil
+}
+
 // FailGrantAdvance: GrantAdvance возвращает ошибку, пока не снят (false).
 func (p *Payments) FailGrantAdvance(fail bool) {
 	p.mu.Lock()
@@ -137,6 +154,9 @@ func (p *Payments) CreatePayment(
 ) (model.Payment, *model.Payment, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if np.PromoID != nil && p.blocked[np.TelegramID] {
+		return model.Payment{}, nil, promo.ErrBlocked
+	}
 	var cancelled *model.Payment
 	if i := p.pendingIdx(np.TelegramID); i >= 0 {
 		old := &p.payments[i]
@@ -206,6 +226,9 @@ func (p *Payments) GrantAdvance(_ context.Context, id int64, apply func(model.Pa
 	if x.Status != model.PaymentPending {
 		return store.ErrNotPending
 	}
+	if p.blocked[x.TelegramID] {
+		return store.ErrBlocked
+	}
 	x.AdvanceGranted = true
 	apply(*x)
 	return nil
@@ -240,6 +263,7 @@ func (p *Payments) UserStats(_ context.Context, telegramID, excludeID int64) (mo
 			st.FirstConfirmedAt = &at
 		}
 	}
+	st.Blocked = p.blocked[telegramID]
 	for _, x := range p.payments {
 		if x.TelegramID == telegramID && x.ID != excludeID && x.ID > last && x.AdvanceGranted &&
 			(x.Status == model.PaymentDeclined || x.Status == model.PaymentCancelled) {
@@ -273,6 +297,9 @@ func (p *Payments) ResolvePayment(
 		if x.Price == 0 {
 			if *x.PromoID < 1 || *x.PromoID > int64(len(p.promos)) {
 				return model.Payment{}, errors.Join(promo.ErrNotFound, store.ErrNotFound)
+			}
+			if p.blocked[x.TelegramID] {
+				return model.Payment{}, promo.ErrBlocked
 			}
 			if err := promo.Check(p.promos[*x.PromoID-1], used, x.TelegramID, p.hasConfirmed(x.TelegramID), already,
 				promo.PlacePayment, at); err != nil {
@@ -385,6 +412,9 @@ func (p *Payments) ActivateDaysPromo(
 		return errors.Join(promo.ErrNotFound, store.ErrNotFound)
 	}
 	pr := p.promos[promoID-1]
+	if p.blocked[telegramID] {
+		return promo.ErrBlocked
+	}
 	used, already := p.usage(promoID, telegramID)
 	if err := promo.Check(pr, used, telegramID, p.hasConfirmed(telegramID), already, promo.PlaceMenu, now); err != nil {
 		return err

@@ -605,3 +605,76 @@ func TestPromoReviewShowsAmountDue(t *testing.T) {
 	}
 	t.Fatal("админу не показана сумма к оплате")
 }
+
+// Заблокированному админом юзеру ни скидка, ни дни, ни 0 ₽ не выдаются; причина неотличима от «кода нет».
+func TestBlockedUserPromosRefused(t *testing.T) {
+	notFound := "Такого промокода нет"
+
+	t.Run("discount at code entry", func(t *testing.T) {
+		e := newEnv(t)
+		e.pay.AddPromo(model.Promo{Code: "OFF", Kind: model.PromoPercent, Value: 25})
+		e.pay.SetBlocked(userID, true)
+		if text := enterPaymentPromo(t, e, "off"); strings.Contains(text, "112") {
+			t.Fatalf("скидка показана: %s", text)
+		}
+		if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, notFound) {
+			t.Fatalf("ответ = %s", text)
+		}
+	})
+
+	t.Run("forged buyp, transaction decides", func(t *testing.T) {
+		e := newEnv(t)
+		e.rw.AddUser(userID, now)
+		e.pay.AddPromo(model.Promo{Code: "OFF", Kind: model.PromoPercent, Value: 25})
+		enterPaymentPromo(t, e, "off") // показана скидка
+		e.pay.SetBlocked(userID, true) // заблокировали, пока юзер смотрел экран
+		e.process(t, tgtest.Callback(userID, "buyp:1:1"))
+		if n := len(e.pay.All()); n != 0 {
+			t.Fatalf("платёж со скидкой создан: %+v", e.pay.All())
+		}
+		if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, notFound) {
+			t.Fatalf("ответ = %s", text)
+		}
+	})
+
+	t.Run("price 0", func(t *testing.T) {
+		e := newEnv(t)
+		e.rw.AddUser(userID, now)
+		e.pay.AddPromo(model.Promo{Code: "FREE", Kind: model.PromoPercent, Value: 100})
+		enterPaymentPromo(t, e, "free")
+		e.pay.SetBlocked(userID, true)
+		e.process(t, tgtest.Callback(userID, "buyp:1:1"))
+		if n := len(e.rw.Updates()); n != 0 {
+			t.Fatalf("UpdateUser calls = %d", n)
+		}
+		for _, p := range e.pay.All() {
+			if p.Status == model.PaymentConfirmed {
+				t.Fatalf("0 ₽ подтверждён: %+v", p)
+			}
+		}
+		if n := len(e.pay.Activations()); n != 0 {
+			t.Fatalf("activations = %d", n)
+		}
+	})
+
+	t.Run("days", func(t *testing.T) {
+		e := newEnv(t)
+		e.rw.AddUser(userID, now)
+		e.pay.AddPromo(model.Promo{Code: "WEEK", Kind: model.PromoDays, Value: 7})
+		e.pay.SetBlocked(userID, true)
+		e.process(t, tgtest.Callback(userID, "promo"))
+		e.process(t, tgtest.Message(userID, "week"))
+		if n := len(e.rw.Updates()); n != 0 {
+			t.Fatalf("UpdateUser calls = %d", n)
+		}
+		if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, notFound) {
+			t.Fatalf("ответ = %s", text)
+		}
+		// после снятия блокировки код работает
+		e.pay.SetBlocked(userID, false)
+		e.process(t, tgtest.Message(userID, "week"))
+		if n := len(e.rw.Updates()); n != 1 {
+			t.Fatalf("updates after unblock = %d", n)
+		}
+	})
+}

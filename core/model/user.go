@@ -45,6 +45,7 @@ type UserSummary struct {
 	ExpireAt           *time.Time `json:"expireAt"`
 	PanelStatus        *string    `json:"panelStatus"`
 	BlockedBotAt       *time.Time `json:"blockedBotAt"`
+	BlockedAt          *time.Time `json:"blockedAt"`    // ручная блокировка админом: без авансов и промокодов
 	TariffMonths       *int       `json:"tariffMonths"` // последний подтверждённый платёж
 	LastSeenAt         *time.Time `json:"lastSeenAt"`
 	BroadcastsReceived int        `json:"broadcastsReceived"`
@@ -58,6 +59,7 @@ const (
 	UserTabActive     UserTab = "active"
 	UserTabTrial      UserTab = "trial"
 	UserTabBlockedBot UserTab = "blocked_bot"
+	UserTabBlocked    UserTab = "blocked" // заблокированные админом вручную
 )
 
 // UserFilter — From/To: полуинтервал по дате регистрации (нулевое время = без границы); Now — для вкладки «Активные».
@@ -77,4 +79,11 @@ type UserPromo struct {
 	Kind        PromoKind `json:"kind"`
 	Value       int       `json:"value"`
 	ActivatedAt time.Time `json:"activatedAt"`
+}
+
+// Grant — дни, выданные админом.
+type Grant struct {
+	ID        int64     `json:"id"`
+	Days      int       `json:"days"`
+	CreatedAt time.Time `json:"createdAt"`
 }

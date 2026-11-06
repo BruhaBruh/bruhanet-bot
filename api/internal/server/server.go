@@ -66,11 +66,15 @@ type Store interface {
 	UserGrowth(ctx context.Context, prevFrom, weekFrom, to time.Time) (total, week, prev int, err error)
 	CountPromoActivations(ctx context.Context, from, to time.Time) (int, error)
 	PromoActivations(ctx context.Context, id int64) ([]model.PromoActivation, error)
+	GrantDays(ctx context.Context, telegramID, adminID int64, days int, now time.Time, apply func() ([]model.OutboxMessage, error)) error
+	SetUserBlocked(ctx context.Context, telegramID int64, blocked bool, at time.Time) error
+	UserGrants(ctx context.Context, telegramID int64, limit int) ([]model.Grant, error)
 }
 
 // Panel — Remnawave (pkg/remnawave).
 type Panel interface {
 	GetUser(ctx context.Context, telegramID int64) (*api.UserItemInfo, error)
+	CreateUser(ctx context.Context, telegramID int64, username string, squadUUID uuid.UUID) (*api.UserItemInfo, error)
 	UpdateUser(ctx context.Context, telegramID int64, username string, expireAt time.Time, squadUUID uuid.UUID) (*api.UserItemInfo, error)
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
 }
@@ -144,6 +148,9 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("PUT /api/broadcasts/{id}", s.updateBroadcast)
 	apiMux.HandleFunc("POST /api/broadcasts/{id}/cancel", s.cancelBroadcast)
 	apiMux.HandleFunc("POST /api/users/{id}/messages", s.directMessage)
+	apiMux.HandleFunc("POST /api/users/{id}/grant", s.grantDays)
+	apiMux.HandleFunc("POST /api/users/{id}/block", s.setBlocked(true))
+	apiMux.HandleFunc("POST /api/users/{id}/unblock", s.setBlocked(false))
 	apiMux.HandleFunc("GET /api/promos", s.promos)
 	apiMux.HandleFunc("POST /api/promos", s.createPromo)
 	apiMux.HandleFunc("POST /api/promos/{id}/enable", s.enablePromo)

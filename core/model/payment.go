@@ -42,6 +42,8 @@ type UserStats struct {
 	FirstConfirmedAt *time.Time `json:"firstConfirmedAt"`
 	// HasHistory — есть платежи кроме excludeID.
 	HasHistory bool `json:"hasHistory"`
+	// Blocked — юзер заблокирован админом вручную.
+	Blocked bool `json:"blocked"`
 }
 
 // PaymentFilter — Status "" = все; From/To — полуинтервал по created_at (нулевое время = без границы).

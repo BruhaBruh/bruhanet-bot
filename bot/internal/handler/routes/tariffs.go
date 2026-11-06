@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"errors"
 	"html"
 	"maps"
 	"slices"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/promo"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
@@ -106,6 +108,10 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 		_, err := h.rw.UpdateUser(ctx, old.TelegramID, old.Username, old.PrevExpireAt, h.cfg.Remnawave.InternalSquadId)
 		return err
 	})
+	if errors.Is(err, promo.ErrBlocked) { // скидка заблокированному не выдаётся; для юзера — «кода нет»
+		h.rejectPromo(ctx, b, u, err, promo.PlacePayment, routePay)
+		return model.Payment{}, false
+	}
 	if err != nil {
 		stlog.Error(ctx, "failed to create payment", "error", err)
 		h.showError(ctx, b, u)

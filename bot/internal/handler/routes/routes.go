@@ -55,6 +55,8 @@ type Payments interface {
 	PromoByID(ctx context.Context, id int64) (model.Promo, error)
 	PromoUsage(ctx context.Context, promoID, telegramID int64) (used int, alreadyActivated bool, err error)
 	HasConfirmed(ctx context.Context, telegramID int64) (bool, error)
+	// UserBlocked — ручная блокировка админом; для раннего отказа, окончательно решает транзакция выдачи.
+	UserBlocked(ctx context.Context, telegramID int64) (bool, error)
 	ActivateDaysPromo(ctx context.Context, promoID, telegramID int64, now time.Time, apply func(p model.Promo) error) error
 }
 

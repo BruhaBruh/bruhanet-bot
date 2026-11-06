@@ -73,6 +73,7 @@ type fakeStore struct {
 	acts   []model.PromoActivation
 
 	panelWrites []panelWrite
+	grants      []model.Grant
 }
 
 type panelWrite struct {
@@ -394,6 +395,42 @@ func (f *fakeStore) UserByID(_ context.Context, id int64) (model.UserSummary, er
 	return model.UserSummary{}, store.ErrNotFound
 }
 
+// GrantDays — как core/store: нет юзера — ErrNotFound, ошибка apply ничего не записывает.
+func (f *fakeStore) GrantDays(_ context.Context, id, _ int64, days int, at time.Time, apply func() ([]model.OutboxMessage, error)) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !slices.ContainsFunc(f.users, func(u model.UserSummary) bool { return u.TelegramID == id }) {
+		return store.ErrNotFound
+	}
+	msgs, err := apply()
+	if err != nil {
+		return err
+	}
+	f.grants = append(f.grants, model.Grant{ID: int64(len(f.grants) + 1), Days: days, CreatedAt: at})
+	f.outbox = append(f.outbox, msgs...)
+	return nil
+}
+
+func (f *fakeStore) SetUserBlocked(_ context.Context, id int64, blocked bool, at time.Time) error {
+	for i := range f.users {
+		if f.users[i].TelegramID != id {
+			continue
+		}
+		switch {
+		case !blocked:
+			f.users[i].BlockedAt = nil
+		case f.users[i].BlockedAt == nil:
+			f.users[i].BlockedAt = &at
+		}
+		return nil
+	}
+	return store.ErrNotFound
+}
+
+func (f *fakeStore) UserGrants(context.Context, int64, int) ([]model.Grant, error) {
+	return append([]model.Grant{}, f.grants...), nil
+}
+
 func (f *fakeStore) PaymentsByUser(_ context.Context, id int64) ([]model.Payment, error) {
 	out := []model.Payment{}
 	for i := len(f.payments) - 1; i >= 0; i-- {
@@ -473,10 +510,21 @@ type fakePanel struct {
 
 	updates   []time.Time
 	updateErr error
+	createErr error
 	squad     uuid.UUID
 }
 
 func (p *fakePanel) GetUser(context.Context, int64) (*api.UserItemInfo, error) { return p.user, p.err }
+
+func (p *fakePanel) CreateUser(context.Context, int64, string, uuid.UUID) (*api.UserItemInfo, error) {
+	if p.createErr != nil {
+		return nil, p.createErr
+	}
+	if p.user != nil {
+		return p.user, nil
+	}
+	return &api.UserItemInfo{ExpireAt: now}, nil
+}
 
 func (p *fakePanel) UpdateUser(_ context.Context, _ int64, _ string, expireAt time.Time, squad uuid.UUID) (*api.UserItemInfo, error) {
 	if p.updateErr != nil {
@@ -508,6 +556,11 @@ func (p *fakePanel) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
 type blockingPanel struct{}
 
 func (blockingPanel) GetUser(ctx context.Context, _ int64) (*api.UserItemInfo, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (blockingPanel) CreateUser(ctx context.Context, _ int64, _ string, _ uuid.UUID) (*api.UserItemInfo, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

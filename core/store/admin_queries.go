@@ -16,14 +16,14 @@ const userSummaryQuery = `
 	SELECT u.telegram_id, u.username, concat_ws(' ', u.first_name, u.last_name), u.created_at,
 		count(p.id) FILTER (WHERE p.status = 'confirmed'),
 		coalesce(sum(p.price) FILTER (WHERE p.status = 'confirmed'), 0),
-		u.expire_at, u.panel_status, u.blocked_bot_at,
+		u.expire_at, u.panel_status, u.blocked_bot_at, u.blocked_at,
 		(SELECT c.months FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed' ORDER BY c.id DESC LIMIT 1),
 		u.last_seen_at, u.broadcasts_received
 	FROM users u LEFT JOIN payments p ON p.telegram_id = u.telegram_id`
 
 func scanUserSummary(row pgx.Row) (u model.UserSummary, err error) {
 	err = row.Scan(&u.TelegramID, &u.Username, &u.Name, &u.CreatedAt, &u.Confirmed, &u.ConfirmedSum,
-		&u.ExpireAt, &u.PanelStatus, &u.BlockedBotAt, &u.TariffMonths, &u.LastSeenAt, &u.BroadcastsReceived)
+		&u.ExpireAt, &u.PanelStatus, &u.BlockedBotAt, &u.BlockedAt, &u.TariffMonths, &u.LastSeenAt, &u.BroadcastsReceived)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -37,7 +37,8 @@ const userFilterWhere = `
 	WHERE ($1 = '' OR u.username ILIKE '%'||$2||'%' ESCAPE '\'
 			OR concat_ws(' ', u.first_name, u.last_name) ILIKE '%'||$2||'%' ESCAPE '\' OR u.telegram_id = $3)
 		AND ($4 = '' OR ($4 = 'active' AND u.panel_status = 'ACTIVE' AND u.expire_at > $5)
-			OR ($4 = 'blocked_bot' AND u.blocked_bot_at IS NOT NULL))
+			OR ($4 = 'blocked_bot' AND u.blocked_bot_at IS NOT NULL)
+			OR ($4 = 'blocked' AND u.blocked_at IS NOT NULL))
 		AND (NOT $6 OR EXISTS (SELECT 1 FROM payments h WHERE h.telegram_id = u.telegram_id AND h.status = 'confirmed'))
 		AND (NOT $7 OR EXISTS (SELECT 1 FROM payments a WHERE a.telegram_id = u.telegram_id AND ` + unpaidAdvance + `
 			AND a.id > coalesce((SELECT max(c.id) FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed'), 0)))

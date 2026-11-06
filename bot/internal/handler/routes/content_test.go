@@ -126,7 +126,7 @@ func TestGlobalVarInOutboxMessage(t *testing.T) {
 	}
 	// срок — тот, что только что записан в панель, а не прежний из users
 	want := "Привет, &lt;Юзер&gt; (42) до " + "9 июля 2026 г. в 15:00, MSK"
-	text, _ := routes.PaymentNotice(t.Context(), e.c, e.rw, out[0].ChatID, out[0].TextKey, out[0].ExpireAt)
+	text, _ := routes.PaymentNotice(t.Context(), e.c, e.rw, out[0].ChatID, out[0].TextKey, out[0].ExpireAt, 0)
 	if text != want || out[0].ChatID != userID {
 		t.Fatalf("got %q, want %q", text, want)
 	}

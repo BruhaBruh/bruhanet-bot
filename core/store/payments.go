@@ -38,11 +38,17 @@ func (s *Store) CreatePayment(
 ) (created model.Payment, cancelled *model.Payment, err error) {
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		// upsert берёт row-lock на users, поэтому параллельные CreatePayment одного юзера сериализуются.
-		if _, err := tx.Exec(ctx,
+		var blocked bool
+		if err := tx.QueryRow(ctx,
 			`INSERT INTO users (telegram_id, username) VALUES ($1, $2)
-			 ON CONFLICT (telegram_id) DO UPDATE SET username = EXCLUDED.username`,
-			p.TelegramID, p.Username); err != nil {
+			 ON CONFLICT (telegram_id) DO UPDATE SET username = EXCLUDED.username
+			 RETURNING blocked_at IS NOT NULL`,
+			p.TelegramID, p.Username).Scan(&blocked); err != nil {
 			return err
+		}
+		// Скидка — бесплатная выдача: заблокированному не положена (решает строка юзера под этим же замком).
+		if blocked && p.PromoID != nil {
+			return promo.ErrBlocked
 		}
 
 		old, err := scanPayment(tx.QueryRow(ctx,
@@ -101,7 +107,7 @@ func (s *Store) SubmitPayment(ctx context.Context, id int64, adminMessageID int,
 
 // GrantAdvance под блокировкой строки ставит флаг аванса и вызывает apply (запись срока в панель): решение
 // админа не вклинится между проверкой статуса и записью и не будет затёрто авансом. Платёж уже решён — ErrNotPending.
-// Сбой панели apply оставляет у себя: флаг коммитится, перебор счётчика лучше бесплатного дня без учёта.
+// Заблокированный админом юзер — ErrBlocked. Сбой панели apply оставляет у себя: флаг коммитится, перебор счётчика лучше бесплатного дня без учёта.
 func (s *Store) GrantAdvance(ctx context.Context, id int64, apply func(p model.Payment)) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
 		p, err := scanPayment(tx.QueryRow(ctx, `SELECT `+paymentCols+` FROM payments WHERE id = $1 FOR UPDATE`, id))
@@ -110,6 +116,15 @@ func (s *Store) GrantAdvance(ctx context.Context, id int64, apply func(p model.P
 		}
 		if p.Status != model.PaymentPending {
 			return ErrNotPending
+		}
+		// Заблокированному аванс не выдаётся, флаг не ставится (не считается неоплаченным авансом); обычная оплата идёт.
+		// Чтение без FOR SHARE: блокировка юзера после платежа встала бы в дедлок с CreatePayment.
+		blocked, err := userBlocked(ctx, tx, p.TelegramID)
+		if err != nil {
+			return err
+		}
+		if blocked {
+			return ErrBlocked
 		}
 		if _, err = tx.Exec(ctx, `UPDATE payments SET advance_granted = true WHERE id = $1`, id); err != nil {
 			return err
@@ -132,9 +147,10 @@ func (s *Store) UserStats(ctx context.Context, telegramID, excludeID int64) (mod
 			count(*) FILTER (WHERE `+unpaidAdvance+` AND p.id > last.id),
 			max(coalesce(resolved_at, created_at)) FILTER (WHERE status = 'confirmed'),
 			min(coalesce(resolved_at, created_at)) FILTER (WHERE status = 'confirmed'),
-			count(*) > 0
+			count(*) > 0,
+			coalesce((SELECT blocked_at IS NOT NULL FROM users WHERE telegram_id = $1), false)
 		FROM p, last`, telegramID, excludeID).
-		Scan(&st.Confirmed, &st.ConfirmedSum, &st.UnpaidAdvances, &st.LastConfirmedAt, &st.FirstConfirmedAt, &st.HasHistory)
+		Scan(&st.Confirmed, &st.ConfirmedSum, &st.UnpaidAdvances, &st.LastConfirmedAt, &st.FirstConfirmedAt, &st.HasHistory, &st.Blocked)
 	return st, err
 }
 

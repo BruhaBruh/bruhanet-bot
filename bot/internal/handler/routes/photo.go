@@ -157,6 +157,8 @@ func (h *handlers) grantAdvance(ctx context.Context, b *bot.Bot, u *models.Updat
 	switch {
 	case errors.Is(err, store.ErrNotPending):
 		stlog.Warn(ctx, "payment resolved before advance", "error", err)
+	case errors.Is(err, store.ErrBlocked):
+		// заблокирован админом: аванса нет, юзеру обычное «фото на проверке» (о блокировке не сообщаем)
 	case err != nil:
 		stlog.Error(ctx, "failed to mark advance", "error", err)
 	case panelErr != nil:
