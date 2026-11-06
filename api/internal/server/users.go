@@ -148,7 +148,14 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	default:
 		p.ID, p.ExpireAt, p.Status = ptr(info.ID), ptr(info.ExpireAt.UTC()), ptr(string(info.Status))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": u, "stats": stats, "payments": payments, "messages": messages, "promos": promos, "grants": grants, "panel": p})
+	set, _, serr := s.current(ctx)
+	if serr != nil {
+		stlog.L(ctx).Error("user card settings", slog.Any("error", serr))
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	devices := map[string]int{"base": set.DevicesBase, "extra": u.ExtraDevices, "price": set.DevicePrice}
+	writeJSON(w, http.StatusOK, map[string]any{"user": u, "devices": devices, "stats": stats, "payments": payments, "messages": messages, "promos": promos, "grants": grants, "panel": p})
 }
 
 func ptr[T any](v T) *T { return &v }

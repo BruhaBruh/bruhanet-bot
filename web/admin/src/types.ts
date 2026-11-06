@@ -10,6 +10,7 @@ export interface UserSummary {
   blockedBotAt: string | null
   blockedAt: string | null
   tariffMonths: number | null
+  extraDevices: number
   lastSeenAt: string | null
   broadcastsReceived: number
 }
@@ -51,6 +52,8 @@ export interface Payment {
   basePrice?: number | null
   hasPhoto?: boolean
   promoCode?: string | null
+  kind?: 'tariff' | 'devices'
+  extraDevices?: number
 }
 
 export interface UserDetail {
@@ -66,6 +69,7 @@ export interface UserDetail {
   }
   payments: Payment[]
   panel: { id: number | null; expireAt: string | null; status: string | null; error: 'panel_unavailable' | null }
+  devices?: { base: number; extra: number; price: number }
   messages: DirectMessage[]
   promos: UserPromo[]
   grants: UserGrant[]
@@ -107,6 +111,8 @@ export interface Settings {
   advanceHours: number
   reminderWeekDays: number
   reminderDayHours: number
+  devicesBase: number
+  devicePrice: number
   vars: Record<string, string>
   usingDefaults?: boolean
   problems?: string[]

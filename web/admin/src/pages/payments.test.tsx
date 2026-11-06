@@ -91,7 +91,7 @@ describe('Payments', () => {
     expect(table().getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['ID', 'Пользователь', 'Тариф', 'Сумма', 'Статус', 'Дата', 'Действия'])
     const cells = table().getAllByRole('cell').map((c) => c.textContent)
     expect(cells[0]).toBe('1')
-    expect(cells[2]).toBe('3 мес.')
+    expect(cells[2]).toBe('Подписка3\u00a0мес.')
     expect(cells[3]).toBe('900 ₽')
     expect(cells[4]).toBe('Оплачено')
     expect(screen.getByText('Выручка по дате подтверждения за период')).toBeTruthy()
@@ -336,6 +336,28 @@ describe('Payments', () => {
       expect(d).toContain('Пользователь не присылал чек. Срок продлится на 1 мес. до 31 дек. 2099')
       await accept('Всё равно подтвердить')
       expect(posts).toEqual(['/api/payments/1/confirm'])
+    })
+
+    it('devices payment: tag, +N column and a dialog that says the term stays', async () => {
+      const dev = payment(1, 'pending', { month: 0, kind: 'devices', extraDevices: 2, hasPhoto: true, submittedAt: NOW, prevExpireAt: '2099-12-01T12:00:00Z' })
+      const { posts } = stubReview(undefined, dev)
+      await renderPage()
+      expect(table().getByText('Устройства')).toBeTruthy()
+      expect(table().getByText('+2 устр.')).toBeTruthy()
+      fireEvent.click(row().getByRole('button', { name: 'Подтвердить' }))
+      const d = screen.getByRole('alertdialog').textContent
+      expect(d).toContain('Подтвердить покупку 2\u00a0устройства?')
+      expect(d).toContain('Срок подписки не изменится')
+      expect(d).not.toContain('продлится')
+      await accept('Подтвердить')
+      expect(posts).toEqual(['/api/payments/1/confirm'])
+    })
+
+    it('tariff payment with devices shows +N next to the term', async () => {
+      stubReview(undefined, payment(1, 'pending', { kind: 'tariff', extraDevices: 3, hasPhoto: true, submittedAt: NOW }))
+      await renderPage()
+      expect(table().getByText('Подписка')).toBeTruthy()
+      expect(table().getByText('3 мес. · +3 устр.')).toBeTruthy()
     })
 
     it('decline without a receipt keeps the usual dialog', async () => {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,14 @@ func TestUserCardPanel(t *testing.T) {
 	got = getCard(t, h, c, http.StatusOK)
 	if got.Panel.Error != nil || got.Panel.Status == nil || *got.Panel.Status != "not_found" {
 		t.Fatalf("not found panel = %+v", got.Panel)
+	}
+}
+
+func TestUserCardDevices(t *testing.T) {
+	h, _, c := cardServer(t, &fakePanel{user: &api.UserItemInfo{ExpireAt: now, Status: api.UserItemInfoStatusACTIVE}})
+	w := do(h, http.MethodGet, "/api/users/7", c, "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"devices":{"base":5,"extra":0,"price":0}`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }
 

@@ -1,6 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NOT_WIRED } from '@/lib/not-wired'
 import { ToastProvider } from '@/ui'
 import Settings from './Settings'
 
@@ -22,6 +21,8 @@ const s = {
   advanceHours: 24,
   reminderWeekDays: 7,
   reminderDayHours: 24,
+  devicesBase: 5,
+  devicePrice: 0,
   vars: { promoLink: 'https://x.io' },
 }
 
@@ -223,13 +224,17 @@ describe('Settings', () => {
     expect(btn('Сохранить изменения').disabled).toBe(true)
   })
 
-  it('devices are drawn disabled and empty', async () => {
+  it('devices base and price are editable and saved; 0 price is explained as off', async () => {
     await open()
-    for (const name of ['Устройств по умолчанию', 'Цена дополнительного устройства']) {
-      expect(field(name).disabled).toBe(true)
-      expect(field(name).value).toBe('')
-    }
-    expect(screen.getAllByText(NOT_WIRED)).toHaveLength(2)
+    expect(field('Устройств в подписке').value).toBe('5')
+    expect(field('Цена дополнительного устройства').value).toBe('0')
+    expect(screen.getByText(/0 — продажа устройств выключена/)).toBeTruthy()
+    edit(field('Устройств в подписке'), '4')
+    edit(field('Цена дополнительного устройства'), '60')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toHaveLength(1)
+    expect(puts()[0].body).toMatchObject({ devicesBase: 4, devicePrice: 60 })
   })
 
   it('usingDefaults: banner with problems, saving works without edits and hides the banner', async () => {

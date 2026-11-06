@@ -22,7 +22,19 @@ export function statusTag(status: string) {
   )
 }
 
-const planLabel = (p: Payment) => `${p.month}\u00a0мес.`
+const isDevices = (p: Payment) => p.kind === 'devices'
+// Подписка: «3 мес.» и «+2 устр.», если в цену входят доп. устройства; докупка: «+2 устр.» без срока.
+const planLabel = (p: Payment) => {
+  const extra = p.extraDevices ? `+${p.extraDevices}\u00a0устр.` : ''
+  if (isDevices(p)) return extra
+  return [`${p.month}\u00a0мес.`, extra].filter(Boolean).join(' · ')
+}
+const planCell = (p: Payment) => (
+  <span className="inline-flex flex-wrap items-center gap-1.5">
+    <StatusTag tone={isDevices(p) ? 'accent' : 'neutral'}>{isDevices(p) ? 'Устройства' : 'Подписка'}</StatusTag>
+    <span>{planLabel(p)}</span>
+  </span>
+)
 
 const idColumn: Column = { key: 'id', title: 'ID', mono: true, width: 120 }
 const userColumn: Column = {
@@ -79,7 +91,7 @@ export const paymentColumns: Column[] = [idColumn, userColumn, priceColumn, stat
 export const paymentPageColumns: Column[] = [
   { ...idColumn, sortable: true, sortValue: (p) => Number(p.id) },
   { ...userColumn, sortable: true, sortValue: userLabel },
-  { key: 'plan', title: 'Тариф', render: planLabel },
+  { key: 'plan', title: 'Тариф', render: planCell },
   { ...priceColumn, sortable: true },
   statusColumn,
   dateColumn,
@@ -88,7 +100,7 @@ export const paymentPageColumns: Column[] = [
 // Платежи в карточке юзера: сам юзер уже в шапке.
 export const userPayColumns: Column[] = [
   idColumn,
-  { key: 'plan', title: 'Что оплачено', render: planLabel },
+  { key: 'plan', title: 'Что оплачено', render: planCell },
   { ...priceColumn, sortable: true },
   statusColumn,
   dateColumn,
@@ -106,11 +118,11 @@ export const paymentMobileRow = (p: Payment): CellProps => ({
 
 export const paymentPageMobileRow = (p: Payment): CellProps => ({
   ...paymentMobileRow(p),
-  subtitle: mobileSubtitle(p, planLabel(p)),
+  subtitle: mobileSubtitle(p, isDevices(p) ? `Устройства ${planLabel(p)}` : planLabel(p)),
   chevron: true,
 })
 
-export const userPayMobileRow = (p: Payment): CellProps => ({ ...paymentMobileRow(p), title: planLabel(p) })
+export const userPayMobileRow = (p: Payment): CellProps => ({ ...paymentMobileRow(p), title: isDevices(p) ? `Устройства ${planLabel(p)}` : planLabel(p) })
 
 async function copyId(id: Payment['id']) {
   try {

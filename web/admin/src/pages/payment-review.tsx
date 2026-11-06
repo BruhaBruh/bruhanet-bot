@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { Button, Dialog, toast } from '@/ui'
 import { ApiError, post } from '../api'
-import { formatFullDay } from '../format'
+import { formatDevices, formatFullDay } from '../format'
 import { useRefreshPending } from '../layout/page-title'
 import { userLabel } from '../promo'
 import type { Payment } from '../types'
@@ -17,12 +17,26 @@ export const extendsTo = (p: Payment, now = Date.now()) =>
 // Без чека подтвердить можно (админ может решить сам), но диалог говорит об этом прямо.
 const noReceipt = (p: Payment, approve: boolean) => approve && !p.submittedAt
 
+const isDevices = (p: Payment) => p.kind === 'devices'
+
 function consequence(p: Payment, approve: boolean) {
   const who = userLabel(p)
+  if (isDevices(p)) {
+    const n = formatDevices(p.extraDevices ?? 0)
+    if (noReceipt(p, approve)) return `Пользователь не присылал чек. Будет добавлено ${n}, срок подписки не изменится.`
+    if (approve) return `${who} получит ${n}. Срок подписки не изменится. Пользователь получит уведомление.`
+    return `Устройства не добавятся, срок подписки не изменится. Пользователь получит уведомление.`
+  }
   if (noReceipt(p, approve)) return `Пользователь не присылал чек. Срок продлится на ${p.month} мес. до ${formatFullDay(extendsTo(p))}.`
   if (approve) return `Подписка ${who} продлится до ${formatFullDay(extendsTo(p))}. Пользователь получит уведомление.`
   const back = p.prevExpireAt ? `Срок подписки ${who} вернётся к ${formatFullDay(p.prevExpireAt)}. ` : ''
   return `${back}Пользователь получит уведомление.`
+}
+
+function decisionTitle(p: Payment, approve: boolean) {
+  if (noReceipt(p, approve)) return 'Подтвердить без чека?'
+  if (isDevices(p)) return approve ? `Подтвердить покупку ${formatDevices(p.extraDevices ?? 0)}?` : 'Отклонить покупку устройств?'
+  return approve ? 'Подтвердить платёж?' : 'Отклонить платёж?'
 }
 
 /** Действия с платежом: кнопки решения, чек, диалоги и раскрытие строки на телефоне (там в строке нет кнопок). */
@@ -96,7 +110,7 @@ export function usePaymentReview(onChanged: () => void, openUser?: (p: Payment) 
       <>
         {deciding && (
           <Dialog
-            title={noReceipt(deciding.payment, deciding.approve) ? 'Подтвердить без чека?' : deciding.approve ? 'Подтвердить платёж?' : 'Отклонить платёж?'}
+            title={decisionTitle(deciding.payment, deciding.approve)}
             message={consequence(deciding.payment, deciding.approve)}
             actions={[
               { label: 'Отмена', style: 'cancel', onClick: () => setDeciding(undefined) },

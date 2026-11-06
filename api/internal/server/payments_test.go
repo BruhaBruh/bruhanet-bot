@@ -228,3 +228,49 @@ func TestResolvePaymentPanelTimeout(t *testing.T) {
 		t.Fatalf("status = %s", st.payments[0].Status)
 	}
 }
+
+// Платёж за устройства из панели: срок не трогаем, пишем только лимит (база + купленные); отклонение ничего не пишет.
+func TestResolveDevicesPaymentFromPanel(t *testing.T) {
+	for _, tc := range []struct {
+		path   string
+		key    string
+		limits []int
+	}{
+		{"confirm", "payment.devices_confirmed", []int{7}},
+		{"decline", "payment.devices_declined", nil},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			panel := &fakePanel{}
+			h, st := newServerPanel(t, "http://localhost:5173", panel)
+			c := st.addSession(t, adminID, now.Add(time.Hour))
+			st.payments = []model.Payment{{
+				ID: 1, TelegramID: 7, Username: "ann", Kind: model.KindDevices, ExtraDevices: 2, Price: 90,
+				Status: model.PaymentPending, PrevExpireAt: now, AdminMessageID: 5,
+			}}
+			w := send(h, http.MethodPost, "/api/payments/1/"+tc.path, c, "{}")
+			if w.Code != http.StatusOK {
+				t.Fatalf("%d %s", w.Code, w.Body)
+			}
+			if len(panel.updates) != 0 || len(panel.limits) != len(tc.limits) || (tc.limits != nil && panel.limits[0] != tc.limits[0]) {
+				t.Fatalf("term writes %v, limits %v", panel.updates, panel.limits)
+			}
+			if len(st.outbox) != 2 || st.outbox[0].TextKey != tc.key || st.outbox[0].Devices != 2 || !st.outbox[0].ExpireAt.IsZero() {
+				t.Fatalf("outbox = %+v", st.outbox)
+			}
+		})
+	}
+}
+
+// Подтверждение подписки с изменившимся числом устройств пишет лимит, база берётся из настроек.
+func TestResolveTariffDropsDevicesFromPanel(t *testing.T) {
+	panel := &fakePanel{}
+	h, st := newServerPanel(t, "http://localhost:5173", panel)
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.payments = []model.Payment{{ID: 1, TelegramID: 7, Month: 1, Price: 150, Status: model.PaymentPending, PrevExpireAt: now, UserExtra: 2}}
+	if w := send(h, http.MethodPost, "/api/payments/1/confirm", c, "{}"); w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if len(panel.updates) != 1 || len(panel.limits) != 1 || panel.limits[0] != 5 {
+		t.Fatalf("updates %v limits %v", panel.updates, panel.limits)
+	}
+}

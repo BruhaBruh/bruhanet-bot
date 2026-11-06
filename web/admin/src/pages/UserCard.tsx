@@ -118,7 +118,7 @@ function UserCardInner({ id }: { id?: string }) {
     )
   }
 
-  const { user, stats, panel, messages, promos, grants } = d
+  const { user, stats, panel, messages, promos, grants, devices } = d
   // Средний чек — по подтверждённым: только у них есть сумма в stats.
   const average = stats.confirmed ? formatRub(Math.round(stats.confirmedSum / stats.confirmed)) : DASH
 
@@ -184,7 +184,7 @@ function UserCardInner({ id }: { id?: string }) {
             ['Срок до', panel.error ? PANEL_UNAVAILABLE : day(panel.expireAt)],
             ['Статус', !panel.error && panel.status ? panelStatusLabel(panel.status) : DASH],
             ['Тариф', user.tariffMonths ? `${user.tariffMonths} мес.` : DASH],
-            ['Устройства', DASH],
+            ['Устройства', devices ? `${devices.base} + ${devices.extra} = ${devices.base + devices.extra}` : DASH],
             [
               'ID в панели',
               panel.id == null ? (

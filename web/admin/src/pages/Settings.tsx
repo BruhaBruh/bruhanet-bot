@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { NOT_WIRED } from '@/lib/not-wired'
 import { Button, Card, Icon, Input, Spinner, toast } from '@/ui'
 import { ApiError, get, put } from '../api'
 import { formatRub } from '../format'
@@ -18,6 +17,8 @@ type Form = {
   advanceHours: string
   reminderWeekDays: string
   reminderDayHours: string
+  devicesBase: string
+  devicePrice: string
   vars: CustomVar[]
 }
 
@@ -34,6 +35,8 @@ const toForm = (s: S): Form => ({
   advanceHours: String(s.advanceHours),
   reminderWeekDays: String(s.reminderWeekDays),
   reminderDayHours: String(s.reminderDayHours),
+  devicesBase: String(s.devicesBase),
+  devicePrice: String(s.devicePrice),
   vars: Object.entries(s.vars)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, value]) => ({ name, value })),
@@ -141,6 +144,8 @@ export default function Settings() {
       advanceHours: Number(form.advanceHours),
       reminderWeekDays: Number(form.reminderWeekDays),
       reminderDayHours: Number(form.reminderDayHours),
+      devicesBase: Number(form.devicesBase),
+      devicePrice: Number(form.devicePrice),
       vars: Object.fromEntries(form.vars.map((v) => [v.name.trim(), v.value])),
     }
     inFlight.current = true
@@ -214,10 +219,30 @@ export default function Settings() {
         </div>
       </Card>
 
-      <Card title="Устройства">
+      <Card title="Устройства" aside="докупка отдельным платежом, цена до конца подписки">
         <div className="flex flex-wrap gap-3">
-          <Input className="min-w-0 grow basis-60" label="Устройств по умолчанию" type="number" disabled readOnly value="" after="шт." hint={NOT_WIRED} />
-          <Input className="min-w-0 grow basis-60" label="Цена дополнительного устройства" type="number" disabled readOnly value="" after="₽ / мес." hint={NOT_WIRED} />
+          <Input
+            className="min-w-0 grow basis-60"
+            label="Устройств в подписке"
+            type="number"
+            min={1}
+            max={100}
+            after="шт."
+            value={form.devicesBase}
+            onChange={(e) => patch({ devicesBase: e.target.value })}
+            hint="Без доплаты; пишется в панель при первой покупке устройств и новым пользователям"
+          />
+          <Input
+            className="min-w-0 grow basis-60"
+            label="Цена дополнительного устройства"
+            type="number"
+            min={0}
+            max={100000}
+            after="₽ / мес."
+            value={form.devicePrice}
+            onChange={(e) => patch({ devicePrice: e.target.value })}
+            hint="0 — продажа устройств выключена: кнопки в боте нет, купленные устройства сохраняются"
+          />
         </div>
       </Card>
 

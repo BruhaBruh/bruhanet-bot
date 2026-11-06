@@ -42,6 +42,7 @@ const detail = (over = {}) => ({
   messages: [],
   promos: [],
   grants: [],
+  devices: { base: 5, extra: 2, price: 60 },
   ...over,
 })
 
@@ -256,7 +257,7 @@ describe('UserCard', () => {
     expect(screen.getByText('Промокоды', { selector: 'dt' }).nextSibling?.textContent).toBe('—')
     expect(screen.getByText('Получил рассылок').nextSibling?.textContent).toBe('0')
     expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('—')
-    expect(screen.getByText('Устройства').nextSibling?.textContent).toBe('—')
+    expect(screen.getByText('Устройства').nextSibling?.textContent).toBe('5 + 2 = 7')
     const row = within(screen.getByRole('table')).getByText('31').closest('tr')!
     expect(within(row).getByText('3 мес.')).toBeTruthy()
     expect(within(row).getByText('Оплачено')).toBeTruthy()

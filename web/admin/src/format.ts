@@ -65,6 +65,9 @@ export function mskDate(now: Date, days = 0): string {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(d)
 }
 
+/** «2 устройства». */
+export const formatDevices = (n: number) => `${n}\u00a0${plural(n, ['устройство', 'устройства', 'устройств'])}`
+
 // русская плюрализация: plural(1, ['оплата','оплаты','оплат']) → «оплата»
 export function plural(n: number, forms: [string, string, string]): string {
   const a = Math.abs(n) % 100
