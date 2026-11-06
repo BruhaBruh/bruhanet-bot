@@ -3,12 +3,15 @@ package store
 import (
 	"context"
 	"errors"
+	"iter"
 	"testing"
 	"time"
 
+	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/panelsync"
 )
 
 func TestTouchUser(t *testing.T) {
@@ -202,5 +205,71 @@ func TestDeliveryMarks(t *testing.T) {
 	}
 	if u, err = s.UserByID(ctx, 1); err != nil || u.BlockedBotAt != nil {
 		t.Fatalf("not cleared: %+v %v", u, err)
+	}
+}
+
+type syncPanel struct {
+	users []api.UserItemInfo
+	err   error
+}
+
+func (p syncPanel) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
+	return func(yield func(api.UserItemInfo, error) bool) {
+		for _, u := range p.users {
+			if !yield(u, nil) {
+				return
+			}
+		}
+		if p.err != nil {
+			yield(api.UserItemInfo{}, p.err)
+		}
+	}
+}
+
+// Review Focus: при недоступной панели данные не затираются, даже если часть юзеров уже прочитана.
+func TestPanelSyncRunKeepsDataOnPanelFailure(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	at := time.Now()
+	exp := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	panelUser := func(id int, status api.UserItemInfoStatus, e time.Time) api.UserItemInfo {
+		return api.UserItemInfo{Username: "u", Status: status, ExpireAt: e, CreatedAt: exp, TelegramId: api.NewNilInt(id)}
+	}
+	res, err := panelsync.Run(ctx, syncPanel{users: []api.UserItemInfo{panelUser(1, api.UserItemInfoStatusACTIVE, exp), panelUser(2, api.UserItemInfoStatusACTIVE, exp)}}, s, time.Now)
+	if err != nil || res.Total != 2 || res.Updated != 2 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	before, err := s.LastPanelSync(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Падает на втором юзере, первый уже прочитан с другим сроком.
+	_, err = panelsync.Run(ctx, syncPanel{users: []api.UserItemInfo{panelUser(1, api.UserItemInfoStatusDISABLED, at)}, err: errors.New("boom")}, s, time.Now)
+	if !errors.Is(err, panelsync.ErrPanel) {
+		t.Fatalf("err = %v", err)
+	}
+	if r := loadPanelRow(t, s, 1); *r.status != "ACTIVE" || !r.expire.Equal(exp) {
+		t.Fatalf("overwritten: %+v", r)
+	}
+	// Пустой ответ панели не снимает статусы.
+	if _, err = panelsync.Run(ctx, syncPanel{}, s, time.Now); !errors.Is(err, panelsync.ErrPanel) {
+		t.Fatalf("empty: %v", err)
+	}
+	if r := loadPanelRow(t, s, 2); r.status == nil {
+		t.Fatalf("wiped: %+v", r)
+	}
+	after, err := s.LastPanelSync(ctx)
+	if err != nil || !after.FinishedAt.Equal(before.FinishedAt) {
+		t.Fatalf("last sync moved: %+v %v", after, err)
+	}
+
+	// Второй запуск во время первого — отдельная ошибка, не очередь.
+	err = s.WithPanelSyncLock(ctx, func(ctx context.Context) error {
+		_, err := panelsync.Run(ctx, syncPanel{err: errors.New("must not read")}, s, time.Now)
+		return err
+	})
+	if !errors.Is(err, ErrSyncRunning) {
+		t.Fatalf("overlap: %v", err)
 	}
 }
