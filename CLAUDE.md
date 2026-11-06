@@ -69,6 +69,8 @@ Go workspace (`go.work`), модуль-префикс `github.com/bruhabruh/bruh
 
 **SQL только в `core/store`** — api и bot ходят в БД через него.
 
+**Срок юзера и порядок блокировок.** `CreatePayment`, `GrantDays`, `ActivateDaysPromo` первым оператором транзакции берут `pg_advisory_xact_lock(hashtextextended('user_term:'||current_schema()||':'||telegram_id, 0))` (`lockUserTerm`): выдача дней и создание платежа одного юзера идут строго друг за другом. `CreatePayment` берёт `PrevExpireAt` уже под замком: у отменяемого pending — из него (выдачи, прошедшие раньше, уже сдвинули его), иначе через `readPrev` (бот читает срок в панели, `CreateUser` заводит юзера), а не до транзакции. Порядок везде: advisory → `users` → `payments` → строка промокода. `ResolvePayment`/`GrantAdvance` advisory не берут (не ждут). Строку `users` в `GrantDays` не лочим (`SetUserPanel` SKIP LOCKED). Запланированные рассылки: сбой `startLocked` одной не держит очередь (`ClaimDue` пропускает её в проходе, после 3 сбоев подряд в памяти процесса — `cancelled`).
+
 ## Деплой этапа 1 (Postgres)
 
 Деплой этой ветки идёт без живых проверок: до мержа на VPS добавить `POSTGRES_PASSWORD` в `.env` (или прогнать `install.sh` — допишет недостающие ключи); CI-шаг `Check .env keys` упадёт, если ключа нет. Платежи, оставшиеся «на проверке» в Redis FSM, в Postgres не переезжают — бот при старте пишет warn `legacy fsm payment found` с `telegram_id`, разобрать вручную до мержа.

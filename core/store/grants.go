@@ -39,6 +39,9 @@ func (s *Store) GrantDays(
 	ctx context.Context, telegramID, adminID int64, days int, now time.Time, apply func() ([]model.OutboxMessage, error),
 ) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
+		if err := lockUserTerm(ctx, tx, telegramID); err != nil {
+			return err
+		}
 		// Строку юзера не блокируем: запись срока в панель (SetUserPanel) пропускает залоченные строки.
 		// Подтверждение в полёте держит платёж: UPDATE ниже дождётся его коммита, срок в панели читается уже после.
 		if _, err := scanUserID(tx.QueryRow(ctx, `SELECT telegram_id FROM users WHERE telegram_id = $1`, telegramID)); err != nil {

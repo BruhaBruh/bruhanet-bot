@@ -103,7 +103,7 @@ func TestActivateDaysPromo(t *testing.T) {
 	ctx := t.Context()
 	now := time.Now()
 	p := mustPromo(t, s, model.Promo{Code: "DAYS", Kind: promo.KindDays, Value: 5})
-	if _, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 7, Username: "vasya", Month: 1, Price: 1, PrevExpireAt: now}, noRollback); err != nil {
+	if _, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 7, Username: "vasya", Month: 1, Price: 1, PrevExpireAt: now}, noRollback, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -191,7 +191,7 @@ func TestActivateDaysPromoConcurrent(t *testing.T) {
 func TestHasConfirmed(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestResolvePaymentPromoActivation(t *testing.T) {
 	pay := func(tg int64) model.Payment {
 		p := newPay(tg, time.Now())
 		p.Price, p.PromoID, p.BasePrice = 112, &pr.ID, ptr(150)
-		created, _, err := s.CreatePayment(ctx, p, noRollback)
+		created, _, err := s.CreatePayment(ctx, p, noRollback, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -253,7 +253,7 @@ func TestResolvePaymentPromoActivation(t *testing.T) {
 	}
 
 	// Платёж без промокода читается с nil-полями.
-	plain, _, err := s.CreatePayment(ctx, newPay(3, time.Now()), noRollback)
+	plain, _, err := s.CreatePayment(ctx, newPay(3, time.Now()), noRollback, nil)
 	if err != nil || plain.PromoID != nil || plain.BasePrice != nil {
 		t.Fatalf("plain %+v err=%v", plain, err)
 	}
@@ -267,7 +267,7 @@ func TestResolveFreePromoPaymentRejectsRepeat(t *testing.T) {
 	free := func() model.Payment {
 		p := newPay(1, time.Now())
 		p.Price, p.PromoID, p.BasePrice = 0, &pr.ID, ptr(150)
-		created, _, err := s.CreatePayment(ctx, p, noRollback)
+		created, _, err := s.CreatePayment(ctx, p, noRollback, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -294,7 +294,7 @@ func TestResolveFreePromoPaymentRejectsRepeat(t *testing.T) {
 	// ошибка apply откатывает и активацию
 	other := newPay(2, time.Now())
 	other.Price, other.PromoID = 0, &pr.ID
-	o, _, err := s.CreatePayment(ctx, other, noRollback)
+	o, _, err := s.CreatePayment(ctx, other, noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestResolveFreePromoPaymentRejectsRepeat(t *testing.T) {
 func TestCancelPayment(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestResolveFreePromoConcurrentLimit(t *testing.T) {
 	for i := range ids {
 		p := newPay(int64(200+i), time.Now())
 		p.Price, p.PromoID, p.BasePrice = 0, &pr.ID, ptr(150)
-		created, _, err := s.CreatePayment(ctx, p, noRollback)
+		created, _, err := s.CreatePayment(ctx, p, noRollback, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -400,7 +400,7 @@ func TestActivateDaysPromoShiftsPending(t *testing.T) {
 		{2, future, model.PaymentDeclined, future.Add(bonus)},
 		{3, now.Add(-48 * time.Hour), model.PaymentConfirmed, now.Add(bonus)}, // срок в прошлом — от now
 	} {
-		p, _, err := s.CreatePayment(ctx, newPay(c.tg, c.prev), noRollback)
+		p, _, err := s.CreatePayment(ctx, newPay(c.tg, c.prev), noRollback, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

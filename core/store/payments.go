@@ -31,12 +31,29 @@ func scanPayment(row pgx.Row) (model.Payment, error) {
 	return p, err
 }
 
+// lockUserTerm — первая инструкция любой транзакции, меняющей срок юзера: CreatePayment, GrantDays, ActivateDaysPromo.
+// Порядок блокировок везде один: advisory (юзер) -> строка users -> строка payments -> строка промокода.
+// ResolvePayment и GrantAdvance advisory не берут (сроком юзера не распоряжаются, ждать им нечего).
+// Ключ включает схему (как panel_sync): тестовые схемы не мешают друг другу.
+func lockUserTerm(ctx context.Context, tx pgx.Tx, telegramID int64) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('user_term:' || current_schema() || ':' || $1::bigint::text, 0))`,
+		telegramID)
+	return err
+}
+
 // CreatePayment создаёт pending-платёж. Если у юзера уже есть pending, он отменяется
 // (rollback вызывается под блокировкой строки, ошибка откатывает всё), а PrevExpireAt берётся из него.
+// Иначе PrevExpireAt даёт readPrev (срок юзера в панели), вызванный уже под advisory-замком юзера: выдача дней
+// (GrantDays/ActivateDaysPromo), начатая раньше, уже закоммичена и видна в панели, начатая позже — сдвинет новый pending.
+// readPrev == nil — берётся p.PrevExpireAt.
 func (s *Store) CreatePayment(
 	ctx context.Context, p model.Payment, rollback func(old model.Payment) error,
+	readPrev func(ctx context.Context) (time.Time, error),
 ) (created model.Payment, cancelled *model.Payment, err error) {
 	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if err := lockUserTerm(ctx, tx, p.TelegramID); err != nil {
+			return err
+		}
 		// upsert берёт row-lock на users, поэтому параллельные CreatePayment одного юзера сериализуются.
 		var blocked bool
 		if err := tx.QueryRow(ctx,
@@ -68,6 +85,10 @@ func (s *Store) CreatePayment(
 			p.PrevExpireAt = old.PrevExpireAt
 		case !errors.Is(err, ErrNotFound):
 			return err
+		case readPrev != nil:
+			if p.PrevExpireAt, err = readPrev(ctx); err != nil {
+				return err
+			}
 		}
 
 		created, err = scanPayment(tx.QueryRow(ctx,

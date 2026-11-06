@@ -38,7 +38,7 @@ type Remnawave interface {
 
 // Payments — хранилище платежей (store.Store); ошибки — store.ErrNotFound / store.ErrNotPending.
 type Payments interface {
-	CreatePayment(ctx context.Context, p model.Payment, rollback func(old model.Payment) error) (model.Payment, *model.Payment, error)
+	CreatePayment(ctx context.Context, p model.Payment, rollback func(old model.Payment) error, readPrev func(ctx context.Context) (time.Time, error)) (model.Payment, *model.Payment, error)
 	PendingPayment(ctx context.Context, telegramID int64) (model.Payment, error)
 	PaymentByID(ctx context.Context, id int64) (model.Payment, error)
 	SubmitPayment(ctx context.Context, id int64, adminMessageID int, photoFileID string, at time.Time) error

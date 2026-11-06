@@ -81,7 +81,7 @@ func TestReviewMessageEscapesUsername(t *testing.T) {
 	e := newEnv(t)
 	e.rw.AddUser(userID, now)
 	_, _, err := e.pay.CreatePayment(t.Context(),
-		model.Payment{TelegramID: userID, Username: "a<b>", Month: 6, Price: 800, PrevExpireAt: now}, nil)
+		model.Payment{TelegramID: userID, Username: "a<b>", Month: 6, Price: 800, PrevExpireAt: now}, nil, nil)
 	if err != nil {
 		t.Fatalf("CreatePayment: %v", err)
 	}

@@ -20,7 +20,7 @@ func TestCreatePaymentCancelsPending(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
 	prev := time.Now().Add(-time.Hour).Truncate(time.Microsecond)
-	first, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback)
+	first, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestCreatePaymentCancelsPending(t *testing.T) {
 		calls++
 		got = old
 		return nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,12 +64,12 @@ func TestCreatePaymentCancelsPending(t *testing.T) {
 func TestCreatePaymentRollbackError(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	first, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	first, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	boom := errors.New("boom")
-	if _, _, err = s.CreatePayment(ctx, newPay(1, time.Now()), func(model.Payment) error { return boom }); !errors.Is(err, boom) {
+	if _, _, err = s.CreatePayment(ctx, newPay(1, time.Now()), func(model.Payment) error { return boom }, nil); !errors.Is(err, boom) {
 		t.Fatalf("want boom, got %v", err)
 	}
 	pend, err := s.PendingPayment(ctx, 1)
@@ -85,7 +85,7 @@ func TestCreatePaymentRollbackError(t *testing.T) {
 func TestSubmitPaymentOnce(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func okApply(model.Payment) ([]model.OutboxMessage, error) {
 func TestResolveConcurrent(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestResolveConcurrent(t *testing.T) {
 func TestResolveApplyError(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

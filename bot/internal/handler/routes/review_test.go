@@ -21,7 +21,7 @@ const adminMessageID = 5
 func awaitPhoto(t *testing.T, e *env, base time.Time) model.Payment {
 	t.Helper()
 	p, _, err := e.pay.CreatePayment(t.Context(),
-		model.Payment{TelegramID: userID, Month: 6, Price: 800, PrevExpireAt: base}, nil)
+		model.Payment{TelegramID: userID, Month: 6, Price: 800, PrevExpireAt: base}, nil, nil)
 	if err != nil {
 		t.Fatalf("CreatePayment: %v", err)
 	}

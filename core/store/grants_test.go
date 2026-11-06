@@ -21,6 +21,7 @@ type statePanel struct {
 	expire time.Time
 	err    error
 	writes []time.Time
+	fast   bool // короткая задержка записи: для стресс-тестов
 }
 
 func (p *statePanel) cur() time.Time {
@@ -30,7 +31,11 @@ func (p *statePanel) cur() time.Time {
 }
 
 func (p *statePanel) UpdateUser(_ context.Context, _ int64, _ string, expireAt time.Time, _ uuid.UUID) (*api.UserItemInfo, error) {
-	time.Sleep(100 * time.Millisecond)
+	if p.fast {
+		time.Sleep(3 * time.Millisecond)
+	} else {
+		time.Sleep(100 * time.Millisecond)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.err != nil {
@@ -63,7 +68,7 @@ func TestGrantDays(t *testing.T) {
 	ctx := t.Context()
 	now := time.Now().Truncate(time.Microsecond)
 	prev := now.Add(48 * time.Hour).Truncate(time.Microsecond)
-	if _, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback); err != nil {
+	if _, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback, nil); err != nil {
 		t.Fatal(err)
 	}
 	panel := &statePanel{expire: prev}
@@ -171,7 +176,7 @@ func TestGrantDaysRaceWithConfirm(t *testing.T) {
 			ctx := t.Context()
 			now := time.Now().Truncate(time.Microsecond)
 			prev := now.Add(48 * time.Hour).Truncate(time.Microsecond)
-			p, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback)
+			p, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -204,7 +209,7 @@ func TestGrantDaysRaceWithPromoDays(t *testing.T) {
 	ctx := t.Context()
 	now := time.Now().Truncate(time.Microsecond)
 	prev := now.Add(48 * time.Hour).Truncate(time.Microsecond)
-	if _, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback); err != nil {
+	if _, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback, nil); err != nil {
 		t.Fatal(err)
 	}
 	pr := mustPromo(t, s, model.Promo{Code: "DAYS3", Kind: promo.KindDays, Value: 3})
@@ -264,7 +269,7 @@ func TestBlockedUserGetsNothingFree(t *testing.T) {
 	ctx := t.Context()
 	now := time.Now().Truncate(time.Microsecond)
 	prev := now.Add(48 * time.Hour).Truncate(time.Microsecond)
-	pay, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback)
+	pay, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +280,7 @@ func TestBlockedUserGetsNothingFree(t *testing.T) {
 	// 0 ₽-платёж создан до блокировки; блокировка ставится до подтверждения
 	zero := newPay(2, prev)
 	zero.Price, zero.PromoID, zero.BasePrice = 0, &free.ID, ptr(150)
-	zeroPay, _, err := s.CreatePayment(ctx, zero, noRollback)
+	zeroPay, _, err := s.CreatePayment(ctx, zero, noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +308,7 @@ func TestBlockedUserGetsNothingFree(t *testing.T) {
 	// скидка при создании платежа
 	np := newPay(1, prev)
 	np.PromoID, np.Price = &discount.ID, 75
-	if _, _, err = s.CreatePayment(ctx, np, noRollback); !errors.Is(err, promo.ErrBlocked) {
+	if _, _, err = s.CreatePayment(ctx, np, noRollback, nil); !errors.Is(err, promo.ErrBlocked) {
 		t.Fatalf("discount: %v", err)
 	}
 	if got, _ := s.PendingPayment(ctx, 1); got.ID != pay.ID {

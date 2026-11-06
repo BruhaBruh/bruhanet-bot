@@ -217,7 +217,7 @@ func adminMessages(e *env) []tgtest.Call {
 // confirmedWith — у юзера подтверждённая оплата (с промокодом promoID, если не nil).
 func confirmedWith(t *testing.T, e *env, promoID *int64) {
 	t.Helper()
-	p, _, err := e.pay.CreatePayment(t.Context(), model.Payment{TelegramID: userID, Month: 1, Price: 150, PromoID: promoID}, nil)
+	p, _, err := e.pay.CreatePayment(t.Context(), model.Payment{TelegramID: userID, Month: 1, Price: 150, PromoID: promoID}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +475,7 @@ func TestFakeResolveFreePromoRepeat(t *testing.T) {
 	e := newEnv(t)
 	pr := e.pay.AddPromo(model.Promo{Code: "FREE", Kind: model.PromoPercent, Value: 100})
 	confirmedWith(t, e, &pr.ID) // активация уже есть
-	p, _, err := e.pay.CreatePayment(t.Context(), model.Payment{TelegramID: userID, Month: 1, PromoID: &pr.ID}, nil)
+	p, _, err := e.pay.CreatePayment(t.Context(), model.Payment{TelegramID: userID, Month: 1, PromoID: &pr.ID}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +492,7 @@ func TestFakeResolveFreePromoRepeat(t *testing.T) {
 // Ожидание кода не возвращает await_photo для pending 0 ₽ — такой платёж фото не ждёт.
 func TestLeavePromoIgnoresFreePending(t *testing.T) {
 	e := newEnv(t)
-	if _, _, err := e.pay.CreatePayment(t.Context(), model.Payment{TelegramID: userID, Month: 1, Price: 0}, nil); err != nil {
+	if _, _, err := e.pay.CreatePayment(t.Context(), model.Payment{TelegramID: userID, Month: 1, Price: 0}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	e.process(t, tgtest.Callback(userID, "have_promo:1"))

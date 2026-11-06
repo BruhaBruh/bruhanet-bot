@@ -319,14 +319,14 @@ func TestPaymentPromoCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := 1000
-	created, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 1, Month: 1, Price: 900, PrevExpireAt: time.Now(), PromoID: &pr.ID, BasePrice: &base}, noRollback)
+	created, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 1, Month: 1, Price: 900, PrevExpireAt: time.Now(), PromoID: &pr.ID, BasePrice: &base}, noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.PromoCode == nil || *created.PromoCode != "SALE10" {
 		t.Fatalf("created = %v", created.PromoCode)
 	}
-	if _, _, err = s.CreatePayment(ctx, newPay(2, time.Now()), noRollback); err != nil {
+	if _, _, err = s.CreatePayment(ctx, newPay(2, time.Now()), noRollback, nil); err != nil {
 		t.Fatal(err)
 	}
 	items, _, err := s.ListPayments(ctx, model.PaymentFilter{Limit: 10})

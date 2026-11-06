@@ -199,6 +199,9 @@ func (s *Store) ActivateDaysPromo(
 	ctx context.Context, promoID, telegramID int64, now time.Time, apply func(p model.Promo) error,
 ) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
+		if err := lockUserTerm(ctx, tx, telegramID); err != nil {
+			return err
+		}
 		p, err := checkPromoLocked(ctx, tx, promoID, telegramID, promo.PlaceMenu, now)
 		if err != nil {
 			return err

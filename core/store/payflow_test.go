@@ -66,7 +66,7 @@ func TestPaymentRaceBotAndPanel(t *testing.T) {
 			s := testStore(t)
 			ctx := t.Context()
 			prev := time.Now().Add(48 * time.Hour).Truncate(time.Microsecond)
-			p, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback)
+			p, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,7 +132,7 @@ func TestPaymentRepeatKeepsDates(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
 	prev := time.Now().Add(48 * time.Hour).Truncate(time.Microsecond)
-	p, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback)
+	p, _, err := s.CreatePayment(ctx, newPay(1, prev), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestPaymentRepeatKeepsDates(t *testing.T) {
 func TestGrantAdvanceHoldsRow(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,10 +230,10 @@ func TestGrantAdvanceHoldsRow(t *testing.T) {
 func TestUsernameMigrationClearsIDs(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	if _, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 5, Username: "5", Month: 1, PrevExpireAt: time.Now()}, noRollback); err != nil {
+	if _, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 5, Username: "5", Month: 1, PrevExpireAt: time.Now()}, noRollback, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 6, Username: "ann", Month: 1, PrevExpireAt: time.Now()}, noRollback); err != nil {
+	if _, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 6, Username: "ann", Month: 1, PrevExpireAt: time.Now()}, noRollback, nil); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := migrations.ReadFile("migrations/00010_payment_usernames.sql")

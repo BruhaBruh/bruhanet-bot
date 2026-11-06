@@ -66,7 +66,7 @@ func TestOutboxDelete(t *testing.T) {
 func TestResolveEnqueues(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback)
+	p, _, err := s.CreatePayment(ctx, newPay(1, time.Now()), noRollback, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

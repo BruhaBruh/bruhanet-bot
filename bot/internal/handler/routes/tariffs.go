@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -93,13 +94,7 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 	from := tgupdate.User(u)
 	username := from.Username
 
-	user, err := h.rw.CreateUser(ctx, from.ID, username, h.cfg.Remnawave.InternalSquadId)
-	if err != nil {
-		stlog.Error(ctx, "failed to create remnawave user", "error", err)
-		h.showError(ctx, b, u)
-		return model.Payment{}, false
-	}
-	np.TelegramID, np.Username, np.PrevExpireAt = from.ID, username, user.ExpireAt
+	np.TelegramID, np.Username = from.ID, username
 	// Старый pending отменяется в той же транзакции; выданный по нему аванс откатываем в панели.
 	p, cancelled, err := h.pay.CreatePayment(ctx, np, func(old model.Payment) error {
 		if !old.AdvanceGranted {
@@ -107,6 +102,14 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 		}
 		_, err := h.rw.UpdateUser(ctx, old.TelegramID, old.Username, old.PrevExpireAt, h.cfg.Remnawave.InternalSquadId)
 		return err
+	}, func(ctx context.Context) (time.Time, error) {
+		// Срок читается под замком юзера в хранилище (после параллельной выдачи дней); CreateUser заводит юзера, если его нет.
+		user, err := h.rw.CreateUser(ctx, from.ID, username, h.cfg.Remnawave.InternalSquadId)
+		if err != nil {
+			stlog.Error(ctx, "failed to create remnawave user", "error", err)
+			return time.Time{}, err
+		}
+		return user.ExpireAt, nil
 	})
 	if errors.Is(err, promo.ErrBlocked) { // скидка заблокированному не выдаётся; для юзера — «кода нет»
 		h.rejectPromo(ctx, b, u, err, promo.PlacePayment, routePay)

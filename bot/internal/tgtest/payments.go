@@ -150,7 +150,8 @@ func (p *Payments) byID(id int64) (*model.Payment, error) {
 
 // CreatePayment — rollback вызывается под мьютексом фейка: из него нельзя звать Payments.
 func (p *Payments) CreatePayment(
-	_ context.Context, np model.Payment, rollback func(old model.Payment) error,
+	ctx context.Context, np model.Payment, rollback func(old model.Payment) error,
+	readPrev func(ctx context.Context) (time.Time, error),
 ) (model.Payment, *model.Payment, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -168,6 +169,12 @@ func (p *Payments) CreatePayment(
 		c := *old
 		cancelled = &c
 		np.PrevExpireAt = old.PrevExpireAt
+	} else if readPrev != nil {
+		prev, err := readPrev(ctx)
+		if err != nil {
+			return model.Payment{}, nil, err
+		}
+		np.PrevExpireAt = prev
 	}
 	np.ID = int64(len(p.payments) + 1)
 	np.Status = model.PaymentPending
