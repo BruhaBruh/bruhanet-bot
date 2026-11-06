@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { notWired } from '@/lib/not-wired'
 import { cn } from '@/lib/utils'
-import { Button, DataTable, Icon, RowAction, SegmentedControl, StatusTag, toast, type DataTableColumn, type Tone } from '@/ui'
+import { Button, Card, DataTable, Icon, Input, RowAction, SegmentedControl, toast, type DataTableColumn } from '@/ui'
 import { get } from '../api'
 import { audienceLabel } from '../compose/audience'
-import { visibleText } from '../editor/serialize'
-import { formatCount, formatShortDate } from '../format'
+import { delivered, statusTag, stats, titleOf, whenOf } from './broadcast-format'
+import { formatCount } from '../format'
 import type { Broadcast } from '../types'
 
 const DASH = '—'
@@ -25,39 +24,6 @@ const EMPTY: Record<string, string> = {
   sent: 'Отправленных рассылок нет',
   draft: 'Черновиков нет',
 }
-
-const titleOf = (b: Broadcast) =>
-  visibleText(b.text)
-    .split('\n')
-    .find((line) => line.trim())
-    ?.trim() ?? 'Без названия'
-
-const stats = (b: Broadcast) => {
-  switch (b.status) {
-    case 'draft':
-      return 'черновик, не отправлялась'
-    case 'scheduled':
-      return b.scheduledAt ? `уйдёт ${formatShortDate(b.scheduledAt)} (МСК)` : 'запланирована'
-    case 'cancelled':
-      return 'отменена, не отправлялась'
-    default:
-      return `доставлено ${formatCount(b.sent)} из ${formatCount(b.total)}, не доставлено ${formatCount(b.failed)}`
-  }
-}
-
-const TAGS: Record<Broadcast['status'], { tone: Tone; label: string }> = {
-  draft: { tone: 'neutral', label: 'Черновик' },
-  scheduled: { tone: 'warning', label: 'Запланирована' },
-  sending: { tone: 'accent', label: 'Отправляется' },
-  sent: { tone: 'success', label: 'Отправлена' },
-  cancelled: { tone: 'neutral', label: 'Отменена' },
-}
-const statusTag = (b: Broadcast) => <StatusTag tone={TAGS[b.status].tone}>{TAGS[b.status].label}</StatusTag>
-
-// Когда ушла или уйдёт; у черновика — когда менялся
-const whenOf = (b: Broadcast) => formatShortDate(b.status === 'scheduled' && b.scheduledAt ? b.scheduledAt : b.status === 'draft' ? b.updatedAt : b.createdAt)
-
-const delivered = (b: Broadcast) => b.status === 'sending' || b.status === 'sent'
 
 const columns: DataTableColumn<Broadcast>[] = [
   {
@@ -86,8 +52,7 @@ const columns: DataTableColumn<Broadcast>[] = [
   },
   { key: 'audience', title: 'Аудитория', secondary: true, truncate: true, maxWidth: 220, render: (b) => audienceLabel(b.audience, String(b.audienceDays ?? '')) },
   { key: 'total', title: 'Получатели', numeric: true, sortable: true, width: 120, render: (b) => (delivered(b) ? formatCount(b.total) : DASH) },
-  { key: 'opens', title: 'Открыли', numeric: true, sortable: true, width: 100, render: () => DASH },
-  { key: 'buttons', title: 'Кнопки', numeric: true, width: 90, render: () => DASH },
+  { key: 'buttons', title: 'Кнопки', numeric: true, width: 90, render: (b) => (b.buttons.length ? String(b.buttons.length) : DASH) },
   { key: 'date', title: 'Отправка', secondary: true, width: 140, render: whenOf },
   { key: 'status', title: 'Статус', width: 160, render: statusTag },
 ]
@@ -101,6 +66,9 @@ export default function Broadcasts() {
   const navigate = useNavigate()
   const [segment, setSegment] = useState('all')
   const [page, setPage] = useState(1)
+  // период по дате создания, МСК; пусто — без границы
+  const [range, setRange] = useState({ from: '', to: '' })
+  const [showFilters, setShowFilters] = useState(false)
   const [data, setData] = useState<Page>()
   const [loadError, setLoadError] = useState(false)
   // устаревший ответ (страница уже другая) не перетирает новый
@@ -109,7 +77,8 @@ export default function Broadcasts() {
   const load = useCallback(() => {
     const s = ++seq.current
     const status = STATUSES[segment]
-    return get<Page>(`/api/broadcasts?page=${page}${status ? `&status=${status}` : ''}`).then(
+    const period = `${range.from ? `&from=${range.from}` : ''}${range.to ? `&to=${range.to}` : ''}`
+    return get<Page>(`/api/broadcasts?page=${page}${status ? `&status=${status}` : ''}${period}`).then(
       (r) => {
         if (s !== seq.current) return
         setData(r)
@@ -119,7 +88,7 @@ export default function Broadcasts() {
         if (s === seq.current) setLoadError(true)
       },
     )
-  }, [page, segment])
+  }, [page, segment, range])
 
   useEffect(() => {
     void load()
@@ -146,10 +115,14 @@ export default function Broadcasts() {
     setSegment(next)
   }
 
-  const open = (b: Broadcast) => {
-    if (b.status === 'draft' || b.status === 'scheduled') navigate(`/broadcasts/${b.id}/edit`)
-    else notWired()
+  const filter = (patch: Partial<typeof range>) => {
+    setData(undefined)
+    setPage(1)
+    setRange({ ...range, ...patch })
   }
+
+  // черновик — сразу в редактор, остальные — на экран рассылки
+  const open = (b: Broadcast) => navigate(b.status === 'draft' ? `/broadcasts/${b.id}/edit` : `/broadcasts/${b.id}`)
 
   const duplicate = (b: Broadcast) => {
     navigate('/broadcasts/new', {
@@ -171,13 +144,29 @@ export default function Broadcasts() {
           <SegmentedControl options={SEGMENTS} value={segment} onChange={pick} />
         </div>
         <div className="grow" />
-        <Button variant="gray" icon="filter" onClick={notWired}>
+        <Button variant="gray" icon="filter" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}>
           Фильтры
         </Button>
         <Button icon="plus" onClick={() => navigate('/broadcasts/new')}>
           Новая рассылка
         </Button>
       </div>
+      {showFilters && (
+        <Card className="admin-body">
+          <div className="flex flex-wrap gap-4">
+            <Input type="date" label="С даты" className="min-w-0 flex-1 basis-50" max={range.to || undefined} value={range.from} onChange={(e) => filter({ from: e.target.value })} />
+            <Input type="date" label="По дату" className="min-w-0 flex-1 basis-50" min={range.from || undefined} value={range.to} onChange={(e) => filter({ to: e.target.value })} />
+          </div>
+          <p className="footnote text-text-secondary">
+            Список отфильтрован по дате создания рассылки (МСК).{' '}
+            {(range.from || range.to) && (
+              <Button variant="plain" size="sm" onClick={() => filter({ from: '', to: '' })}>
+                Сбросить период
+              </Button>
+            )}
+          </p>
+        </Card>
+      )}
       <div className="overflow-x-auto">
         <DataTable
           columns={columns}
@@ -197,22 +186,17 @@ export default function Broadcasts() {
                 }
               : undefined
           }
-          rowActions={(b) => (
-            <span className="inline-flex gap-0.5">
-              <RowAction icon="copy" label="Дублировать" onClick={() => duplicate(b)} />
-              <RowAction icon="more" label="Действия с рассылкой" onClick={notWired} />
-            </span>
-          )}
+          rowActions={(b) => <RowAction icon="copy" label="Дублировать" onClick={() => duplicate(b)} />}
           mobileRow={(b) => ({
             title: titleOf(b),
             // Счётчики — суть строки: переносятся, а не режутся.
             subtitle: <span className="block whitespace-normal">{`${whenOf(b)} · ${stats(b)}`}</span>,
-            // Строка не кликается (onClick перекрывает onRowClick): внутри кнопки «Изменить»/«Дублировать».
+            // Строка не кликается (onClick перекрывает onRowClick): внутри кнопки «Открыть»/«Изменить» и «Дублировать».
             onClick: undefined,
             after: (
               <>
                 {statusTag(b)}
-                {(b.status === 'draft' || b.status === 'scheduled') && <RowAction icon="edit" label="Изменить" onClick={() => open(b)} />}
+                <RowAction icon={b.status === 'draft' ? 'edit' : 'search'} label={b.status === 'draft' ? 'Изменить' : 'Открыть'} onClick={() => open(b)} />
                 <RowAction icon="copy" label="Дублировать" onClick={() => duplicate(b)} />
               </>
             ),

@@ -398,6 +398,24 @@ func (s *server) broadcasts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Период по created_at: дни по МСК, to включительно; границы необязательны.
+	for key, dst := range map[string]*time.Time{"from": &f.From, "to": &f.To} {
+		if v := q.Get(key); v != "" {
+			d, err := time.ParseInLocation(time.DateOnly, v, moscow)
+			if err != nil {
+				writeBadRequest(w)
+				return
+			}
+			*dst = d
+		}
+	}
+	if !f.To.IsZero() {
+		f.To = f.To.AddDate(0, 0, 1)
+	}
+	if !f.From.IsZero() && !f.To.IsZero() && !f.To.After(f.From) {
+		writeBadRequest(w)
+		return
+	}
 	items, total, err := s.Store.ListBroadcasts(r.Context(), f)
 	if err != nil {
 		internal(w, r, "list broadcasts", err)

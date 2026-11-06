@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { Button, Card, DataTable, Input, SegmentedControl, StatCard } from '@/ui'
 import { get } from '../api'
 import { formatCount, formatDay, formatRub, mskDate } from '../format'
@@ -34,7 +34,13 @@ interface Page {
 export default function Payments() {
   const navigate = useNavigate()
   // период всегда виден и уходит явно: сегодня и 29 дней назад (МСК), как default сервера
-  const [f, setF] = useState(() => ({ segment: 'all', from: mskDate(new Date(), -29), to: mskDate(new Date()), page: 1 }))
+  // ?tab=pending (ссылка с Обзора) — очередь на проверке за всё время, как счётчик на Обзоре и в меню
+  const tab = useSearchParams()[0].get('tab')
+  const [f, setF] = useState(() =>
+    tab && SEGMENTS.some((s) => s.value === tab)
+      ? { segment: tab, from: tab === 'pending' ? '2000-01-01' : mskDate(new Date(), -29), to: mskDate(new Date()), page: 1 }
+      : { segment: 'all', from: mskDate(new Date(), -29), to: mskDate(new Date()), page: 1 },
+  )
   const [showFilters, setShowFilters] = useState(false)
 
   const params = new URLSearchParams({ status: API_STATUS[f.segment] ?? '', page: String(f.page) })

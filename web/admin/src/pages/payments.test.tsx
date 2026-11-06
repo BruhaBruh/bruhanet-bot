@@ -56,6 +56,34 @@ const next = async () => {
   await flush()
 }
 
+describe('Payments ?tab=', () => {
+  const open = async (tab: string) => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url)
+      return url.startsWith('/api/payments') ? json(200, { items: [], total: 0, revenue: 0 }) : new Promise(() => {})
+    })
+    render(
+      <MemoryRouter initialEntries={[`/payments?tab=${tab}`]}>
+        <App />
+      </MemoryRouter>,
+    )
+    await flush()
+    return urls
+  }
+
+  it('pending opens the queue for all dates, like the counter on the overview', async () => {
+    const urls = await open('pending')
+    expect(screen.getByRole('radio', { name: 'Ожидают' }).getAttribute('aria-checked')).toBe('true')
+    expect(urls.some((u) => u.startsWith('/api/payments?status=pending&page=1&from=2000-01-01&to='))).toBe(true)
+  })
+
+  it('an unknown tab is ignored', async () => {
+    await open('bogus')
+    expect(screen.getByRole('radio', { name: 'Все' }).getAttribute('aria-checked')).toBe('true')
+  })
+})
+
 describe('Payments', () => {
   it('shows macro columns, revenue and the pager', async () => {
     stub()

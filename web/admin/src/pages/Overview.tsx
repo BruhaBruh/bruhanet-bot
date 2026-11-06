@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { Button, Cell, DataTable, StatCard } from '@/ui'
 import { get } from '../api'
+import { formatSchedule, isoToMskLocal } from '../compose/schedule'
 import { formatCount, formatDelta, formatRub, mskDate } from '../format'
 import { useSyncKey } from '../layout/page-title'
-import type { Payment, Promo } from '../types'
+import type { Broadcast, Payment, Promo } from '../types'
+import { titleOf } from './broadcast-format'
 import { paymentColumns, paymentMobileRow } from './payment-columns'
 
 const DASH = '—'
 const RECENT_COUNT = 5
+const UPCOMING_COUNT = 3
 const panel = 'overflow-hidden rounded-lg bg-surface shadow-card'
 
 interface PaymentsPage {
@@ -50,6 +53,9 @@ export default function Overview() {
   const prevWeek = useGet<PaymentsPage>(paths.prevWeek)
   // Без from сервер отдаёт только 30 дней, а «последние» могут быть и старше.
   const recent = useGet<PaymentsPage>('/api/payments?from=2000-01-01')
+  // на проверке — за всё время, как бейдж «Платежи» в меню
+  const pending = useGet<{ total: number }>('/api/payments?status=pending&from=2000-01-01')
+  const upcoming = useGet<{ items: Broadcast[] }>('/api/broadcasts?status=scheduled')
 
   const revenueDelta = week && prevWeek ? formatDelta(week.revenue, prevWeek.revenue) : undefined
 
@@ -73,15 +79,16 @@ export default function Overview() {
           delta={revenueDelta}
           hint={revenueDelta ? 'к прошлой неделе' : undefined}
         />
-        <StatCard
-          icon="megaphone"
-          iconColor="purple"
-          label="Открываемость рассылок"
-          value={DASH}
-          delta={DASH}
-          deltaTone="neutral"
-          hint="последняя рассылка"
-        />
+        <Link to="/payments?tab=pending" className="focus-ring block rounded-lg no-underline">
+          <StatCard
+            className="h-full"
+            icon="card"
+            iconColor="purple"
+            label="Платежи на проверке"
+            value={pending ? formatCount(pending.total) : DASH}
+            hint={pending ? (pending.total > 0 ? 'ждут решения' : 'очередь пуста') : undefined}
+          />
+        </Link>
         <StatCard
           icon="ticket"
           iconColor="orange"
@@ -113,7 +120,23 @@ export default function Overview() {
         <div className="flex min-w-70 grow basis-75 flex-col gap-3">
           <h2 className="headline px-1">Ближайшие рассылки</h2>
           <div className={panel}>
-            <p className="admin-table px-4 py-6 text-center text-text-secondary">Запланированных рассылок нет</p>
+            {upcoming?.items.length ? (
+              upcoming.items
+                .slice(0, UPCOMING_COUNT)
+                .map((b) => (
+                  <Cell
+                    key={b.id}
+                    title={titleOf(b)}
+                    subtitle={b.scheduledAt ? `${formatSchedule(isoToMskLocal(b.scheduledAt))} (МСК)` : 'запланирована'}
+                    href={`/broadcasts/${b.id}`}
+                    chevron
+                  />
+                ))
+            ) : (
+              <p className="admin-table px-4 py-6 text-center text-text-secondary">
+                {upcoming === undefined ? 'Загрузка…' : upcoming === null ? 'Не удалось загрузить рассылки' : 'Запланированных рассылок нет'}
+              </p>
+            )}
           </div>
           <h2 className="headline mt-3 px-1">Быстрые действия</h2>
           <div className={panel}>

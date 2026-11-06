@@ -25,15 +25,15 @@ export default function BroadcastEdit() {
 
   const back = (
     <div className="-my-2 -ml-2">
-      <Button variant="plain" icon="chevron-left" onClick={() => navigate('/broadcasts')}>
-        Все рассылки
+      <Button variant="plain" icon="chevron-left" onClick={() => navigate(`/broadcasts/${id}`)}>
+        К рассылке
       </Button>
     </div>
   )
   if (state.id !== id) return <Spinner className="self-center p-8" />
   if (state.failed || !state.broadcast) return <p role="alert">Не удалось загрузить рассылку</p>
   const b = state.broadcast
-  if (b.status !== 'draft' && b.status !== 'scheduled') return <Navigate to="/broadcasts" replace />
+  if (b.status !== 'draft' && b.status !== 'scheduled') return <Navigate to={`/broadcasts/${b.id}`} replace />
 
   return (
     <>
@@ -46,9 +46,9 @@ export default function BroadcastEdit() {
         initial={{ text: b.text, photo: b.photo, audience: b.audience, audienceDays: b.audienceDays, silent: b.silent, buttons: b.buttons, scheduledAt: b.scheduledAt }}
         onSent={(sent) => {
           announceSent(sent)
-          navigate('/broadcasts', { replace: true })
+          navigate(`/broadcasts/${b.id}`, { replace: true })
         }}
-        onSaved={() => navigate('/broadcasts', { replace: true })}
+        onSaved={() => navigate(`/broadcasts/${b.id}`, { replace: true })}
       />
     </>
   )

@@ -18,6 +18,7 @@ import { useTheme } from './theme'
 const Broadcasts = lazy(() => import('./pages/Broadcasts'))
 const BroadcastNew = lazy(() => import('./pages/BroadcastNew'))
 const BroadcastEdit = lazy(() => import('./pages/BroadcastEdit'))
+const BroadcastView = lazy(() => import('./pages/BroadcastView'))
 const Texts = lazy(() => import('./pages/Texts'))
 
 const title = (pathname: string) =>
@@ -42,6 +43,7 @@ export function App() {
           <Route path="/broadcasts" element={<Broadcasts />} />
           <Route path="/broadcasts/new" element={<BroadcastNew />} />
           <Route path="/broadcasts/:id/edit" element={<BroadcastEdit />} />
+          <Route path="/broadcasts/:id" element={<BroadcastView />} />
           <Route path="/promos" element={<Promos />} />
           <Route path="/promos/new" element={<PromoNew />} />
           <Route path="/users" element={<Users />} />

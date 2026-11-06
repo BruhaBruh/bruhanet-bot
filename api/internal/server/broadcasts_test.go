@@ -602,3 +602,35 @@ func TestBroadcastSendDraft(t *testing.T) {
 		t.Fatalf("edit scheduled: %d", code)
 	}
 }
+
+// Период списка: дни по МСК, to включительно (в запросе к хранилищу — полночь следующего дня), границы необязательны.
+func TestBroadcastListPeriod(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	get := func(q string) int {
+		return send(h, http.MethodGet, "/api/broadcasts"+q, c, "").Code
+	}
+	if get("?from=2026-11-01&to=2026-11-03") != http.StatusOK {
+		t.Fatal("period")
+	}
+	msk := func(d string) time.Time {
+		v, _ := time.ParseInLocation(time.DateOnly, d, time.FixedZone("MSK", 3*3600))
+		return v
+	}
+	if !st.lastBF.From.Equal(msk("2026-11-01")) || !st.lastBF.To.Equal(msk("2026-11-04")) {
+		t.Fatalf("filter = %+v", st.lastBF)
+	}
+	if get("?from=2026-11-03") != http.StatusOK || !st.lastBF.To.IsZero() || !st.lastBF.From.Equal(msk("2026-11-03")) {
+		t.Fatalf("from only: %+v", st.lastBF)
+	}
+	if get("?to=2026-11-03") != http.StatusOK || !st.lastBF.From.IsZero() || !st.lastBF.To.Equal(msk("2026-11-04")) {
+		t.Fatalf("to only: %+v", st.lastBF)
+	}
+	if get("?from=2026-11-03&to=2026-11-03") != http.StatusOK {
+		t.Fatal("one day")
+	}
+	for _, q := range []string{"?from=2026-11-04&to=2026-11-03", "?from=вчера", "?to=2026-13-01", "?from=2026-11-01T00:00"} {
+		if code := get(q); code != http.StatusBadRequest {
+			t.Errorf("%s: %d", q, code)
+		}
+	}
+}

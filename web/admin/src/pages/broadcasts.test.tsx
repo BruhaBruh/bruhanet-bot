@@ -57,6 +57,7 @@ async function renderList(newRoute = <Probe />) {
         <Routes>
           <Route path="/broadcasts" element={<Broadcasts />} />
           <Route path="/broadcasts/new" element={newRoute} />
+          <Route path="/broadcasts/:id" element={<EditProbe />} />
         </Routes>
       </MemoryRouter>
     </ToastProvider>,
@@ -131,22 +132,78 @@ describe('Broadcasts', () => {
     expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/broadcasts?page=1&status=draft')
   })
 
-  it('a click on a draft or a scheduled row opens the editor', async () => {
-    stub({ 1: { items: [item('d', { status: 'draft' }), item('s', { status: 'scheduled', scheduledAt: '2026-11-07T15:30:00Z' })], total: 2 } })
+  it('no «Открыли» column; «Кнопки» shows the real count', async () => {
+    stub({ 1: { items: [item('a', { buttons: [{ text: 'a', url: 'https://e.com', style: '' }, { text: 'b', url: 'https://e.org', style: '' }] }), item('b')], total: 2 } })
+    await renderList()
+    expect(table().getAllByRole('columnheader').map((h) => h.textContent)).not.toContain('Открыли')
+    const idx = table().getAllByRole('columnheader').findIndex((h) => h.textContent === 'Кнопки')
+    expect(idx).toBeGreaterThan(0)
+    const rows = table().getAllByRole('row').slice(1)
+    expect(within(rows[0]).getAllByRole('cell')[idx].textContent).toBe('2')
+    expect(within(rows[1]).getAllByRole('cell')[idx].textContent).toBe('—')
+  })
+
+  it('«Фильтры» opens the period; it goes to the server and back to page 1', async () => {
+    const fetchMock = stub({
+      1: { items: [item('a')], total: 1 },
+      '1&from=2026-11-01': { items: [], total: 0 },
+      '1&from=2026-11-01&to=2026-11-03': { items: [item('p')], total: 1 },
+      '1&to=2026-11-03': { items: [item('q')], total: 1 },
+    })
+    await renderList()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    fireEvent.change(screen.getByLabelText('С даты'), { target: { value: '2026-11-01' } })
+    await flush()
+    expect(table().getByText('Рассылок ещё не было')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('По дату'), { target: { value: '2026-11-03' } })
+    await flush()
+    expect(table().getByText('Заголовок p')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Сбросить период' }))
+    await flush()
+    expect(table().getByText('Заголовок a')).toBeTruthy()
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([
+      '/api/broadcasts?page=1',
+      '/api/broadcasts?page=1&from=2026-11-01',
+      '/api/broadcasts?page=1&from=2026-11-01&to=2026-11-03',
+      '/api/broadcasts?page=1',
+    ])
+  })
+
+  it('a click on a sent row opens its screen, a draft goes straight to the editor', async () => {
+    stub({ 1: { items: [item('a'), item('d', { status: 'draft' })], total: 2 } })
     render(
       <ToastProvider>
         <MemoryRouter initialEntries={['/broadcasts']}>
           <Routes>
             <Route path="/broadcasts" element={<Broadcasts />} />
-            <Route path="/broadcasts/:id/edit" element={<EditProbe />} />
+            <Route path="/broadcasts/:id/edit" element={<p>редактор</p>} />
+            <Route path="/broadcasts/:id" element={<EditProbe />} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>,
     )
     await flush()
-    fireEvent.click(table().getByText('Заголовок s'))
+    fireEvent.click(table().getByText('Заголовок d'))
     await flush()
-    expect(screen.getByTestId('edit').textContent).toBe('s')
+    expect(screen.getByText('редактор')).toBeTruthy()
+  })
+
+  it('a click on a sent row opens its screen', async () => {
+    stub({ 1: { items: [item('a')], total: 1 } })
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={['/broadcasts']}>
+          <Routes>
+            <Route path="/broadcasts" element={<Broadcasts />} />
+            <Route path="/broadcasts/:id" element={<EditProbe />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    )
+    await flush()
+    fireEvent.click(table().getByText('Заголовок a'))
+    await flush()
+    expect(screen.getByTestId('edit').textContent).toBe('a')
   })
 
   it('pagination loads the next page via ?page=', async () => {
@@ -169,14 +226,6 @@ describe('Broadcasts', () => {
     await flush()
     expect(JSON.parse(screen.getByTestId('state').textContent!)).toEqual({ text: item('a').text, photo: 'file9', audience: 'all', audienceDays: null, silent: false, buttons: [] })
     expect(screen.getByRole('status').textContent).toContain('Копия «Заголовок a» открыта в редакторе')
-  })
-
-  it('«Фильтры» and the row menu are not wired yet', async () => {
-    stub({ 1: { items: [item('a')], total: 1 } })
-    await renderList()
-    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
-    await flush()
-    expect(screen.getByRole('status').textContent).toContain('Пока не подключено')
   })
 
   it('failed load is shown', async () => {
@@ -206,7 +255,7 @@ describe('Broadcasts', () => {
     await flush()
     expect(posted).toMatchObject({ text: item('a').text })
     expect(screen.getByRole('status').textContent).toContain('Рассылка запущена — 3 получателя')
-    expect(table().getByText('Заголовок a')).toBeTruthy()
+    expect(screen.getByTestId('edit').textContent).toBe('n')
     expect(fetchMock).toHaveBeenCalled()
   })
 })
@@ -227,7 +276,7 @@ describe('BroadcastEdit', () => {
         <MemoryRouter initialEntries={['/broadcasts/b1/edit']}>
           <Routes>
             <Route path="/broadcasts/:id/edit" element={<BroadcastEdit />} />
-            <Route path="/broadcasts" element={<p>список</p>} />
+            <Route path="/broadcasts/:id" element={<p>экран рассылки</p>} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>,
@@ -250,8 +299,8 @@ describe('BroadcastEdit', () => {
     expect(screen.queryByRole('button', { name: 'Сохранить изменения' })).toBeNull()
   })
 
-  it('an already started broadcast goes back to the list', async () => {
+  it('an already started broadcast goes to its screen', async () => {
     await openEdit(item('b1', { id: 'b1', status: 'sending' }))
-    expect(screen.getByText('список')).toBeTruthy()
+    expect(screen.getByText('экран рассылки')).toBeTruthy()
   })
 })

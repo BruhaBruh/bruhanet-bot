@@ -19,7 +19,7 @@ export default function BroadcastNew() {
         initial={state as ComposerDraft | null}
         onSent={(b) => {
           announceSent(b)
-          navigate('/broadcasts', { replace: true })
+          navigate(`/broadcasts/${b.id}`, { replace: true })
         }}
       />
     </>
