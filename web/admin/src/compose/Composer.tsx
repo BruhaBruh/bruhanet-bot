@@ -100,6 +100,11 @@ export function Composer(props: ComposerProps) {
   const over = len - limit
   const blank = visibleText(text).trim() === ''
   const valid = !uploading && over <= 0 && (!!photo || !blank)
+  // Для кода после await: файл из уже открытого окна выбора может прийти и под busy.
+  const validNow = useRef(valid)
+  useEffect(() => {
+    validNow.current = valid
+  }, [valid])
 
   const body = () => ({ text, ...(photo ? { photo } : {}) })
 
@@ -136,19 +141,17 @@ export function Composer(props: ComposerProps) {
   }
 
   // Диалог называет число получателей на момент клика: на странице оно могло устареть.
-  async function askSend() {
-    if (inFlight.current) return
-    inFlight.current = true
-    setError('')
-    const count = await fetchRecipients()
-    setRecipients(count)
-    inFlight.current = false
-    if (count) setConfirming(true)
-  }
+  const askSend = () =>
+    run(async () => {
+      const count = await fetchRecipients()
+      setRecipients(count)
+      if (count && validNow.current) setConfirming(true)
+    })
 
   const broadcast = () =>
     run(async () => {
       setConfirming(false)
+      if (!valid) return
       const { broadcast } = await post<{ broadcast: Broadcast }>('/api/broadcasts', { idempotencyKey: key.current, ...body() })
       reset()
       if (props.mode === 'broadcast') props.onSent?.(broadcast)
@@ -167,7 +170,10 @@ export function Composer(props: ComposerProps) {
     <PhotoPicker
       value={photo}
       onChange={changePhoto}
-      onUploading={setUploading}
+      onUploading={(v) => {
+        setUploading(v)
+        if (v) setConfirming(false)
+      }}
       disabled={busy}
     />
   )

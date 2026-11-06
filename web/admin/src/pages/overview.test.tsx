@@ -69,7 +69,8 @@ describe('Overview cards', () => {
     expect(card('Пользователи').textContent).toContain('3 214')
     expect(card('Выручка за 7 дней').textContent).toContain('84 300 ₽')
     expect(card('Активные промокоды').textContent).toContain('2')
-    expect(within(card('Открываемость рассылок')).getByText('—')).toBeTruthy()
+    // значение и дельта, как у соседних карточек
+    expect(within(card('Открываемость рассылок')).getAllByText('—')).toHaveLength(2)
   })
 
   it('computes the revenue delta against the previous 7 days', async () => {

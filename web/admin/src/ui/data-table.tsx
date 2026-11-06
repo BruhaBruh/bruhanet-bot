@@ -220,7 +220,10 @@ export function DataTable<R>({
                       onKeyDown={
                         onRowClick &&
                         ((e) => {
-                          if (e.key === 'Enter' && e.target === e.currentTarget) onRowClick(row)
+                          if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                            e.preventDefault() // Space иначе прокрутит страницу
+                            onRowClick(row)
+                          }
                         })
                       }
                     >

@@ -145,6 +145,57 @@ describe('Composer', () => {
     expect(r.container.textContent).toContain('Панель недоступна, количество получателей неизвестно')
   })
 
+  describe('while recipients are re-fetched', () => {
+    async function asking(text: string) {
+      let release!: () => void
+      const gate = new Promise<void>((r) => (release = r))
+      replies['GET /api/broadcasts/recipients'] = [json(200, { count: 3 }), () => gate.then(() => json(200, { count: 3 })())]
+      const s = await setup()
+      await s.setText(text)
+      fireEvent.click(s.btn(SEND)!)
+      await flush()
+      return { ...s, release: async () => (release(), await flush()) }
+    }
+
+    it('everything is locked, then the dialog opens', async () => {
+      const { btn, release } = await asking('hi')
+      expect(kids.editor.disabled).toBe(true)
+      expect(kids.picker.disabled).toBe(true)
+      expect(disabled(btn(TEST))).toBe(true)
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+      await release()
+      expect(kids.editor.disabled).toBe(false)
+      expect(screen.getByRole('alertdialog')).toBeTruthy()
+    })
+
+    it('an upload started in the window: no dialog, even after it fails', async () => {
+      const { release } = await asking('hi')
+      act(() => kids.picker.onUploading?.(true))
+      await release()
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+      act(() => kids.picker.onUploading?.(false))
+      await flush()
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+    })
+
+    it('a photo arrived in the window and the text is over the limit: no dialog', async () => {
+      const { setPhoto, release } = await asking('a'.repeat(1025))
+      await setPhoto('file1')
+      await release()
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+    })
+  })
+
+  it('an upload started under the open dialog closes it, nothing is sent', async () => {
+    const { setText, click } = await setup()
+    await setText('hi')
+    await click(SEND)
+    act(() => kids.picker.onUploading?.(true))
+    await flush()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(posts()).toHaveLength(0)
+  })
+
   it('double click on Dialog confirm sends one POST', async () => {
     replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
     const { setText, click, btn } = await setup()

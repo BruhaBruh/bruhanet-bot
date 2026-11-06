@@ -232,6 +232,20 @@ describe('UserCard', () => {
     expect(screen.getByText('Сообщение отправлено')).toBeTruthy()
   })
 
+  it('«Написать» twice hides the composer but keeps it mounted', async () => {
+    stub({ '/api/users/7': () => json(200, detail()) })
+    await renderAt('/users/7')
+    const write = screen.getByRole('button', { name: 'Написать' })
+    fireEvent.click(write)
+    const composer = await screen.findByRole('button', { name: 'Послать' })
+    fireEvent.click(write)
+    expect(screen.queryByRole('button', { name: 'Послать' })).toBeNull()
+    expect(screen.getByText('Послать')).toBe(composer)
+    expect(write.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(write)
+    expect(screen.getByRole('button', { name: 'Послать' })).toBe(composer)
+  })
+
   it('shows «Выдать дни» and «Заблокировать» as not wired', async () => {
     stub({ '/api/users/7': () => json(200, detail()) })
     await renderAt('/users/7')

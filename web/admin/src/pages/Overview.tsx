@@ -76,6 +76,8 @@ export default function Overview() {
           iconColor="purple"
           label="Открываемость рассылок"
           value={DASH}
+          delta={DASH}
+          deltaTone="neutral"
           hint="последняя рассылка"
         />
         <StatCard

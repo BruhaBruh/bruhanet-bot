@@ -246,6 +246,34 @@ describe('PromoNew', () => {
     expect(table().getByText('X7K2')).toBeTruthy()
   })
 
+  it('Enter submits with the same guards, other buttons do not', async () => {
+    replies['POST /api/promos'] = json(201, { promo: promo(5, 'X7K2') })
+    replies['GET /api/promos?status=all'] = json(200, { items: [] })
+    await show('/promos/new')
+    const form = create().closest('form')!
+    fireEvent.submit(form)
+    await flush()
+    expect(posts()).toHaveLength(0)
+    type('Размер скидки', '15')
+    fireEvent.click(screen.getByRole('button', { name: 'Сгенерировать' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Ограничить срок действия' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Ограничить срок действия' }))
+    segment('Бонусные дни')
+    await flush()
+    expect(posts()).toHaveLength(0)
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await flush()
+    expect(posts()).toHaveLength(1)
+  })
+
+  it('summary pluralizes the activation limit', async () => {
+    await show('/promos/new')
+    fireEvent.click(screen.getByRole('switch', { name: 'Ограничить количество активаций' }))
+    type('Сколько раз можно применить', '2')
+    expect(within(screen.getByRole('complementary', { name: 'Итог' })).getByText('2 раза')).toBeTruthy()
+  })
+
   it('shows server 400 and 409 messages under the form', async () => {
     replies['POST /api/promos'] = json(409, { error: 'exists', message: 'Такой код уже есть' })
     await show('/promos/new')

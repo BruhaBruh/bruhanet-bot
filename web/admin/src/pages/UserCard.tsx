@@ -70,7 +70,8 @@ function UserCardInner({ id }: { id?: string }) {
   const navigate = useNavigate()
   const [d, setD] = useState<UserDetail>()
   const [error, setError] = useState('')
-  const [writing, setWriting] = useState(false)
+  // hidden — скрыт, но смонтирован: черновик не пропадает при повторном клике.
+  const [composer, setComposer] = useState<'none' | 'open' | 'hidden'>('none')
 
   useEffect(() => {
     get<UserDetail>(`/api/users/${id}`).then(setD, (e) =>
@@ -83,7 +84,7 @@ function UserCardInner({ id }: { id?: string }) {
 
   function onSent(m: DirectMessage) {
     setD((d) => d && { ...d, messages: [m, ...d.messages] })
-    setWriting(false)
+    setComposer('hidden')
     toast('Сообщение отправлено', { icon: 'check' })
   }
 
@@ -138,7 +139,7 @@ function UserCardInner({ id }: { id?: string }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="tinted" aria-expanded={writing} onClick={() => setWriting(!writing)}>
+          <Button variant="tinted" aria-expanded={composer === 'open'} onClick={() => setComposer(composer === 'open' ? 'hidden' : 'open')}>
             Написать
           </Button>
           <Button variant="gray" icon="gift" onClick={notWired}>
@@ -150,12 +151,14 @@ function UserCardInner({ id }: { id?: string }) {
         </div>
       </section>
 
-      {writing && (
-        <Card title="Новое сообщение">
-          <Suspense fallback={<Spinner className="self-center p-8" />}>
-            <Composer mode="direct" userId={user.telegramId} onSent={onSent} />
-          </Suspense>
-        </Card>
+      {composer !== 'none' && (
+        <div hidden={composer === 'hidden'}>
+          <Card title="Новое сообщение">
+            <Suspense fallback={<Spinner className="self-center p-8" />}>
+              <Composer mode="direct" userId={user.telegramId} onSent={onSent} />
+            </Suspense>
+          </Card>
+        </div>
       )}
 
       <div className="admin-body grid grid-cols-[repeat(auto-fit,minmax(min(100%,--spacing(70)),1fr))] gap-4">

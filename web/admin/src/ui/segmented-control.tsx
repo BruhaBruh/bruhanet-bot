@@ -11,6 +11,7 @@ export interface SegmentedControlProps {
 }
 
 export function SegmentedControl({ options, value, onChange, block, className }: SegmentedControlProps) {
+  // block на телефоне переносит подписи: иначе длинные обрезаются краем прокрутки. Без block — прокрутка.
   return (
     <ToggleGroup
       type="single"
@@ -24,7 +25,7 @@ export function SegmentedControl({ options, value, onChange, block, className }:
       {options.map((option) => {
         const { value: v, label } = typeof option === 'string' ? { value: option, label: option } : option
         return (
-          <ToggleGroupItem key={v} value={v} className={cn('flex-none whitespace-nowrap', block && 'flex-1')}>
+          <ToggleGroupItem key={v} value={v} className={cn('flex-none whitespace-nowrap', block && 'flex-1 max-md:h-auto max-md:min-h-7 max-md:px-2 max-md:py-1 max-md:whitespace-normal')}>
             {label}
           </ToggleGroupItem>
         )

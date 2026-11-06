@@ -155,6 +155,37 @@ describe('Payments', () => {
     expect(screen.getByText(/^с 15 янв\./)).toBeTruthy()
   })
 
+  it('a status from the filters overrides the tab, a tab click resets it', async () => {
+    const calls = stub()
+    await renderPage()
+    await pick('Возвраты')
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    expect(screen.getByRole('radio', { name: 'Любой' }).getAttribute('aria-checked')).toBe('true')
+    await pick('Отменён')
+    expect(calls.at(-1)?.get('status')).toBe('cancelled')
+    expect(table().getByText('@eve')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'Возвраты' }).getAttribute('aria-checked')).toBe('false')
+    await pick('Отклонён')
+    expect(calls.at(-1)?.get('status')).toBe('declined')
+    await pick('Ожидают')
+    expect(calls.at(-1)?.get('status')).toBe('pending')
+    expect(screen.getByRole('radio', { name: 'Ожидают' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: 'Любой' }).getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('both dates cleared: omits them and says the server uses 30 days', async () => {
+    const calls = stub()
+    await renderPage()
+    expect(screen.queryByText('Даты не выбраны: последние 30 дней')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    fireEvent.change(screen.getByLabelText('С даты'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('По дату'), { target: { value: '' } })
+    await flush()
+    expect(calls.at(-1)?.has('from')).toBe(false)
+    expect(calls.at(-1)?.has('to')).toBe(false)
+    expect(screen.getByText('Даты не выбраны: последние 30 дней')).toBeTruthy()
+  })
+
   it('sends the default 30-day period', async () => {
     const calls = stub()
     await renderPage()

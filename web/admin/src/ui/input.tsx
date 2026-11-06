@@ -34,7 +34,7 @@ export function Field({ id, label, hint, error, className, children }: FieldProp
 }
 
 export const fieldBox =
-  'flex gap-2 rounded-md border border-transparent bg-[var(--field-bg,var(--surface))] px-4 transition-[border-color] duration-150 focus-within:border-accent'
+  'flex gap-2 rounded-md border border-transparent bg-[var(--field-bg,var(--surface))] px-4 transition-[border-color] duration-150 focus-within:border-accent has-[:disabled]:opacity-40'
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string

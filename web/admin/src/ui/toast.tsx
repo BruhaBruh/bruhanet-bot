@@ -14,7 +14,6 @@ export interface ToastProps {
 export function Toast({ icon, action, onAction, className, children }: ToastProps) {
   return (
     <div
-      role="status"
       className={cn(
         'subheadline flex min-h-12 items-center gap-3 rounded-lg bg-toast-bg px-4 py-2.5 text-on-toast backdrop-blur-[20px]',
         className,
@@ -75,7 +74,8 @@ export function ToastProvider({ children }: { children?: ReactNode }) {
       {children}
       {createPortal(
         // Над TabBar на мобильном. Порталом в body: над модальными окнами.
-        <div className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--size-tab-bar)+var(--space-4))] z-60 flex justify-center md:bottom-6">
+        // role на постоянном контейнере: скринридер объявляет изменения только в уже существующей области.
+        <div role="status" className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--size-tab-bar)+var(--space-4))] z-60 flex justify-center md:bottom-6">
           {item && (
             <Toast
               key={item.id}

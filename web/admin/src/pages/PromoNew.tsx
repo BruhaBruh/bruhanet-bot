@@ -73,7 +73,7 @@ export default function PromoNew() {
   const cantCreate = !value || !!valueError || (limitOn && !limit.trim()) || (termOn && !until) || (target === 'user' && !picked)
 
   async function create() {
-    if (inFlight.current) return
+    if (inFlight.current || cantCreate) return
     const form = {
       code,
       kind,
@@ -104,7 +104,7 @@ export default function PromoNew() {
   const untilLabel = until && formatDay(until)
   const summary = [
     { k: 'Тип', v: kindLabels[kind] },
-    { k: 'Активации', v: limitOn ? `${limitCount} раз` : 'без ограничений' },
+    { k: 'Активации', v: limitOn ? `${limitCount} ${plural(Number(limit) || 0, ['раз', 'раза', 'раз'])}` : 'без ограничений' },
     { k: 'Срок', v: !termOn ? 'бессрочно' : untilLabel ? `по ${untilLabel}` : 'дата не выбрана' },
     {
       k: 'Для кого',
@@ -120,7 +120,14 @@ export default function PromoNew() {
         </Button>
       </div>
       <div className="admin-body flex flex-wrap items-start gap-6">
-        <div className="flex min-w-0 grow-999 basis-130 flex-col gap-4">
+        <form
+          noValidate
+          className="flex min-w-0 grow-999 basis-130 flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void create()
+          }}
+        >
           <Card title="Промокод" className="gap-4">
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-wrap items-end gap-2">
@@ -281,11 +288,11 @@ export default function PromoNew() {
             <Button variant="gray" onClick={() => navigate('/promos')}>
               Отмена
             </Button>
-            <Button loading={busy} disabled={cantCreate} onClick={() => void create()}>
+            <Button type="submit" loading={busy} disabled={cantCreate}>
               Создать промокод
             </Button>
           </div>
-        </div>
+        </form>
 
         <aside aria-label="Итог" className="flex max-w-95 min-w-0 grow basis-75 flex-col gap-2 md:sticky md:top-6">
           <h2 className="admin-label px-1 text-text-secondary">Итог</h2>

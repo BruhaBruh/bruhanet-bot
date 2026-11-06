@@ -176,7 +176,8 @@ export default function Broadcasts() {
           )}
           mobileRow={(b) => ({
             title: titleOf(b),
-            subtitle: `${formatShortDate(b.createdAt)} · ${stats(b)}`,
+            // Счётчики — суть строки: переносятся, а не режутся.
+            subtitle: <span className="block whitespace-normal">{`${formatShortDate(b.createdAt)} · ${stats(b)}`}</span>,
             // Строка не кликается (onClick перекрывает onRowClick): в ней кнопка «Дублировать».
             onClick: undefined,
             after: (

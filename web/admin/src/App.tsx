@@ -27,7 +27,7 @@ export function App() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
-  useEffect(() => setUnauthorizedHandler(() => navigate('/login-required')), [navigate])
+  useEffect(() => setUnauthorizedHandler(() => navigate('/login-required', { replace: true })), [navigate])
   useEffect(() => {
     document.title = title(pathname)
   }, [pathname])

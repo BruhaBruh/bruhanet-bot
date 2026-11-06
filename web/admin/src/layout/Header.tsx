@@ -24,7 +24,8 @@ export function Header({ title, onLogout }: { title: string; onLogout: () => voi
         <SearchField name="q" placeholder="Поиск по пользователям и платежам" />
       </form>
       <Button variant="gray" icon={theme === 'dark' ? 'sun' : 'moon'} aria-label={themeLabel} title={themeLabel} onClick={toggle} />
-      <Button variant="gray" icon="bell" aria-label="Уведомления" title="Уведомления" onClick={notWired} />
+      {/* На телефоне ещё и не подключённая кнопка отнимала бы место у заголовка. */}
+      <Button variant="gray" icon="bell" aria-label="Уведомления" title="Уведомления" className="max-md:hidden" onClick={notWired} />
       {/* На телефоне аватар уступает место заголовку. */}
       <div className="hidden items-center gap-2.5 pl-1 md:flex">
         <Avatar name={OWNER_NAME} colorIndex={2} size={32} />

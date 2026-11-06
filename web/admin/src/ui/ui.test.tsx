@@ -131,6 +131,9 @@ describe('DataTable', () => {
     expect(onRowClick).toHaveBeenCalledExactlyOnceWith(rows[0])
     fireEvent.keyDown(screen.getByRole('cell', { name: 'Б' }).closest('tr')!, { key: 'Enter' })
     expect(onRowClick).toHaveBeenCalledTimes(2)
+    // false — обработчик вызвал preventDefault
+    expect(fireEvent.keyDown(screen.getByRole('cell', { name: 'Б' }).closest('tr')!, { key: ' ' })).toBe(false)
+    expect(onRowClick).toHaveBeenCalledTimes(3)
   })
 
   it('empty: свой текст или «Нет данных»', () => {
@@ -374,18 +377,19 @@ describe('Toast', () => {
         <ToastProvider />
       </div>,
     )
-    act(() => toast('Промокод скопирован'))
+    // Живая область смонтирована заранее, иначе скринридер не объявит тост.
     const node = screen.getByRole('status')
+    act(() => toast('Промокод скопирован'))
     expect(node.textContent).toBe('Промокод скопирован')
     expect(node.closest('[data-testid=host]')).toBeNull()
     act(() => {
       vi.advanceTimersByTime(2400)
     })
-    expect(screen.queryByRole('status')).toBeTruthy()
+    expect(node.textContent).toBe('Промокод скопирован')
     act(() => {
       vi.advanceTimersByTime(200)
     })
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(node.textContent).toBe('')
   })
 
   it('новый тост заменяет старый и продлевает показ; notWired пишет «Пока не подключено»', () => {
@@ -400,7 +404,7 @@ describe('Toast', () => {
     act(() => {
       vi.advanceTimersByTime(2000)
     })
-    expect(screen.queryByRole('status')).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toBe('Пока не подключено')
   })
 
   it('без провайдера toast() ничего не ломает', () => {
