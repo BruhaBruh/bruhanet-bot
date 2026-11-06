@@ -1,6 +1,12 @@
 package model
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrTrialUnavailable — пробный период недоступен; причину (блокировка, повтор, оплата, лимит авансов, срок в панели) юзеру не раскрываем.
+var ErrTrialUnavailable = errors.New("trial is not available")
 
 // UserSeen — данные юзера из апдейта Telegram.
 type UserSeen struct {
@@ -50,6 +56,8 @@ type UserSummary struct {
 	ExtraDevices       int        `json:"extraDevices"` // куплено устройств сверх базы
 	LastSeenAt         *time.Time `json:"lastSeenAt"`
 	BroadcastsReceived int        `json:"broadcastsReceived"`
+	TrialUsedAt        *time.Time `json:"trialUsedAt"` // когда выдан пробный период; nil — не брал
+	InTrial            bool       `json:"inTrial"`     // пробный выдан и подписка ещё не оплачена
 }
 
 // UserTab — вкладка списка юзеров.

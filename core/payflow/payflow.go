@@ -64,7 +64,9 @@ var ErrDevicesBase = errors.New("payflow: devices base is not set")
 // Отклонение и неизменное число панель не трогают. Тот же вызов нужен любому месту, которое подтверждает платёж само.
 func ApplyDeviceLimit(ctx context.Context, panel Panel, p model.Payment, approve bool, base int) error {
 	next := p.ExtraAfter(p.UserExtra)
-	if !approve || next == p.UserExtra {
+	// Первое подтверждение подписки после пробного пишет лимит всегда: в панели стоит пробный, а не base+extra.
+	convert := p.TrialConvert && p.Kind != model.KindDevices
+	if !approve || (next == p.UserExtra && !convert) {
 		return nil
 	}
 	if base < 1 {
@@ -194,6 +196,108 @@ func GrantDays(ctx context.Context, st GrantStore, panel GrantPanel, r GrantRequ
 		case cur.ExpireAt.Equal(newExpire):
 			if _, uerr := panel.UpdateUser(cctx, r.TelegramID, r.Username, oldExpire, r.Squad); uerr != nil {
 				err = errors.Join(err, ErrNotRestored, uerr)
+			}
+		}
+	}
+	return newExpire, err
+}
+
+// EventTrial — уведомление юзеру о выданном пробном периоде.
+const EventTrial = "trial_started"
+
+// TrialSlack — насколько срок только что созданного панельного юзера может опережать его создание: больше —
+// срок выдан не этим ботом (старый платящий клиент вне нашей БД), пробный не положен.
+const TrialSlack = time.Hour
+
+// TrialPanelOK — срок юзера в панели не мешает пробному: он не действует и не выдан вне бота (дальше создания больше
+// чем на TrialSlack). Юзера в панели нет — не мешает.
+func TrialPanelOK(u *api.UserItemInfo, at time.Time) bool {
+	return u == nil || (!u.ExpireAt.After(at) && !u.ExpireAt.After(u.CreatedAt.Add(TrialSlack)))
+}
+
+// TrialPanel — панель для пробного периода: прочитать, создать, продлить, записать лимит устройств.
+type TrialPanel interface {
+	GrantPanel
+}
+
+// TrialStore — core/store: StartTrial.
+type TrialStore interface {
+	StartTrial(ctx context.Context, telegramID int64, username string, days, advanceLimit int, now time.Time,
+		apply func() ([]model.OutboxMessage, error)) error
+}
+
+// TrialRequest — выдача пробного периода. NotFound определяет «нет юзера в панели» в ошибке GetUser (core не знает pkg).
+type TrialRequest struct {
+	TelegramID   int64
+	Username     string
+	Days         int
+	Devices      int // лимит устройств на пробном
+	BaseDevices  int // база: к ней возвращается лимит при откате
+	AdvanceLimit int
+	At           time.Time
+	Squad        uuid.UUID
+	NotFound     func(error) bool
+}
+
+// StartTrial выдаёт пробный: абсолютный срок At+Days суток и лимит Devices в панели внутри транзакции store.StartTrial.
+// Юзер, уже имеющий в панели оплаченный срок (срок в будущем или заметно дальше создания), пробного не получает.
+// Ошибка панели откатывает транзакцию (ErrPanel); записанное в панель до сбоя (срок, лимит) возвращается назад,
+// пока оно ещё наше. Возвращает новый срок.
+func StartTrial(ctx context.Context, st TrialStore, panel TrialPanel, r TrialRequest) (time.Time, error) {
+	if r.Days < 1 || r.Devices < 1 {
+		return time.Time{}, ErrGrantDays
+	}
+	var oldExpire, newExpire time.Time
+	var oldLimit int
+	limitWritten := false
+	err := st.StartTrial(ctx, r.TelegramID, r.Username, r.Days, r.AdvanceLimit, r.At, func() ([]model.OutboxMessage, error) {
+		u, err := panel.GetUser(ctx, r.TelegramID)
+		switch {
+		case err == nil:
+			if !TrialPanelOK(u, r.At) {
+				return nil, model.ErrTrialUnavailable
+			}
+		case r.NotFound != nil && r.NotFound(err):
+			if u, err = panel.CreateUser(ctx, r.TelegramID, r.Username, r.Squad); err != nil {
+				return nil, errors.Join(ErrPanel, err)
+			}
+		default:
+			return nil, errors.Join(ErrPanel, err)
+		}
+		oldLimit = r.BaseDevices
+		if !u.HwidDeviceLimit.Null && u.HwidDeviceLimit.Value > 0 {
+			oldLimit = u.HwidDeviceLimit.Value
+		}
+		next := r.At.Add(time.Duration(r.Days) * 24 * time.Hour)
+		oldExpire, newExpire = u.ExpireAt, next
+		if _, err = panel.UpdateUser(ctx, r.TelegramID, r.Username, next, r.Squad); err != nil {
+			newExpire = time.Time{}
+			return nil, errors.Join(ErrPanel, err)
+		}
+		limitWritten = true // писали или пытались: откат вернёт прежний лимит
+		if _, err = panel.SetDeviceLimit(ctx, r.TelegramID, r.Devices); err != nil {
+			return nil, errors.Join(ErrPanel, err)
+		}
+		return []model.OutboxMessage{{
+			EventType: EventTrial, ChatID: r.TelegramID, TextKey: "trial.started", Days: r.Days, Devices: r.Devices,
+			ExpireAt: next, ParseMode: "HTML",
+		}}, nil
+	})
+	if err != nil && !newExpire.IsZero() {
+		// ponytail: GetUser→UpdateUser не атомарен; окно — миллисекунды после редкого сбоя.
+		cctx := context.WithoutCancel(ctx)
+		cur, gerr := panel.GetUser(cctx, r.TelegramID)
+		switch {
+		case gerr != nil:
+			err = errors.Join(err, ErrNotRestored, gerr)
+		case cur.ExpireAt.Equal(newExpire):
+			if _, uerr := panel.UpdateUser(cctx, r.TelegramID, r.Username, oldExpire, r.Squad); uerr != nil {
+				err = errors.Join(err, ErrNotRestored, uerr)
+			}
+			if limitWritten {
+				if _, lerr := panel.SetDeviceLimit(cctx, r.TelegramID, oldLimit); lerr != nil {
+					err = errors.Join(err, ErrNotRestored, lerr)
+				}
 			}
 		}
 	}

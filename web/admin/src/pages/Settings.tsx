@@ -19,6 +19,8 @@ type Form = {
   reminderDayHours: string
   devicesBase: string
   devicePrice: string
+  trialDays: string
+  trialDevices: string
   vars: CustomVar[]
 }
 
@@ -37,6 +39,8 @@ const toForm = (s: S): Form => ({
   reminderDayHours: String(s.reminderDayHours),
   devicesBase: String(s.devicesBase),
   devicePrice: String(s.devicePrice),
+  trialDays: String(s.trialDays),
+  trialDevices: String(s.trialDevices),
   vars: Object.entries(s.vars)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, value]) => ({ name, value })),
@@ -146,6 +150,8 @@ export default function Settings() {
       reminderDayHours: Number(form.reminderDayHours),
       devicesBase: Number(form.devicesBase),
       devicePrice: Number(form.devicePrice),
+      trialDays: Number(form.trialDays),
+      trialDevices: Number(form.trialDevices),
       vars: Object.fromEntries(form.vars.map((v) => [v.name.trim(), v.value])),
     }
     inFlight.current = true
@@ -242,6 +248,33 @@ export default function Settings() {
             value={form.devicePrice}
             onChange={(e) => patch({ devicePrice: e.target.value })}
             hint="0 — продажа устройств выключена: кнопки в боте нет, купленные устройства сохраняются"
+          />
+        </div>
+      </Card>
+
+      <Card title="Пробный период" aside="один раз новым пользователям, как аванс">
+        <div className="flex flex-wrap gap-3">
+          <Input
+            className="min-w-0 grow basis-60"
+            label="Дней пробного периода"
+            type="number"
+            min={0}
+            max={30}
+            after="дн."
+            value={form.trialDays}
+            onChange={(e) => patch({ trialDays: e.target.value })}
+            hint="0 — выключен: кнопки в боте нет"
+          />
+          <Input
+            className="min-w-0 grow basis-60"
+            label="Устройств на пробном периоде"
+            type="number"
+            min={1}
+            max={100}
+            after="шт."
+            value={form.trialDevices}
+            onChange={(e) => patch({ trialDevices: e.target.value })}
+            hint="Лимит устройств в панели на время пробного; после оплаты станет как в подписке"
           />
         </div>
       </Card>

@@ -68,4 +68,5 @@ type AudienceCounts struct {
 	Active         int `json:"active"`
 	NoSubscription int `json:"no_subscription"`
 	Expiring       int `json:"expiring"`
+	Trial          int `json:"trial"`
 }

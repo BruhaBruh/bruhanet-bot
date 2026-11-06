@@ -30,10 +30,11 @@ const (
 	AudienceActive         = "active"
 	AudienceNoSubscription = "no_subscription"
 	AudienceExpiring       = "expiring"
+	AudienceTrial          = "trial"
 )
 
 // Audiences — аудитории рассылки.
-var Audiences = []string{AudienceAll, AudienceActive, AudienceNoSubscription, AudienceExpiring}
+var Audiences = []string{AudienceAll, AudienceActive, AudienceNoSubscription, AudienceExpiring, AudienceTrial}
 
 const (
 	MaxButtons    = 3

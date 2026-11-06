@@ -157,6 +157,7 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 		"reminderTimes": in.ReminderTimes, "advanceLimit": in.AdvanceLimit, "advanceHours": in.AdvanceHours,
 		"reminderWeekDays": in.ReminderWeekDays, "reminderDayHours": in.ReminderDayHours,
 		"devicesBase": in.DevicesBase, "devicePrice": in.DevicePrice,
+		"trialDays": in.TrialDays, "trialDevices": in.TrialDevices,
 		"vars": in.Vars,
 	} {
 		b, err := json.Marshal(v)

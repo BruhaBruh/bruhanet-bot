@@ -13,6 +13,8 @@ export interface UserSummary {
   extraDevices: number
   lastSeenAt: string | null
   broadcastsReceived: number
+  trialUsedAt: string | null
+  inTrial: boolean
 }
 
 export interface UserPage {
@@ -113,13 +115,15 @@ export interface Settings {
   reminderDayHours: number
   devicesBase: number
   devicePrice: number
+  trialDays: number
+  trialDevices: number
   vars: Record<string, string>
   usingDefaults?: boolean
   problems?: string[]
 }
 
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled'
-export type Audience = 'all' | 'active' | 'no_subscription' | 'expiring'
+export type Audience = 'all' | 'active' | 'no_subscription' | 'expiring' | 'trial'
 
 export interface Broadcast {
   id: string

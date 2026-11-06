@@ -200,8 +200,25 @@ func (r *Remnawave) UpdateUser(_ context.Context, telegramID int64, _ string, ex
 	return &u, nil
 }
 
+// AddUserCreatedAt добавляет юзера с заданными сроком и временем создания в панели.
+func (r *Remnawave) AddUserCreatedAt(telegramID int64, expireAt, createdAt time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u := newUser(telegramID, expireAt)
+	u.CreatedAt = createdAt
+	r.users[telegramID] = u
+}
+
+// DeviceLimit — лимит устройств юзера в панели; 0 — не записывался.
+func (r *Remnawave) DeviceLimit(telegramID int64) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.users[telegramID].HwidDeviceLimit.Value
+}
+
 func newUser(telegramID int64, expireAt time.Time) api.UserItemInfo {
 	return api.UserItemInfo{
+		CreatedAt:       expireAt, // в тестах юзер заведён в момент срока: ни одного выданного вне бота дня
 		Status:          api.UserItemInfoStatusACTIVE,
 		TelegramId:      api.NewNilInt(int(telegramID)),
 		ExpireAt:        expireAt,

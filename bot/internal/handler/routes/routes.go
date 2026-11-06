@@ -62,6 +62,10 @@ type Payments interface {
 	// ExtraDevices — купленные юзером устройства сверх базы.
 	ExtraDevices(ctx context.Context, telegramID int64) (int, error)
 	ActivateDaysPromo(ctx context.Context, promoID, telegramID int64, now time.Time, apply func(p model.Promo) error) error
+	// Пробный период: TrialAllowed — дешёвая проверка для меню, StartTrial — выдача в транзакции (payflow.TrialStore).
+	TrialAllowed(ctx context.Context, telegramID int64, advanceLimit int) (bool, error)
+	StartTrial(ctx context.Context, telegramID int64, username string, days, advanceLimit int, now time.Time,
+		apply func() ([]model.OutboxMessage, error)) error
 }
 
 type Deps struct {
@@ -94,6 +98,8 @@ func Register(r *router.Router, d Deps) {
 	r.Callback(routeMenu, h.start)
 	r.Callback(routeInfo, h.info)
 	r.Callback(routePay, h.tariffs)
+	r.Callback(routeTrial, h.trial)
+	r.Callback(routeTrialYes, h.trialYes)
 	r.Callback(priceRoute.Name(), h.price)
 	r.Callback(buyRoute.Name(), h.buy)
 	r.Callback(buyNoDevRoute.Name(), h.buyNoDevices)

@@ -23,6 +23,8 @@ const s = {
   reminderDayHours: 24,
   devicesBase: 5,
   devicePrice: 0,
+  trialDays: 3,
+  trialDevices: 2,
   vars: { promoLink: 'https://x.io' },
 }
 
@@ -235,6 +237,18 @@ describe('Settings', () => {
     await flush()
     expect(puts()).toHaveLength(1)
     expect(puts()[0].body).toMatchObject({ devicesBase: 4, devicePrice: 60 })
+  })
+
+  it('trial days and devices are editable and saved; 0 days is explained as off', async () => {
+    await open()
+    expect(field('Дней пробного периода').value).toBe('3')
+    expect(field('Устройств на пробном периоде').value).toBe('2')
+    expect(screen.getByText(/0 — выключен/)).toBeTruthy()
+    edit(field('Дней пробного периода'), '0')
+    edit(field('Устройств на пробном периоде'), '4')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()[0].body).toMatchObject({ trialDays: 0, trialDevices: 4 })
   })
 
   it('usingDefaults: banner with problems, saving works without edits and hides the banner', async () => {

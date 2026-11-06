@@ -136,8 +136,10 @@ func (s *server) recipients(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]int{"count": c.NoSubscription})
 	case broadcast.AudienceExpiring:
 		writeJSON(w, http.StatusOK, map[string]int{"count": c.Expiring})
+	case broadcast.AudienceTrial:
+		writeJSON(w, http.StatusOK, map[string]int{"count": c.Trial})
 	default:
-		out := map[string]int{"all": c.All, "active": c.Active, "no_subscription": c.NoSubscription}
+		out := map[string]int{"all": c.All, "active": c.Active, "no_subscription": c.NoSubscription, "trial": c.Trial}
 		if n > 0 {
 			out["expiring"] = c.Expiring
 		}

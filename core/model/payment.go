@@ -42,6 +42,9 @@ type Payment struct {
 	ExtraDevices int `json:"extraDevices"`
 	// UserExtra — доп. устройства юзера на момент решения (ResolvePayment под блокировкой); только в apply.
 	UserExtra int `json:"-"`
+	// TrialConvert — юзер на неоплаченном пробном (лимит устройств в панели — пробный): подтверждение подписки обязано
+	// записать лимит base+extra. Считается под блокировкой в ResolvePayment; только в apply.
+	TrialConvert bool `json:"-"`
 	// PhotoFileID — file_id чека; наружу не отдаётся, панель смотрит HasPhoto и GET /api/payments/{id}/photo.
 	PhotoFileID string `json:"-"`
 	HasPhoto    bool   `json:"hasPhoto"`

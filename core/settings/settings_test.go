@@ -101,6 +101,10 @@ func TestValidateBotKeys(t *testing.T) {
 		"base big":       func(s *Settings) { s.DevicesBase = 101 },
 		"price negative": func(s *Settings) { s.DevicePrice = -1 },
 		"price big":      func(s *Settings) { s.DevicePrice = 100_001 },
+		"trial negative": func(s *Settings) { s.TrialDays = -1 },
+		"trial big":      func(s *Settings) { s.TrialDays = 31 },
+		"trial dev zero": func(s *Settings) { s.TrialDevices = 0 },
+		"trial dev big":  func(s *Settings) { s.TrialDevices = 101 },
 	} {
 		s := def()
 		mutate(&s)
@@ -110,8 +114,12 @@ func TestValidateBotKeys(t *testing.T) {
 	}
 	s := def()
 	s.AdvanceLimit = 0 // 0 = авансы выключены
-	if err := s.Validate(); err != nil {
+	s.TrialDays = 0    // 0 = пробный выключен
+	if err := s.Validate(); err != nil || s.TrialEnabled() {
 		t.Fatal(err)
+	}
+	if d := def(); d.TrialDays != 3 || d.TrialDevices != 2 || !d.TrialEnabled() {
+		t.Fatalf("trial defaults %+v", d)
 	}
 }
 

@@ -156,10 +156,12 @@ func TestUsersFilters(t *testing.T) {
 	}
 }
 
-func TestUsersTrialTabIsEmptyForNow(t *testing.T) {
-	h, _, c := cardServer(t, &fakePanel{})
-	if got := getUsers(t, h, c, "?tab=trial"); len(got.Items) != 0 || got.Items == nil || got.Total != 0 || got.Pages != 1 {
-		t.Fatalf("%+v", got)
+func TestUsersTrialTab(t *testing.T) {
+	h, st, c := cardServer(t, &fakePanel{})
+	st.users = []model.UserSummary{{TelegramID: 7, Username: "bob", InTrial: true}}
+	got := getUsers(t, h, c, "?tab=trial")
+	if len(got.Items) != 1 || got.Total != 1 || st.lastUF.Tab != model.UserTabTrial || !got.Items[0].InTrial {
+		t.Fatalf("%+v %+v", got, st.lastUF)
 	}
 }
 

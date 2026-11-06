@@ -378,21 +378,23 @@ func TestBroadcastListStatusFilter(t *testing.T) {
 
 func TestBroadcastRecipients(t *testing.T) {
 	h, st, c := bcServer(t, &fakePanel{})
-	st.counts = model.AudienceCounts{All: 10, Active: 6, NoSubscription: 4, Expiring: 2}
+	st.counts = model.AudienceCounts{All: 10, Active: 6, NoSubscription: 4, Expiring: 2, Trial: 3}
 	get := func(q string) (int, string) {
 		w := send(h, http.MethodGet, "/api/broadcasts/recipients"+q, c, "")
 		return w.Code, strings.TrimSpace(w.Body.String())
 	}
-	if code, body := get(""); code != 200 || body != `{"active":6,"all":10,"no_subscription":4}` {
+	if code, body := get(""); code != 200 || body != `{"active":6,"all":10,"no_subscription":4,"trial":3}` {
 		t.Fatalf("all: %d %s", code, body)
 	}
-	if code, body := get("?days=7"); code != 200 || body != `{"active":6,"all":10,"expiring":2,"no_subscription":4}` || st.lastDays != 7 {
+	if code, body := get("?days=7"); code != 200 || body != `{"active":6,"all":10,"expiring":2,"no_subscription":4,"trial":3}` || st.lastDays != 7 {
 		t.Fatalf("with days: %d %s days=%d", code, body, st.lastDays)
 	}
 	for q, want := range map[string]string{
 		"?audience=all":              `{"count":10}`,
 		"?audience=active":           `{"count":6}`,
 		"?audience=no_subscription":  `{"count":4}`,
+		"?audience=trial":            `{"count":3}`,
+		"?audience=trial&days=5":     `{"count":3}`, // дни нужны только expiring
 		"?audience=expiring&days=3":  `{"count":2}`,
 		"?audience=active&days=3":    `{"count":6}`, // дни нужны только expiring
 		"?audience=expiring&days=60": `{"count":2}`,
@@ -401,7 +403,7 @@ func TestBroadcastRecipients(t *testing.T) {
 			t.Errorf("%s: %d %s", q, code, body)
 		}
 	}
-	for _, q := range []string{"?audience=trial", "?audience=expiring", "?audience=expiring&days=0", "?audience=expiring&days=61", "?days=x", "?days=-1&audience=expiring"} {
+	for _, q := range []string{"?audience=nope", "?audience=expiring", "?audience=expiring&days=0", "?audience=expiring&days=61", "?days=x", "?days=-1&audience=expiring"} {
 		if code, body := get(q); code != http.StatusBadRequest {
 			t.Errorf("%s: %d %s", q, code, body)
 		}
@@ -419,13 +421,18 @@ func TestBroadcastAudienceInBody(t *testing.T) {
 	if code != http.StatusCreated || b.Audience != "expiring" || b.AudienceDays == nil || *b.AudienceDays != 3 {
 		t.Fatalf("%d %+v", code, b)
 	}
+	// пробный период — аудитория без дней
+	if code, b = postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "x", "audience": "trial"}); code != http.StatusCreated || b.Audience != "trial" || b.AudienceDays != nil {
+		t.Fatalf("trial: %d %+v", code, b)
+	}
 	// по умолчанию — все
 	if code, b = postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "x"}); code != http.StatusCreated || b.Audience != "all" || b.AudienceDays != nil {
 		t.Fatalf("default: %d %+v", code, b)
 	}
 	n := len(st.broadcasts)
 	for name, in := range map[string]map[string]any{
-		"unknown":       {"audience": "trial"},
+		"unknown":       {"audience": "nope"},
+		"days on trial": {"audience": "trial", "audienceDays": 3},
 		"no days":       {"audience": "expiring"},
 		"days too many": {"audience": "expiring", "audienceDays": 61},
 		"days zero":     {"audience": "expiring", "audienceDays": 0},
@@ -546,7 +553,7 @@ func TestBroadcastDraftAutosave(t *testing.T) {
 		}
 	}
 	for name, in := range map[string]map[string]any{
-		"audience":    {"audience": "trial"},
+		"audience":    {"audience": "nope"},
 		"four":        {"buttons": []any{map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}}},
 		"long button": {"buttons": []any{map[string]any{"text": strings.Repeat("я", 201)}}},
 		"long url":    {"buttons": []any{map[string]any{"url": "https://e.com/" + strings.Repeat("a", 2048)}}},

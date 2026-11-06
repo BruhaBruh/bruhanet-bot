@@ -78,7 +78,7 @@ func scanUserID(row pgx.Row) (id int64, err error) {
 
 // UserGrants — последние выдачи дней юзеру, новые первыми.
 func (s *Store) UserGrants(ctx context.Context, telegramID int64, limit int) ([]model.Grant, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, days, created_at FROM grants WHERE telegram_id = $1 ORDER BY id DESC LIMIT $2`,
+	rows, err := s.pool.Query(ctx, `SELECT id, days, created_at FROM grants WHERE telegram_id = $1 AND source = 'admin' ORDER BY id DESC LIMIT $2`,
 		telegramID, limit)
 	if err != nil {
 		return nil, err

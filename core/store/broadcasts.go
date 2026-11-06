@@ -75,6 +75,8 @@ func audienceWhere(audience string, days *int, now time.Time) (string, []any) {
 		return base + ` AND (expire_at IS NULL OR expire_at <= $1)`, []any{now}
 	case broadcast.AudienceExpiring:
 		return base + ` AND expire_at > $1 AND expire_at <= $1 + make_interval(days => $2)`, []any{now, *days}
+	case broadcast.AudienceTrial:
+		return base + ` AND ` + trialOpen("users"), nil
 	}
 	return base, nil
 }
@@ -85,9 +87,10 @@ func (s *Store) AudienceCounts(ctx context.Context, now time.Time, days int) (mo
 	err := s.pool.QueryRow(ctx, `SELECT count(*),
 			count(*) FILTER (WHERE expire_at > $1),
 			count(*) FILTER (WHERE expire_at IS NULL OR expire_at <= $1),
-			count(*) FILTER (WHERE $2 > 0 AND expire_at > $1 AND expire_at <= $1 + make_interval(days => $2))
+			count(*) FILTER (WHERE $2 > 0 AND expire_at > $1 AND expire_at <= $1 + make_interval(days => $2)),
+			count(*) FILTER (WHERE `+trialOpen("users")+`)
 		FROM users WHERE blocked_bot_at IS NULL AND blocked_at IS NULL`, now, days).
-		Scan(&c.All, &c.Active, &c.NoSubscription, &c.Expiring)
+		Scan(&c.All, &c.Active, &c.NoSubscription, &c.Expiring, &c.Trial)
 	return c, err
 }
 

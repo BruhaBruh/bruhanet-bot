@@ -63,7 +63,8 @@ func TestValidateAudience(t *testing.T) {
 		{"expiring", d(0), false},
 		{"expiring", d(61), false},
 		{"all", d(7), false},
-		{"trial", nil, false},
+		{"trial", nil, true},
+		{"trial", d(3), false},
 		{"", nil, false},
 	} {
 		if err := ValidateAudience(c.a, c.days); (err == nil) != c.ok {

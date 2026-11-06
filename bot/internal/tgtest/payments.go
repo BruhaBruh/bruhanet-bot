@@ -27,12 +27,22 @@ type Payments struct {
 	loginTokens    []LoginToken
 	promos         []model.Promo // индекс = ID-1
 	activations    []model.PromoActivation
-	extra          map[int64]int // users.extra_devices
+	extra          map[int64]int       // users.extra_devices
+	trial          map[int64]time.Time // users.trial_used_at
+	grants         []Grant
+	failTrialOnce  bool
 
 	// Отдельный мьютекс: панель зовут из apply под p.mu.
 	userMu  sync.Mutex
 	touched []model.UserSeen
 	panel   []PanelWrite
+}
+
+// Grant — строка grants пробного периода (источник trial).
+type Grant struct {
+	TelegramID int64
+	Days       int
+	Source     string
 }
 
 // PanelWrite — запись SetUserPanel.
@@ -288,6 +298,9 @@ func (p *Payments) UserStats(_ context.Context, telegramID, excludeID int64) (mo
 		}
 	}
 	st.Blocked = p.blocked[telegramID]
+	if _, ok := p.trial[telegramID]; ok && last == 0 {
+		st.UnpaidAdvances++ // пробный — один неоплаченный аванс до первой подтверждённой подписки
+	}
 	for _, x := range p.payments {
 		if x.TelegramID == telegramID && x.ID != excludeID && x.ID > last && x.AdvanceGranted &&
 			(x.Status == model.PaymentDeclined || x.Status == model.PaymentCancelled) {
@@ -334,6 +347,8 @@ func (p *Payments) ResolvePayment(
 	}
 	cur := p.extra[x.TelegramID]
 	x.UserExtra = cur
+	_, tr := p.trial[x.TelegramID]
+	x.TrialConvert = tr && !p.hasConfirmed(x.TelegramID)
 	msgs, err := apply(*x)
 	if err != nil {
 		return model.Payment{}, err
@@ -501,4 +516,97 @@ func later(a, b time.Time) time.Time {
 		return b
 	}
 	return a
+}
+
+// FailTrialCommitOnce: следующий StartTrial выполнит apply, затем вернёт ошибку без записи пробного.
+func (p *Payments) FailTrialCommitOnce() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.failTrialOnce = true
+}
+
+// TrialUsedAt — когда выдан пробный (users.trial_used_at); false — не выдавался.
+func (p *Payments) TrialUsedAt(id int64) (time.Time, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	at, ok := p.trial[id]
+	return at, ok
+}
+
+// SetTrialUsed помечает юзера взявшим пробный.
+func (p *Payments) SetTrialUsed(id int64, at time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.trial == nil {
+		p.trial = map[int64]time.Time{}
+	}
+	p.trial[id] = at
+}
+
+// Grants — строки grants пробного периода.
+func (p *Payments) Grants() []Grant {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.grants)
+}
+
+// trialAllowed — как store.trialAllowed; вызывается под p.mu.
+func (p *Payments) trialAllowed(id int64, advanceLimit int) bool {
+	if _, used := p.trial[id]; used || p.blocked[id] {
+		return false
+	}
+	for _, x := range p.payments {
+		if x.TelegramID == id && x.Status == model.PaymentConfirmed {
+			return false
+		}
+	}
+	unpaid := 0
+	var last int64
+	for _, x := range p.payments {
+		if x.TelegramID == id && x.Status == model.PaymentConfirmed && x.Kind != model.KindDevices {
+			last = max(last, x.ID)
+		}
+	}
+	for _, x := range p.payments {
+		if x.TelegramID == id && x.ID > last && x.AdvanceGranted && (x.Status == model.PaymentDeclined || x.Status == model.PaymentCancelled) {
+			unpaid++
+		}
+	}
+	return advanceLimit <= 0 || unpaid < advanceLimit
+}
+
+func (p *Payments) TrialAllowed(_ context.Context, id int64, advanceLimit int) (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.trialAllowed(id, advanceLimit), nil
+}
+
+// StartTrial — apply вызывается под мьютексом фейка: из него нельзя звать Payments.
+func (p *Payments) StartTrial(
+	_ context.Context, id int64, _ string, days, advanceLimit int, now time.Time, apply func() ([]model.OutboxMessage, error),
+) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.trialAllowed(id, advanceLimit) {
+		return model.ErrTrialUnavailable
+	}
+	if i := p.pendingIdx(id); i >= 0 {
+		x := &p.payments[i]
+		x.PrevExpireAt = later(x.PrevExpireAt, now).Add(time.Duration(days) * 24 * time.Hour)
+	}
+	msgs, err := apply()
+	if err != nil {
+		return err
+	}
+	if p.failTrialOnce {
+		p.failTrialOnce = false
+		return errCommit
+	}
+	if p.trial == nil {
+		p.trial = map[int64]time.Time{}
+	}
+	p.trial[id] = now
+	p.grants = append(p.grants, Grant{TelegramID: id, Days: days, Source: "trial"})
+	p.outbox = append(p.outbox, msgs...)
+	return nil
 }

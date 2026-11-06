@@ -12,18 +12,18 @@ import (
 	"github.com/bruhabruh/bruhanet/core/model"
 )
 
-const userSummaryQuery = `
+var userSummaryQuery = `
 	SELECT u.telegram_id, u.username, concat_ws(' ', u.first_name, u.last_name), u.created_at,
 		count(p.id) FILTER (WHERE p.status = 'confirmed'),
 		coalesce(sum(p.price) FILTER (WHERE p.status = 'confirmed'), 0),
 		u.expire_at, u.panel_status, u.blocked_bot_at, u.blocked_at,
 		(SELECT c.months FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed' AND c.kind = 'tariff' ORDER BY c.id DESC LIMIT 1),
-		u.last_seen_at, u.broadcasts_received, u.extra_devices
+		u.last_seen_at, u.broadcasts_received, u.extra_devices, u.trial_used_at, ` + trialOpen("u") + `
 	FROM users u LEFT JOIN payments p ON p.telegram_id = u.telegram_id`
 
 func scanUserSummary(row pgx.Row) (u model.UserSummary, err error) {
 	err = row.Scan(&u.TelegramID, &u.Username, &u.Name, &u.CreatedAt, &u.Confirmed, &u.ConfirmedSum,
-		&u.ExpireAt, &u.PanelStatus, &u.BlockedBotAt, &u.BlockedAt, &u.TariffMonths, &u.LastSeenAt, &u.BroadcastsReceived, &u.ExtraDevices)
+		&u.ExpireAt, &u.PanelStatus, &u.BlockedBotAt, &u.BlockedAt, &u.TariffMonths, &u.LastSeenAt, &u.BroadcastsReceived, &u.ExtraDevices, &u.TrialUsedAt, &u.InTrial)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -33,14 +33,15 @@ func scanUserSummary(row pgx.Row) (u model.UserSummary, err error) {
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 // userFilterWhere — условия ListUsers; неоплаченный аванс считается как в UserStats.
-const userFilterWhere = `
+var userFilterWhere = `
 	WHERE ($1 = '' OR u.username ILIKE '%'||$2||'%' ESCAPE '\'
 			OR concat_ws(' ', u.first_name, u.last_name) ILIKE '%'||$2||'%' ESCAPE '\' OR u.telegram_id = $3)
 		AND ($4 = '' OR ($4 = 'active' AND u.panel_status = 'ACTIVE' AND u.expire_at > $5)
 			OR ($4 = 'blocked_bot' AND u.blocked_bot_at IS NOT NULL)
-			OR ($4 = 'blocked' AND u.blocked_at IS NOT NULL))
+			OR ($4 = 'blocked' AND u.blocked_at IS NOT NULL)
+			OR ($4 = 'trial' AND ` + trialOpen("u") + `))
 		AND (NOT $6 OR EXISTS (SELECT 1 FROM payments h WHERE h.telegram_id = u.telegram_id AND h.status = 'confirmed'))
-		AND (NOT $7 OR EXISTS (SELECT 1 FROM payments a WHERE a.telegram_id = u.telegram_id AND ` + unpaidAdvance + `
+		AND (NOT $7 OR ` + trialOpen("u") + ` OR EXISTS (SELECT 1 FROM payments a WHERE a.telegram_id = u.telegram_id AND ` + unpaidAdvance + `
 			AND a.id > coalesce((SELECT max(c.id) FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed' AND c.kind = 'tariff'), 0)))
 		AND ($8::timestamptz IS NULL OR u.created_at >= $8) AND ($9::timestamptz IS NULL OR u.created_at < $9)`
 

@@ -51,6 +51,7 @@ const (
 	groupMenu     = "Меню"
 	groupPayment  = "Оплата"
 	groupPromo    = "Промокоды"
+	groupTrial    = "Пробный период"
 	groupReminder = "Напоминания"
 	groupError    = "Ошибки"
 	groupButton   = "Кнопки"
@@ -76,6 +77,9 @@ var (
 	varPrice  = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500", Max: 8}
 	varCode   = Var{Name: "code", Description: "Промокод", Sample: "SUMMER25", Max: 32}
 
+	varTrialDays    = Var{Name: "days", Description: "Дней пробного периода", Sample: "3", Max: 4}
+	varTrialDevices = Var{Name: "devices", Description: "Устройств на пробном периоде", Sample: "2", Max: 4}
+
 	varDevicePrice = Var{Name: "devicePrice", Description: "Цена одного доп. устройства в месяц, ₽", Sample: "50", Max: 8}
 	varDevCount    = Var{Name: "count", Description: "Сколько устройств добавляется, с единицей: «2 устройства»", Sample: "2 устройства", Max: 16}
 	varDevTotal    = Var{Name: "price", Description: "Итоговая цена в рублях", Sample: "500", Max: 8}
@@ -99,6 +103,7 @@ const (
 	tariffHead   = "<b>Выбор тарифа</b>\n\n"
 	promoHead    = "<b>Промокод</b>\n\n"
 	devicesHead  = "<b>Устройства</b>\n\n"
+	trialHead    = "<b>Пробный период</b>\n\n"
 	infoHead     = "<b>Информация о подписке</b>\n\n<b>Статус</b>\n"
 )
 
@@ -135,7 +140,7 @@ func (d Def) on(route, style, when string) Def {
 
 // mainButtons — главная клавиатура (routes.mainKeyboard): набор зависит от того, есть ли юзер в панели.
 var mainButtons = []string{
-	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.service_down",
+	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.trial", "button.service_down",
 }
 
 const reasonPromo = "В ответ на присланный промокод: "
@@ -281,6 +286,17 @@ var registry = []Def{
 		varMonths).
 		shown("По «Да» на тарифе со скидкой 100%, через очередь уведомлений", mainButtons...),
 
+	msg("trial.confirm", groupTrial, "Пробный период: подтверждение",
+		trialHead+"Выдать пробный период на <b>{{.days}}</b> дн. с лимитом <b>{{.devices}}</b> устр.?\nДоступен один раз.\n\nВерно?",
+		varTrialDays, varTrialDevices).
+		shown("По кнопке «Пробный период» в главном меню", "button.yes", "button.no"),
+	msg("trial.started", groupTrial, "Пробный период выдан",
+		trialHead+"Пробный период активирован.\n\nДней: <b>{{.days}}</b>\nУстройств: <b>{{.devices}}</b>\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}",
+		varTrialDays, varTrialDevices).
+		shown("После выдачи пробного периода, через очередь уведомлений", mainButtons...),
+	msg("trial.unavailable", groupTrial, "Пробный период недоступен", trialHead+"Пробный период сейчас недоступен").
+		shown("Когда юзер нажал «Пробный период», но получить его уже нельзя (причину не раскрываем)", "button.back"),
+
 	msg("reminder.week", groupReminder, "Подписка скоро закончится (первый порог)",
 		reminderHead+"Ваша подписка скоро закончится"+reminderTail).
 		shown("Раз в день, когда до конца подписки осталось меньше первого порога из настроек; один раз на дату окончания", "button.renew", "button.subscription"),
@@ -298,8 +314,8 @@ var registry = []Def{
 	btn("button.subscription", "Подписка (копировать ссылку)", "Подписка").on("copy:ссылка подписки", StyleSuccess, "Главное меню, «Информация о подписке» и напоминания"),
 	btn("button.support", "Поддержка", "Поддержка").on("url:supportUrl", StyleDanger, "Главное меню и сообщение об ошибке"),
 	btn("button.back", "Назад", "Назад").on("menu | price | pay | devices", StyleDefault, "Экраны ввода промокода, списка тарифов, «Информации» и ошибки"),
-	btn("button.yes", "Да (подтвердить тариф)", "Да").on("buy | buyp | devy", StyleSuccess, "Подтверждение тарифа, со скидкой и без, и покупки устройств"),
-	btn("button.no", "Нет (к выбору тарифа)", "Нет").on("pay | devices", StyleDanger, "Подтверждение тарифа, со скидкой и без, и покупки устройств"),
+	btn("button.yes", "Да (подтвердить тариф)", "Да").on("buy | buyp | devy | trialy", StyleSuccess, "Подтверждение тарифа, со скидкой и без, покупки устройств и пробного периода"),
+	btn("button.no", "Нет (к выбору тарифа)", "Нет").on("pay | devices | menu", StyleDanger, "Подтверждение тарифа, со скидкой и без, покупки устройств и пробного периода"),
 	btn("button.tariff", "Тариф в списке", "{{.months}} за {{.price}} ₽", varMonths, varPrice).on("price", StyleDefault, "Список тарифов, по кнопке на тариф"),
 	btn("button.service_down", "Сервис не работает", "Сервис не работает").on(routeMenu, StyleDefault, "Вместо главного меню, когда панель недоступна"),
 	btn("button.promo", "Промокод (в меню)", "Промокод").on("promo", StyleDefault, "Главное меню"),
@@ -307,6 +323,7 @@ var registry = []Def{
 	btn("button.devices_add", "Добавить устройства", "+{{.count}} — {{.price}} ₽", Var{Name: "count", Description: "Сколько устройств добавляется числом", Sample: "2", Max: 3}, varDevTotal).
 		on("dev", StyleDefault, "Экран «Устройства», по кнопке на количество"),
 	btn("button.drop_devices", "Без доп. устройств", "Без доп. устройств").on("buyd", StyleDefault, "Подтверждение тарифа, если у юзера есть доп. устройства"),
+	btn("button.trial", "Пробный период (в меню)", "Пробный период").on("trial", StyleDefault, "Главное меню, пока пробный включён в настройках и юзер на него имеет право"),
 	btn("button.have_promo", "Есть промокод (при оплате)", "Есть промокод").on("have_promo", StyleDefault, "Подтверждение тарифа"),
 	btn("button.remove_promo", "Убрать промокод", "Убрать промокод").on("price", StyleDefault, "Подтверждение тарифа со скидкой"),
 }

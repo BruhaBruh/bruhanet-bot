@@ -169,16 +169,22 @@ func (s *Store) GrantAdvance(ctx context.Context, id int64, apply func(p model.P
 	})
 }
 
-// UserStats считает статистику юзера; UnpaidAdvances — выданные авансы после последнего confirmed.
+// UserStats считает статистику юзера; UnpaidAdvances — выданные авансы после последнего confirmed плюс неоплаченный
+// пробный период (он считается одним авансом до первой подтверждённой подписки).
 func (s *Store) UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error) {
+	return userStats(ctx, s.pool, telegramID, excludeID)
+}
+
+func userStats(ctx context.Context, q rowQuerier, telegramID, excludeID int64) (model.UserStats, error) {
 	var st model.UserStats
-	err := s.pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		WITH p AS (SELECT * FROM payments WHERE telegram_id = $1 AND id <> $2),
 		last AS (SELECT coalesce(max(id) FILTER (WHERE status = 'confirmed' AND kind = 'tariff'), 0) AS id FROM p)
 		SELECT
 			count(*) FILTER (WHERE status = 'confirmed'),
 			coalesce(sum(price) FILTER (WHERE status = 'confirmed'), 0),
-			count(*) FILTER (WHERE `+unpaidAdvance+` AND p.id > last.id),
+			count(*) FILTER (WHERE `+unpaidAdvance+` AND p.id > last.id)
+				+ (coalesce((SELECT trial_used_at IS NOT NULL FROM users WHERE telegram_id = $1), false) AND (SELECT id FROM last) = 0)::int,
 			max(coalesce(resolved_at, created_at)) FILTER (WHERE status = 'confirmed'),
 			min(coalesce(resolved_at, created_at)) FILTER (WHERE status = 'confirmed'),
 			count(*) > 0,
@@ -212,7 +218,9 @@ func (s *Store) ResolvePayment(
 			return err
 		}
 		var curExtra int
-		if err := tx.QueryRow(ctx, `SELECT extra_devices FROM users WHERE telegram_id = $1 FOR UPDATE`, owner).Scan(&curExtra); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		var trialConvert bool
+		if err := tx.QueryRow(ctx, `SELECT extra_devices, `+trialOpen("users")+` FROM users WHERE telegram_id = $1 FOR UPDATE`, owner).
+			Scan(&curExtra, &trialConvert); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 		var err error
@@ -223,7 +231,7 @@ func (s *Store) ResolvePayment(
 		if p.Status != model.PaymentPending {
 			return ErrNotPending
 		}
-		p.UserExtra = curExtra
+		p.UserExtra, p.TrialConvert = curExtra, trialConvert
 		// Активация — до apply: повтор бесплатного платежа отклоняется раньше, чем тронута панель.
 		if status == model.PaymentConfirmed && p.PromoID != nil {
 			if err = activatePaymentPromo(ctx, tx, p, at); err != nil {

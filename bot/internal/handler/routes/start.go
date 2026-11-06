@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
@@ -53,24 +54,29 @@ func isPrivate(u *models.Update) bool {
 }
 
 func (h *handlers) mainKeyboard(ctx context.Context, telegramID int64) *models.InlineKeyboardMarkup {
-	return mainKeyboard(ctx, h.c, h.rw, telegramID)
+	return mainKeyboard(ctx, h.c, h.rw, telegramID, h.trialOffered)
 }
 
-func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64) *models.InlineKeyboardMarkup {
+// trialOffer решает, показывать ли «Пробный период» (user — юзер панели, nil — юзера там нет);
+// nil — не показывать (уведомления из очереди идут юзерам, у которых он уже не нужен).
+type trialOffer func(ctx context.Context, telegramID int64, user *api.UserItemInfo) bool
+
+func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64, trial trialOffer) *models.InlineKeyboardMarkup {
 	support := urlButton(ctx, c, "button.support", c.Settings(ctx).SupportURL, keyboard.StyleDanger)
 	promoBtn := callbackButton(ctx, c, "button.promo", routePromo, keyboard.StyleDefault)
 	user, err := rw.GetUser(ctx, telegramID)
 	switch {
 	case errors.Is(err, remnawave.ErrUserNotFound):
-		return keyboard.Inline(
-			keyboard.Row(callbackButton(ctx, c, "button.buy", routePay, keyboard.StyleSuccess)),
-			keyboard.Row(promoBtn, support),
-		)
+		rows := [][]keyboard.Button{keyboard.Row(callbackButton(ctx, c, "button.buy", routePay, keyboard.StyleSuccess))}
+		if trial != nil && trial(ctx, telegramID, nil) {
+			rows = append(rows, keyboard.Row(callbackButton(ctx, c, "button.trial", routeTrial, keyboard.StyleDefault)))
+		}
+		return keyboard.Inline(append(rows, keyboard.Row(promoBtn, support))...)
 	case err != nil:
 		stlog.Error(ctx, "failed to get remnawave user", "error", err)
 		return keyboard.Inline(keyboard.Row(callbackButton(ctx, c, "button.service_down", routeMenu, keyboard.StyleDefault)))
 	}
-	return keyboard.Inline(
+	rows := [][]keyboard.Button{
 		keyboard.Row(
 			callbackButton(ctx, c, "button.info", routeInfo, keyboard.StylePrimary),
 			callbackButton(ctx, c, "button.pay", routePay, keyboard.StyleDefault),
@@ -79,8 +85,11 @@ func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegr
 			copyButton(ctx, c, "button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess),
 			support,
 		),
-		keyboard.Row(promoRow(ctx, c, promoBtn)...),
-	)
+	}
+	if trial != nil && trial(ctx, telegramID, user) {
+		rows = append(rows, keyboard.Row(callbackButton(ctx, c, "button.trial", routeTrial, keyboard.StyleDefault)))
+	}
+	return keyboard.Inline(append(rows, keyboard.Row(promoRow(ctx, c, promoBtn)...))...)
 }
 
 // promoRow — «Промокод», а при включённой продаже устройств рядом «Устройства».

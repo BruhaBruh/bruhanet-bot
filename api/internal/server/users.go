@@ -38,15 +38,11 @@ func (s *server) users(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Пробного периода ещё нет (этап 8): параметр принимается, список пуст.
-	items, total := []model.UserSummary{}, 0
-	if f.Tab != model.UserTabTrial {
-		var err error
-		if items, total, err = s.Store.ListUsers(r.Context(), f); err != nil {
-			stlog.L(r.Context()).Error("list users", slog.Any("error", err))
-			writeError(w, http.StatusInternalServerError, "internal")
-			return
-		}
+	items, total, err := s.Store.ListUsers(r.Context(), f)
+	if err != nil {
+		stlog.L(r.Context()).Error("list users", slog.Any("error", err))
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items, "total": total, "page": page, "pages": max(1, (total+pageSize-1)/pageSize),

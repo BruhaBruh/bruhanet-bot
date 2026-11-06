@@ -34,5 +34,5 @@ func PaymentNotice(ctx context.Context, c *content.Provider, rw Remnawave, teleg
 	if devices > 0 {
 		vars["devices"] = strconv.Itoa(devices)
 	}
-	return c.Text(ctx, key, vars), mainKeyboard(ctx, c, rw, telegramID)
+	return c.Text(ctx, key, vars), mainKeyboard(ctx, c, rw, telegramID, nil)
 }
