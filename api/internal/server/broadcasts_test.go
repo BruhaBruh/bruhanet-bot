@@ -227,3 +227,40 @@ func TestBroadcastList(t *testing.T) {
 		t.Fatalf("page=0: %d", w.Code)
 	}
 }
+
+// Худший случай после подстановки: ошибка называет переменную; граница, эмодзи = 2 единицы UTF-16, личные — те же правила.
+func TestMessageWorstCaseNamesVar(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{ids: []int{5}})
+	st.setRaw = map[string][]byte{"vars": []byte(`{"my":"a"}`)}
+	post := func(path string, in map[string]any) (int, string) {
+		w := send(h, http.MethodPost, path, c, jsonBody(t, in))
+		return w.Code, w.Body.String()
+	}
+	mk := func(text, photo string) map[string]any {
+		return map[string]any{"idempotencyKey": uuid.New(), "text": text, "photo": photo}
+	}
+	// my считается по максимуму (256): 768 + 256 = 1024 в подпись, на единицу больше — 400 с именем
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 768)+"{{.my}}", "AgAD")); code != http.StatusCreated {
+		t.Fatalf("%d %s", code, body)
+	}
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 769)+"{{.my}}", "AgAD")); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
+		t.Fatalf("%d %s", code, body)
+	}
+	// эмодзи — 2 единицы: 512 помещаются, 513 нет
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("😀", 512), "AgAD")); code != http.StatusCreated {
+		t.Fatalf("%d %s", code, body)
+	}
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("😀", 513), "AgAD")); code != http.StatusBadRequest {
+		t.Fatalf("%d %s", code, body)
+	}
+	// без фото — 4096
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 3840)+"{{.my}}", "")); code != http.StatusCreated {
+		t.Fatalf("%d %s", code, body)
+	}
+	if code, body := post("/api/broadcasts", mk(strings.Repeat("a", 3841)+"{{.my}}", "")); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
+		t.Fatalf("%d %s", code, body)
+	}
+	if code, body := post("/api/users/7/messages", map[string]any{"text": strings.Repeat("a", 3841) + "{{.my}}"}); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
+		t.Fatalf("direct: %d %s", code, body)
+	}
+}

@@ -38,7 +38,7 @@ func validateMessage(text string, hasPhoto bool, custom map[string]string) error
 		return err
 	}
 	if n := texts.WorstLen(def, text, custom); hasPhoto && n > maxCaptionLen {
-		return errors.Join(texts.ErrTooLong, fmt.Errorf("подпись к фото может оказаться длиннее %d символов (%d)", maxCaptionLen, n))
+		return errors.Join(texts.ErrTooLong, fmt.Errorf("подпись к фото может оказаться длиннее %d символов (с самыми длинными значениями переменных — %d); самая длинная — {{.%s}}", maxCaptionLen, n, texts.WidestVar(def, text, custom)))
 	}
 	return nil
 }

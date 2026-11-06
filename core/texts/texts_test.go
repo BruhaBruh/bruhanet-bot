@@ -462,3 +462,14 @@ func TestVisibleLen(t *testing.T) {
 		t.Fatalf("n = %d", n)
 	}
 }
+
+func TestWidestVar(t *testing.T) {
+	d := Def{Kind: KindMessage}
+	if got := WidestVar(d, "{{.my}} {{.name}}", map[string]string{"my": "a"}); got != "my" {
+		t.Fatalf("widest = %q", got) // своя переменная в сообщении — до MaxCustomVar
+	}
+	err := Validate(d, strings.Repeat("b", 4090)+"{{.name}}", nil)
+	if !errors.Is(err, ErrTooLong) || !strings.Contains(err.Error(), "{{.name}}") {
+		t.Fatalf("err = %v", err)
+	}
+}

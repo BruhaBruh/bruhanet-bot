@@ -81,7 +81,7 @@ func Validate(def Def, body string, custom map[string]string) error {
 		return errors.Join(ErrInvalidMarkup, err)
 	}
 	if n := utf16Len(worst); n > maxMessageLen {
-		return errors.Join(ErrTooLong, fmt.Errorf("текст может оказаться длиннее %d символов (с самыми длинными значениями переменных — %d)", maxMessageLen, n))
+		return errors.Join(ErrTooLong, fmt.Errorf("текст может оказаться длиннее %d символов (с самыми длинными значениями переменных — %d); самая длинная — {{.%s}}", maxMessageLen, n, WidestVar(def, body, custom)))
 	}
 	return nil
 }
@@ -102,6 +102,31 @@ func ValidateStored(def Def, body string, custom map[string]string) error {
 	return Validate(def, body, all)
 }
 
+func varLens(def Def, custom map[string]string, byValue bool) map[string]int {
+	lens := map[string]int{}
+	for _, v := range append(Globals(custom), def.Vars...) {
+		lens[v.Name] = max(v.Max, utf16Len(v.Sample))
+	}
+	if byValue {
+		for name, val := range custom {
+			lens[name] = utf16Len(val) // своя переменная в кнопке: её значение известно
+		}
+	}
+	return lens
+}
+
+// WidestVar — имя самой длинной (в худшем случае) переменной из body; пусто, если переменных нет.
+func WidestVar(def Def, body string, custom map[string]string) string {
+	lens := varLens(def, custom, def.Kind != KindMessage)
+	widest, widestLen := "", -1
+	for _, m := range placeholder.FindAllStringSubmatch(body, -1) {
+		if n := lens[m[1]]; n > widestLen {
+			widest, widestLen = m[1], n
+		}
+	}
+	return widest
+}
+
 // validatePlain: рендер на примерах не пуст, а худший случай (переменные максимальной длины, свои — по текущему
 // значению) помещается в лимит; иначе ошибка называет самую длинную переменную.
 func validatePlain(def Def, body, rendered string, custom map[string]string) error {
@@ -112,20 +137,10 @@ func validatePlain(def Def, body, rendered string, custom map[string]string) err
 	if fixed > maxButtonLen {
 		return errors.Join(ErrBadButton, fmt.Errorf("текст длиннее %d символов", maxButtonLen))
 	}
-	lens := map[string]int{}
-	for _, v := range append(Globals(custom), def.Vars...) {
-		lens[v.Name] = max(v.Max, utf16Len(v.Sample))
-	}
-	for name, val := range custom {
-		lens[name] = utf16Len(val) // своя переменная: её значение известно
-	}
-	total, widest, widestLen := fixed, "", -1
+	total, widest := fixed, WidestVar(def, body, custom)
+	lens := varLens(def, custom, true)
 	for _, m := range placeholder.FindAllStringSubmatch(body, -1) {
-		n := lens[m[1]]
-		total += n
-		if n > widestLen {
-			widest, widestLen = m[1], n
-		}
+		total += lens[m[1]]
 	}
 	if total > maxButtonLen {
 		where := "в кнопку"
