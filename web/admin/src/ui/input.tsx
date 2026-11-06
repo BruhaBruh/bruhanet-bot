@@ -42,18 +42,19 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string
   before?: ReactNode
   after?: ReactNode
+  /** Ширина по содержимому (до max-w-40) для одиночного поля; в сетке поле на всю ячейку. */
+  fit?: boolean
 }
 
 const addon = 'flex items-center text-text-secondary'
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, hint, error, before, after, className, id, ...props },
+  { label, hint, error, before, after, fit, className, id, ...props },
   ref,
 ) {
   const autoId = useId()
   const fieldId = id ?? autoId
-  // Число с единицей: поле по ширине содержимого, а не на всю колонку. ch, а не field-sizing: Firefox его не умеет.
-  const numeric = props.type === 'number'
+  // ch, а не field-sizing: Firefox его не умеет.
   const chars = Math.max(String(props.value ?? '').length || (props.placeholder?.length ?? 0), 3)
   return (
     <Field id={fieldId} label={label} hint={hint} error={error} className={className}>
@@ -61,7 +62,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         className={cn(
           fieldBox,
           'min-h-(--size-cell) items-center',
-          numeric && 'w-fit max-w-40',
+          fit && 'w-fit max-w-40',
           error && 'border-destructive focus-within:border-destructive',
         )}
       >
@@ -72,8 +73,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           aria-invalid={error ? true : undefined}
           aria-describedby={error || hint ? `${fieldId}-msg` : undefined}
           {...props}
-          className={numeric ? 'flex-initial' : undefined}
-          style={numeric ? { width: `${chars}ch` } : undefined}
+          className={cn(fit && 'flex-initial', props.type === 'number' && 'text-right tabular-nums')}
+          style={fit ? { width: `${chars}ch` } : undefined}
         />
         {after && <span className={addon}>{after}</span>}
       </div>

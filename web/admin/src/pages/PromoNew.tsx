@@ -166,6 +166,7 @@ export default function PromoNew() {
               className="max-w-70"
               label={kind === 'days' ? 'Сколько дней подписки добавить' : 'Размер скидки'}
               type="number"
+              fit
               min={1}
               value={value}
               onChange={(e) => setValue(e.target.value)}
@@ -192,6 +193,7 @@ export default function PromoNew() {
                   className="max-w-70"
                   label="Сколько раз можно применить"
                   type="number"
+                  fit
                   min={1}
                   value={limit}
                   onChange={(e) => setLimit(e.target.value)}

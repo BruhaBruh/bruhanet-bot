@@ -413,13 +413,13 @@ describe('Toast', () => {
   })
 })
 
-describe('Input type=number', () => {
-  it('fits its content, other inputs stay full width', () => {
-    const { rerender } = render(<Input aria-label="n" type="number" value="1600" onChange={() => {}} />)
+describe('Input fit', () => {
+  it('sizes to content only with fit', () => {
+    const { rerender } = render(<Input aria-label="n" fit type="number" value="1600" onChange={() => {}} />)
     expect(screen.getByLabelText('n').style.width).toBe('4ch')
-    rerender(<Input aria-label="n" type="number" value="" onChange={() => {}} />)
+    rerender(<Input aria-label="n" fit type="number" value="" onChange={() => {}} />)
     expect(screen.getByLabelText('n').style.width).toBe('3ch')
-    rerender(<Input aria-label="n" value="1600" onChange={() => {}} />)
+    rerender(<Input aria-label="n" type="number" value="1600" onChange={() => {}} />)
     expect(screen.getByLabelText('n').style.width).toBe('')
   })
 })
