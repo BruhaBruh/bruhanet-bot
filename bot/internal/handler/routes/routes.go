@@ -42,10 +42,10 @@ type Payments interface {
 	PendingPayment(ctx context.Context, telegramID int64) (model.Payment, error)
 	PaymentByID(ctx context.Context, id int64) (model.Payment, error)
 	SubmitPayment(ctx context.Context, id int64, adminMessageID int, photoFileID string, at time.Time) error
-	MarkAdvance(ctx context.Context, id int64) error
+	GrantAdvance(ctx context.Context, id int64, apply func(model.Payment)) error
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
-		apply func(model.Payment) (model.OutboxMessage, error)) (model.Payment, error)
+		apply func(model.Payment) ([]model.OutboxMessage, error)) (model.Payment, error)
 	CancelPayment(ctx context.Context, id int64) error
 	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
 	TouchUser(ctx context.Context, u model.UserSeen) error

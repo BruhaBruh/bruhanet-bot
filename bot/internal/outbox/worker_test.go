@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
@@ -16,6 +19,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
 )
@@ -154,7 +158,7 @@ func setup(t *testing.T) (*tgtest.Server, *fakeQueue, *Worker) {
 	t.Helper()
 	srv := tgtest.NewServer(t)
 	q := &fakeQueue{}
-	return srv, q, New(q, srv.Bot(t), nil)
+	return srv, q, New(q, srv.Bot(t), nil, nil)
 }
 
 func count(event, result string) float64 {
@@ -285,7 +289,7 @@ func TestWorkerBroadcastSurvivesRestart(t *testing.T) {
 			t.Fatal("process failed")
 		}
 	}
-	w2 := New(q, srv.Bot(t), nil)
+	w2 := New(q, srv.Bot(t), nil, nil)
 	drain(t, w2, q)
 	calls := srv.Calls("sendMessage")
 	if got := calls[len(calls)-1].Params.Get("text"); got != "Разослано: <b>3</b>, не доставлено: <b>0</b>" {
@@ -485,7 +489,7 @@ func TestWorkerRendersTemplate(t *testing.T) {
 	src.SetContact(7, model.UserContact{FirstName: "<Анна>"})
 	src.SetContact(8, model.UserContact{FirstName: "Боб"})
 	cnt := content.New(src, settings.Defaults(map[int]int{1: 1}, "+7", "Банк", "https://t.me/s"), time.Hour, nil)
-	w := New(q, srv.Bot(t), cnt.Render)
+	w := New(q, srv.Bot(t), cnt.Render, nil)
 
 	const tpl = "Привет, <b>{{.name}}</b> {{.my}} {{.gone}}"
 	q.add(model.OutboxMessage{EventType: "broadcast", ChatID: 7, Text: tpl, ParseMode: "HTML", Template: true})
@@ -506,5 +510,100 @@ func TestWorkerRendersTemplate(t *testing.T) {
 	photos := srv.Calls("sendPhoto")
 	if len(photos) != 1 || photos[0].Params.Get("caption") != "Привет, <b>Боб</b> x&lt;y " {
 		t.Fatalf("sendPhoto: %+v", photos)
+	}
+}
+
+func TestWorkerPaymentResultRendersOnDelivery(t *testing.T) {
+	srv := tgtest.NewServer(t)
+	q := &fakeQueue{}
+	exp := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	var gotKey string
+	var gotExp time.Time
+	w := New(q, srv.Bot(t), nil, func(_ context.Context, chatID int64, key string, expireAt time.Time) (string, *models.InlineKeyboardMarkup) {
+		gotKey, gotExp = key, expireAt
+		return "готово " + strconv.FormatInt(chatID, 10), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{{Text: "Меню", CallbackData: "menu"}}}}
+	})
+	q.add(model.OutboxMessage{EventType: "payment_result", ChatID: 7, TextKey: "payment.confirmed", ExpireAt: exp, ParseMode: "HTML"})
+	// строка от прошлого деплоя: текст уже готов
+	q.add(model.OutboxMessage{EventType: "payment_result", ChatID: 8, Text: "старая", ParseMode: "HTML"})
+	drain(t, w, q)
+
+	msgs := srv.Calls("sendMessage")
+	if len(msgs) != 2 || msgs[0].Params.Get("text") != "готово 7" || !strings.Contains(msgs[0].Params.Get("reply_markup"), "Меню") ||
+		msgs[1].Params.Get("text") != "старая" {
+		t.Fatalf("sendMessage: %+v", msgs)
+	}
+	if gotKey != "payment.confirmed" || !gotExp.Equal(exp) {
+		t.Fatalf("notice(%q, %v)", gotKey, gotExp)
+	}
+}
+
+func closed(chat int64, msg int, confirmed bool) model.OutboxMessage {
+	return model.OutboxMessage{EventType: payflow.EventAdminClosed, ChatID: chat, MessageID: msg, Confirmed: confirmed, Months: 6, Price: 800}
+}
+
+func TestWorkerAdminClosed(t *testing.T) {
+	srv, q, w := setup(t)
+	confirmed := testutil.ToFloat64(observability.Payments.WithLabelValues("confirmed", "6"))
+	rubles := testutil.ToFloat64(observability.PaymentsConfirmedRubles.WithLabelValues("6"))
+	declined := testutil.ToFloat64(observability.Payments.WithLabelValues("declined", "6"))
+
+	q.add(closed(1, 5, true), closed(1, 6, false), closed(1, 0, true))
+	drain(t, w, q)
+
+	edits := srv.Calls("editMessageReplyMarkup")
+	if len(edits) != 2 || edits[0].Params.Get("message_id") != "5" || edits[0].Params.Get("chat_id") != "1" ||
+		!strings.Contains(edits[0].Params.Get("reply_markup"), `"inline_keyboard":[]`) {
+		t.Fatalf("edits: %+v", edits)
+	}
+	reacts := srv.Calls("setMessageReaction")
+	if len(reacts) != 2 || !strings.Contains(reacts[0].Params.Get("reaction"), "👍") || !strings.Contains(reacts[1].Params.Get("reaction"), "👎") {
+		t.Fatalf("reactions: %+v", reacts)
+	}
+	if n := len(srv.Calls("copyMessage")) + len(srv.Calls("sendMessage")); n != 0 {
+		t.Fatalf("лишние сообщения: %d", n)
+	}
+	// метрики — как у решения кнопками, в том числе без сообщения в боте
+	if got := testutil.ToFloat64(observability.Payments.WithLabelValues("confirmed", "6")); got != confirmed+2 {
+		t.Fatalf("confirmed = %v, was %v", got, confirmed)
+	}
+	if got := testutil.ToFloat64(observability.PaymentsConfirmedRubles.WithLabelValues("6")); got != rubles+1600 {
+		t.Fatalf("rubles = %v, was %v", got, rubles)
+	}
+	if got := testutil.ToFloat64(observability.Payments.WithLabelValues("declined", "6")); got != declined+1 {
+		t.Fatalf("declined = %v, was %v", got, declined)
+	}
+}
+
+// Кнопок уже нет или сообщение удалено: 400 не мешает очереди, строка уходит.
+func TestWorkerAdminClosedBadRequest(t *testing.T) {
+	srv, q, w := setup(t)
+	srv.FailMethod("editMessageReplyMarkup", 400, "Bad Request: message is not modified")
+	q.add(closed(1, 5, true), model.OutboxMessage{EventType: "reminder", ChatID: 9, Text: "дальше"})
+	drain(t, w, q)
+	if len(srv.Calls("setMessageReaction")) != 1 {
+		t.Fatalf("после 400 на кнопках реакция всё равно идёт")
+	}
+	if msgs := srv.Calls("sendMessage"); len(msgs) != 1 || msgs[0].Params.Get("text") != "дальше" {
+		t.Fatalf("очередь встала: %+v", msgs)
+	}
+}
+
+// 5xx: строка повторяется, после восстановления реакция и снятие кнопок проходят.
+func TestWorkerAdminClosedRetries(t *testing.T) {
+	srv, q, w := setup(t)
+	srv.FailMethod("editMessageReplyMarkup", 500, "Internal")
+	q.add(closed(1, 5, false))
+	w.backoff = func(int) time.Duration { return time.Millisecond }
+	if w.process(t.Context(), q.rows[0]) {
+		t.Fatal("сбой должен оставить строку первой")
+	}
+	if q.len() != 1 || len(srv.Calls("setMessageReaction")) != 0 {
+		t.Fatalf("строка удалена при 5xx: %d", q.len())
+	}
+	srv.FailMethod("editMessageReplyMarkup", 0, "")
+	drain(t, w, q)
+	if len(srv.Calls("setMessageReaction")) != 1 {
+		t.Fatal("нет реакции после восстановления")
 	}
 }

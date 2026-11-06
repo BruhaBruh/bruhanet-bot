@@ -7,6 +7,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 	"github.com/bruhabruh/bruhanet/pkg/remnawave"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
@@ -36,26 +37,30 @@ func isPrivate(u *models.Update) bool {
 }
 
 func (h *handlers) mainKeyboard(ctx context.Context, telegramID int64) *models.InlineKeyboardMarkup {
-	support := urlButton(ctx, h.c, "button.support", h.c.Settings(ctx).SupportURL, keyboard.StyleDanger)
-	promoBtn := callbackButton(ctx, h.c, "button.promo", routePromo, keyboard.StyleDefault)
-	user, err := h.rw.GetUser(ctx, telegramID)
+	return mainKeyboard(ctx, h.c, h.rw, telegramID)
+}
+
+func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64) *models.InlineKeyboardMarkup {
+	support := urlButton(ctx, c, "button.support", c.Settings(ctx).SupportURL, keyboard.StyleDanger)
+	promoBtn := callbackButton(ctx, c, "button.promo", routePromo, keyboard.StyleDefault)
+	user, err := rw.GetUser(ctx, telegramID)
 	switch {
 	case errors.Is(err, remnawave.ErrUserNotFound):
 		return keyboard.Inline(
-			keyboard.Row(callbackButton(ctx, h.c, "button.buy", routePay, keyboard.StyleSuccess)),
+			keyboard.Row(callbackButton(ctx, c, "button.buy", routePay, keyboard.StyleSuccess)),
 			keyboard.Row(promoBtn, support),
 		)
 	case err != nil:
 		stlog.Error(ctx, "failed to get remnawave user", "error", err)
-		return keyboard.Inline(keyboard.Row(callbackButton(ctx, h.c, "button.service_down", routeMenu, keyboard.StyleDefault)))
+		return keyboard.Inline(keyboard.Row(callbackButton(ctx, c, "button.service_down", routeMenu, keyboard.StyleDefault)))
 	}
 	return keyboard.Inline(
 		keyboard.Row(
-			callbackButton(ctx, h.c, "button.info", routeInfo, keyboard.StylePrimary),
-			callbackButton(ctx, h.c, "button.pay", routePay, keyboard.StyleDefault),
+			callbackButton(ctx, c, "button.info", routeInfo, keyboard.StylePrimary),
+			callbackButton(ctx, c, "button.pay", routePay, keyboard.StyleDefault),
 		),
 		keyboard.Row(
-			copyButton(ctx, h.c, "button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess),
+			copyButton(ctx, c, "button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess),
 			support,
 		),
 		keyboard.Row(promoBtn),

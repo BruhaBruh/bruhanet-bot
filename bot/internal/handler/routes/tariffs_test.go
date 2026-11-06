@@ -65,7 +65,7 @@ func TestBuyCreatesPendingPayment(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 	p := e.pending(t, userID)
-	if p.TelegramID != userID || p.Username != "42" || p.Month != 6 || p.Price != 800 || !p.PrevExpireAt.Equal(now) {
+	if p.TelegramID != userID || p.Username != "" || p.Month != 6 || p.Price != 800 || !p.PrevExpireAt.Equal(now) {
 		t.Fatalf("payment = %+v", p)
 	}
 	text := e.last(t, "editMessageText").Params.Get("text")

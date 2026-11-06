@@ -15,6 +15,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/promo"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
@@ -105,7 +106,7 @@ func (h *handlers) menuPromoText(ctx context.Context, b *bot.Bot, u *models.Upda
 		return
 	}
 	from := tgupdate.User(u)
-	username := telegramUsername(from)
+	username := from.Username
 	at := h.now()
 	var expireAt, oldExpireAt time.Time
 	p, err := h.pay.PromoByCode(ctx, u.Message.Text)
@@ -212,21 +213,21 @@ func (h *handlers) payByPromo(ctx context.Context, b *bot.Bot, u *models.Update,
 	at := h.now()
 	// текст и клавиатура — до транзакции (БД текстов, HTTP в панель)
 	vars := tariffVars(pay.Month, pay.Price)
-	vars["expireAt"] = formatTime(extendedExpire(pay.PrevExpireAt, at, pay.Month))
+	vars["expireAt"] = formatTime(payflow.ExtendedExpire(pay.PrevExpireAt, at, pay.Month))
 	text := h.c.Text(ctx, "promo.paid_by_promo", vars)
 	kb := h.mainKeyboard(ctx, pay.TelegramID)
-	_, err := h.pay.ResolvePayment(ctx, pay.ID, model.PaymentConfirmed, at, func(x model.Payment) (model.OutboxMessage, error) {
-		expireAt := extendedExpire(x.PrevExpireAt, at, x.Month)
+	_, err := h.pay.ResolvePayment(ctx, pay.ID, model.PaymentConfirmed, at, func(x model.Payment) ([]model.OutboxMessage, error) {
+		expireAt := payflow.ExtendedExpire(x.PrevExpireAt, at, x.Month)
 		if _, err := h.rw.UpdateUser(ctx, x.TelegramID, x.Username, expireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
-			return model.OutboxMessage{}, err
+			return nil, err
 		}
-		return model.OutboxMessage{
-			EventType: "payment_result",
+		return []model.OutboxMessage{{
+			EventType: payflow.EventResult,
 			ChatID:    x.TelegramID,
 			Text:      text,
 			ParseMode: string(models.ParseModeHTML),
 			Keyboard:  kb,
-		}, nil
+		}}, nil
 	})
 	switch {
 	case errors.Is(err, store.ErrNotPending), errors.Is(err, store.ErrNotFound):
@@ -356,9 +357,4 @@ func later(a, b time.Time) time.Time {
 		return b
 	}
 	return a
-}
-
-// extendedExpire — срок после подтверждения оплаты: от прежнего срока или от at, если он в прошлом.
-func extendedExpire(prev, at time.Time, months int) time.Time {
-	return later(prev, at).Add(time.Duration(months) * monthDuration)
 }

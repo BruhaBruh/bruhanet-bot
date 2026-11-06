@@ -85,14 +85,18 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 			promoRows = append([]string{promoLine(pr)}, promoRows...)
 		}
 	}
+	handle := ""
+	if p.Username != "" {
+		handle = " @" + html.EscapeString(p.Username)
+	}
 	limit := h.c.Settings(ctx).AdvanceLimit
 	msg := send(ctx, b, admin, nil, slices.Concat([]string{
 		"<b>Покупка подписки BruhaNet</b>",
 		"",
 		fmt.Sprintf(
-			"Пользователь <b>%s</b> @%s (<b>%d</b>) купил подписку на <b>%d %s</b>",
+			"Пользователь <b>%s</b>%s (<b>%d</b>) купил подписку на <b>%d %s</b>",
 			html.EscapeString(displayName(u)),
-			html.EscapeString(p.Username),
+			handle,
 			p.TelegramID,
 			p.Month,
 			pluralMonths(p.Month),
@@ -103,8 +107,6 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		return
 	}
 
-	// ponytail: гонка «купить» vs «фото» может выдать день на только что отменённый платёж;
-	// следующий confirm/decline вернёт prev_expire_at, MarkAdvance всё равно его посчитает.
 	if err := h.pay.SubmitPayment(ctx, p.ID, msg.ID, largestPhoto(u.Message.Photo), h.now()); err != nil {
 		if errors.Is(err, store.ErrNotPending) {
 			stlog.Warn(ctx, "payment photo lost the race", "error", err)
@@ -143,27 +145,27 @@ func largestPhoto(sizes []models.PhotoSize) string {
 	}).FileID
 }
 
-// grantAdvance выдаёт аванс на время проверки: от прежнего срока или от now, если он в прошлом.
+// grantAdvance выдаёт аванс на время проверки: от прежнего срока или от now, если он в прошлом. Запись идёт под
+// блокировкой платежа: решение из панели (кнопок оно не ждёт) или отмена новой покупкой не будут затёрты авансом.
 func (h *handlers) grantAdvance(ctx context.Context, b *bot.Bot, u *models.Update, p model.Payment) {
-	from := p.PrevExpireAt
-	if now := h.now(); now.After(from) {
-		from = now
-	}
 	chatID := u.Message.Chat.ID
 	advance := time.Duration(h.c.Settings(ctx).AdvanceHours) * time.Hour
-	// флаг раньше панели: если панель упадёт, перебор счётчика лучше, чем бесплатный день без учёта
-	if err := h.pay.MarkAdvance(ctx, p.ID); err != nil {
+	var panelErr error
+	err := h.pay.GrantAdvance(ctx, p.ID, func(locked model.Payment) {
+		_, panelErr = h.rw.UpdateUser(ctx, locked.TelegramID, locked.Username, later(locked.PrevExpireAt, h.now()).Add(advance), h.cfg.Remnawave.InternalSquadId)
+	})
+	switch {
+	case errors.Is(err, store.ErrNotPending):
+		stlog.Warn(ctx, "payment resolved before advance", "error", err)
+	case err != nil:
 		stlog.Error(ctx, "failed to mark advance", "error", err)
-		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))
+	case panelErr != nil:
+		stlog.Error(ctx, "failed to grant advance day", "error", panelErr)
+	default:
+		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent_advance", map[string]string{"advance": advanceText(h.c.Settings(ctx).AdvanceHours)}))
 		return
 	}
-	_, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, from.Add(advance), h.cfg.Remnawave.InternalSquadId)
-	if err != nil {
-		stlog.Error(ctx, "failed to grant advance day", "error", err)
-		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))
-		return
-	}
-	send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent_advance", map[string]string{"advance": advanceText(h.c.Settings(ctx).AdvanceHours)}))
+	send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))
 }
 
 // forwardPhoto досылает админу лишнее фото платежа на проверке; юзеру не отвечаем.

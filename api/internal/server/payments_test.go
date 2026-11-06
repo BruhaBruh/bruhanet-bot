@@ -120,3 +120,111 @@ func TestPaymentsHideFileID(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }
+
+func TestResolvePaymentFromPanel(t *testing.T) {
+	base := now.Add(5 * 24 * time.Hour)
+	for _, tc := range []struct {
+		path   string
+		status model.PaymentStatus
+		key    string
+		want   time.Time
+		ok     bool
+	}{
+		{"confirm", model.PaymentConfirmed, "payment.confirmed", base.Add(6 * 30 * 24 * time.Hour), true},
+		{"decline", model.PaymentDeclined, "payment.declined", base, false},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			panel := &fakePanel{}
+			h, st := newServerPanel(t, "http://localhost:5173", panel)
+			c := st.addSession(t, adminID, now.Add(time.Hour))
+			st.payments = []model.Payment{{ID: 1, TelegramID: 7, Username: "ann", Month: 6, Price: 800, Status: model.PaymentPending, PrevExpireAt: base, AdminMessageID: 5}}
+
+			w := send(h, http.MethodPost, "/api/payments/1/"+tc.path, c, "{}")
+			if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), string(tc.status)) {
+				t.Fatalf("%d %s", w.Code, w.Body)
+			}
+			if len(panel.updates) != 1 || !panel.updates[0].Equal(tc.want) || panel.squad != testSquad {
+				t.Fatalf("panel = %v, squad %v", panel.updates, panel.squad)
+			}
+			if len(st.panelWrites) != 1 || !st.panelWrites[0].exp.Equal(tc.want) {
+				t.Fatalf("users не обновлён: %+v", st.panelWrites)
+			}
+			if len(st.outbox) != 2 {
+				t.Fatalf("outbox = %+v", st.outbox)
+			}
+			res, closed := st.outbox[0], st.outbox[1]
+			if res.EventType != "payment_result" || res.ChatID != 7 || res.TextKey != tc.key || !res.ExpireAt.Equal(tc.want) {
+				t.Fatalf("result = %+v", res)
+			}
+			if closed.EventType != "payment_admin_closed" || closed.ChatID != adminID || closed.MessageID != 5 || closed.Confirmed != tc.ok {
+				t.Fatalf("closed = %+v", closed)
+			}
+
+			// повтор: ни панели, ни уведомлений
+			w = send(h, http.MethodPost, "/api/payments/1/"+tc.path, c, "{}")
+			if w.Code != http.StatusConflict || strings.TrimSpace(w.Body.String()) != `{"error":"already_resolved","message":"Уже обработано"}` {
+				t.Fatalf("repeat: %d %s", w.Code, w.Body)
+			}
+			if len(panel.updates) != 1 || len(st.outbox) != 2 {
+				t.Fatalf("repeat changed state: %v %v", panel.updates, st.outbox)
+			}
+		})
+	}
+}
+
+func TestResolvePaymentErrors(t *testing.T) {
+	panel := &fakePanel{updateErr: errors.New("secret panel detail")}
+	h, st := newServerPanel(t, "http://localhost:5173", panel)
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.payments = []model.Payment{{ID: 1, TelegramID: 7, Month: 6, Status: model.PaymentPending, PrevExpireAt: now}}
+
+	w := send(h, http.MethodPost, "/api/payments/9/confirm", c, "{}")
+	if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "Платёж устарел") {
+		t.Fatalf("unknown: %d %s", w.Code, w.Body)
+	}
+	if w := send(h, http.MethodPost, "/api/payments/x/confirm", c, "{}"); w.Code != http.StatusBadRequest {
+		t.Fatalf("bad id: %d", w.Code)
+	}
+
+	// панель упала: 502, платёж на месте, уведомлений нет; повтор после подъёма проходит
+	w = send(h, http.MethodPost, "/api/payments/1/confirm", c, "{}")
+	if w.Code != http.StatusBadGateway || strings.Contains(w.Body.String(), "secret") {
+		t.Fatalf("panel down: %d %s", w.Code, w.Body)
+	}
+	if st.payments[0].Status != model.PaymentPending || len(st.outbox) != 0 {
+		t.Fatalf("after panel error: %+v %+v", st.payments[0], st.outbox)
+	}
+	panel.updateErr = nil
+	if w := send(h, http.MethodPost, "/api/payments/1/confirm", c, "{}"); w.Code != http.StatusOK {
+		t.Fatalf("retry: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestResolvePaymentRequiresSessionAndJSON(t *testing.T) {
+	panel := &fakePanel{}
+	h, st := newServerPanel(t, "http://localhost:5173", panel)
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.payments = []model.Payment{{ID: 1, TelegramID: 7, Month: 6, Status: model.PaymentPending, PrevExpireAt: now}}
+	if w := send(h, http.MethodPost, "/api/payments/1/confirm", "", "{}"); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", w.Code)
+	}
+	if w := do(h, http.MethodPost, "/api/payments/1/confirm", c, "text/plain"); w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("not json: %d", w.Code)
+	}
+	if len(panel.updates) != 0 {
+		t.Fatalf("panel touched: %v", panel.updates)
+	}
+}
+
+// Зависшая панель не держит транзакцию дольше PanelTimeout.
+func TestResolvePaymentPanelTimeout(t *testing.T) {
+	h, st := newServerTimeout(t, "http://localhost:5173", blockingPanel{}, 20*time.Millisecond)
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.payments = []model.Payment{{ID: 1, TelegramID: 7, Month: 6, Status: model.PaymentPending, PrevExpireAt: now}}
+	if w := send(h, http.MethodPost, "/api/payments/1/confirm", c, "{}"); w.Code != http.StatusBadGateway {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if st.payments[0].Status != model.PaymentPending {
+		t.Fatalf("status = %s", st.payments[0].Status)
+	}
+}

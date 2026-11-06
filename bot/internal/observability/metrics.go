@@ -78,7 +78,7 @@ func InitBusinessSeries(months []int) {
 	for _, k := range []string{"week", "day"} {
 		RemindersSent.WithLabelValues(k)
 	}
-	for _, e := range []string{"payment_result", "reminder", "broadcast", "broadcast_summary", "text_test"} {
+	for _, e := range []string{"payment_result", "payment_admin_closed", "reminder", "broadcast", "broadcast_summary", "text_test"} {
 		for _, r := range []string{"sent", "dropped", "retry"} {
 			OutboxMessages.WithLabelValues(e, r)
 		}

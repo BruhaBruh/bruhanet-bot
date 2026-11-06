@@ -28,6 +28,8 @@ const adminID = 1
 
 var now = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
+var testSquad = uuid.MustParse("7d1f5b9e-0000-4000-8000-000000000001")
+
 const indexHTML = "<!doctype html><title>test</title>"
 
 // fakeStore повторяет семантику core/store в памяти.
@@ -60,6 +62,13 @@ type fakeStore struct {
 
 	promos []model.PromoWithUsage // по возрастанию id
 	acts   []model.PromoActivation
+
+	panelWrites []panelWrite
+}
+
+type panelWrite struct {
+	id  int64
+	exp time.Time
 }
 
 type fakeBroadcast struct {
@@ -249,6 +258,7 @@ func newServerTG(t *testing.T, baseURL string, panel server.Panel, panelTimeout 
 		Telegram:     tg,
 		Defaults:     settings.Defaults(map[int]int{1: 150, 6: 800}, "+7 900", "Т-Банк", "https://t.me/support"),
 		PanelTimeout: panelTimeout,
+		Squad:        testSquad,
 		AdminID:      adminID,
 		BaseURL:      baseURL,
 		Now:          func() time.Time { return now },
@@ -396,6 +406,36 @@ func (f *fakeStore) PaymentByID(_ context.Context, id int64) (model.Payment, err
 	return model.Payment{}, store.ErrNotFound
 }
 
+// ResolvePayment — как core/store: ошибка apply ничего не меняет, повтор — ErrNotPending.
+func (f *fakeStore) ResolvePayment(_ context.Context, id int64, status model.PaymentStatus, at time.Time,
+	apply func(model.Payment) ([]model.OutboxMessage, error),
+) (model.Payment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.payments {
+		p := &f.payments[i]
+		if p.ID != id {
+			continue
+		}
+		if p.Status != model.PaymentPending {
+			return *p, store.ErrNotPending
+		}
+		msgs, err := apply(*p)
+		if err != nil {
+			return model.Payment{}, err
+		}
+		p.Status, p.ResolvedAt = status, &at
+		f.outbox = append(f.outbox, msgs...)
+		return *p, nil
+	}
+	return model.Payment{}, store.ErrNotFound
+}
+
+func (f *fakeStore) SetUserPanel(_ context.Context, id int64, expireAt time.Time, _ string, _ time.Time) error {
+	f.panelWrites = append(f.panelWrites, panelWrite{id, expireAt})
+	return nil
+}
+
 func (f *fakeStore) UserStats(_ context.Context, id, _ int64) (model.UserStats, error) {
 	return model.UserStats{Confirmed: 1, ConfirmedSum: 150}, nil
 }
@@ -415,9 +455,22 @@ type fakePanel struct {
 	err      error
 	ids      []int // telegram ID юзеров панели; 0 — без ID
 	usersErr error
+
+	updates   []time.Time
+	updateErr error
+	squad     uuid.UUID
 }
 
 func (p *fakePanel) GetUser(context.Context, int64) (*api.UserItemInfo, error) { return p.user, p.err }
+
+func (p *fakePanel) UpdateUser(_ context.Context, _ int64, _ string, expireAt time.Time, squad uuid.UUID) (*api.UserItemInfo, error) {
+	if p.updateErr != nil {
+		return nil, p.updateErr
+	}
+	p.updates = append(p.updates, expireAt)
+	p.squad = squad
+	return &api.UserItemInfo{ExpireAt: expireAt, Status: api.UserItemInfoStatusACTIVE}, nil
+}
 
 func (p *fakePanel) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
 	return func(yield func(api.UserItemInfo, error) bool) {
@@ -440,6 +493,11 @@ func (p *fakePanel) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
 type blockingPanel struct{}
 
 func (blockingPanel) GetUser(ctx context.Context, _ int64) (*api.UserItemInfo, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (blockingPanel) UpdateUser(ctx context.Context, _ int64, _ string, _ time.Time, _ uuid.UUID) (*api.UserItemInfo, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

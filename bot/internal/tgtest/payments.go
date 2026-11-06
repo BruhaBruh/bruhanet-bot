@@ -99,8 +99,8 @@ func (p *Payments) FailSubmitNotPendingOnce() {
 	p.failSubmitOnce = true
 }
 
-// FailMarkAdvance: MarkAdvance возвращает ошибку, пока не снят (false).
-func (p *Payments) FailMarkAdvance(fail bool) {
+// FailGrantAdvance: GrantAdvance возвращает ошибку, пока не снят (false).
+func (p *Payments) FailGrantAdvance(fail bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.failAdvance = fail
@@ -192,7 +192,8 @@ func (p *Payments) SubmitPayment(_ context.Context, id int64, adminMessageID int
 	return nil
 }
 
-func (p *Payments) MarkAdvance(_ context.Context, id int64) error {
+// GrantAdvance — apply вызывается под мьютексом фейка: из него нельзя звать Payments.
+func (p *Payments) GrantAdvance(_ context.Context, id int64, apply func(model.Payment)) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.failAdvance {
@@ -202,7 +203,11 @@ func (p *Payments) MarkAdvance(_ context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
+	if x.Status != model.PaymentPending {
+		return store.ErrNotPending
+	}
 	x.AdvanceGranted = true
+	apply(*x)
 	return nil
 }
 
@@ -246,7 +251,7 @@ func (p *Payments) UserStats(_ context.Context, telegramID, excludeID int64) (mo
 
 // ResolvePayment — apply вызывается под мьютексом фейка: из него нельзя звать Payments.
 func (p *Payments) ResolvePayment(
-	_ context.Context, id int64, status model.PaymentStatus, at time.Time, apply func(model.Payment) (model.OutboxMessage, error),
+	_ context.Context, id int64, status model.PaymentStatus, at time.Time, apply func(model.Payment) ([]model.OutboxMessage, error),
 ) (model.Payment, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -276,7 +281,7 @@ func (p *Payments) ResolvePayment(
 		}
 		activate = !already
 	}
-	msg, err := apply(*x)
+	msgs, err := apply(*x)
 	if err != nil {
 		return model.Payment{}, err
 	}
@@ -285,7 +290,7 @@ func (p *Payments) ResolvePayment(
 		return model.Payment{}, errCommit
 	}
 	x.Status, x.ResolvedAt = status, &at
-	p.outbox = append(p.outbox, msg)
+	p.outbox = append(p.outbox, msgs...)
 	if activate {
 		id := x.ID
 		p.activations = append(p.activations, model.PromoActivation{PromoID: *x.PromoID, TelegramID: x.TelegramID, PaymentID: &id})

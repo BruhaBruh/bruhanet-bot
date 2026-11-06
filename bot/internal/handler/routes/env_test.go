@@ -34,6 +34,7 @@ type env struct {
 	fsm fsm.Storage
 	pay *tgtest.Payments
 	src *tgtest.Source
+	c   *content.Provider
 	log *bytes.Buffer
 }
 
@@ -64,15 +65,16 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 		},
 		Remnawave: coreconfig.RemnawaveConfig{InternalSquadId: uuid.New()},
 	}
+	// ttl 0 — каждое обращение перечитывает source, правка в тесте видна сразу
+	e.c = content.New(e.src, settings.Defaults(cfg.Payment.Prices, cfg.Payment.Phone, cfg.Payment.Bank, cfg.Support.URL), 0,
+		func() time.Time { return now })
 	b, err := handler.New(logger, cfg, handler.Deps{
 		FSM:       store,
 		InFlight:  &sync.WaitGroup{},
 		Remnawave: e.rw,
 		Payments:  e.pay,
-		// ttl 0 — каждое обращение перечитывает source, правка в тесте видна сразу
-		Content: content.New(e.src, settings.Defaults(cfg.Payment.Prices, cfg.Payment.Phone, cfg.Payment.Bank, cfg.Support.URL), 0,
-			func() time.Time { return now }),
-		Now: func() time.Time { return now },
+		Content:   e.c,
+		Now:       func() time.Time { return now },
 	}, e.srv.Options()...)
 	if err != nil {
 		t.Fatalf("handler.New: %v", err)

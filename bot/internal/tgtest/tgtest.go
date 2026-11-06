@@ -33,6 +33,8 @@ type Server struct {
 	mu    sync.Mutex
 	calls []Call
 	fail  map[int64]failure
+
+	failMethod map[string]failure
 }
 
 type failure struct {
@@ -84,6 +86,20 @@ func (s *Server) FailChatRetryAfter(chatID int64, seconds int) {
 	s.fail[chatID] = failure{code: 429, desc: "Too Many Requests: retry after " + strconv.Itoa(seconds), retryAfter: seconds}
 }
 
+// FailMethod: метод отвечает ошибкой Telegram в любом чате; code=0 снимает.
+func (s *Server) FailMethod(method string, code int, description string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if code == 0 {
+		delete(s.failMethod, method)
+		return
+	}
+	if s.failMethod == nil {
+		s.failMethod = make(map[string]failure)
+	}
+	s.failMethod[method] = failure{code: code, desc: description}
+}
+
 func (s *Server) Options() []bot.Option {
 	return []bot.Option{
 		bot.WithSkipGetMe(),
@@ -122,6 +138,15 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
+	s.mu.Lock()
+	mf, methodFailed := s.failMethod[method]
+	s.mu.Unlock()
+	if methodFailed {
+		w.WriteHeader(mf.code)
+		body, _ := json.Marshal(map[string]any{"ok": false, "error_code": mf.code, "description": mf.desc})
+		_, _ = w.Write(body)
+		return
+	}
 	if method == "sendMessage" || method == "copyMessage" || method == "sendPhoto" {
 		id, _ := strconv.ParseInt(r.Form.Get("chat_id"), 10, 64)
 		s.mu.Lock()

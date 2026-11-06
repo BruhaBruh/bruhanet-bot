@@ -4,22 +4,18 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
-	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
-	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
-
-const monthDuration = 30 * 24 * time.Hour
 
 func (h *handlers) confirm(ctx context.Context, b *bot.Bot, u *models.Update) {
 	h.review(ctx, b, u, confirmRoute, true)
@@ -29,8 +25,7 @@ func (h *handlers) decline(ctx context.Context, b *bot.Bot, u *models.Update) {
 	h.review(ctx, b, u, declineRoute, false)
 }
 
-// review подтверждает или отклоняет платёж. Статус решает Postgres: ResolvePayment под блокировкой
-// строки вызывает UpdateUser с абсолютной датой от PrevExpireAt и кладёт уведомление юзеру в outbox;
+// review подтверждает или отклоняет платёж; статус решает Postgres (payflow.Resolve, та же логика у панели):
 // ошибка панели откатывает транзакцию, повтор считает ту же дату.
 func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, route callback.Route[int64], approve bool) {
 	msg := u.CallbackQuery.Message.Message
@@ -40,50 +35,9 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 		return
 	}
 
-	status := model.PaymentDeclined
-	if approve {
-		status = model.PaymentConfirmed
-	}
-	at := h.now()
-	// клавиатура (HTTP в панель) — вне транзакции ResolvePayment; юзер в панели к review уже есть
-	var kb *models.InlineKeyboardMarkup
-	// автор апдейта — админ, а тексты и подписи адресованы юзеру платежа
-	userCtx := ctx
-	vars := map[string]string{}
-	cur, err := h.pay.PaymentByID(ctx, id)
-	if err == nil {
-		userCtx = content.ForUser(ctx, cur.TelegramID)
-		kb = h.mainKeyboard(userCtx, cur.TelegramID)
-		expireAt := cur.PrevExpireAt
-		if approve {
-			expireAt = extendedExpire(cur.PrevExpireAt, at, cur.Month)
-		}
-		vars["expireAt"] = formatTime(expireAt) // в БД срок ещё до решения
-	}
-	// текст — до транзакции: рендер может сходить в БД за текстами
-	text := h.c.Text(userCtx, "payment.declined", vars)
-	if approve {
-		text = h.c.Text(userCtx, "payment.confirmed", vars)
-	}
-	var p model.Payment
-	if err == nil {
-		p, err = h.pay.ResolvePayment(ctx, id, status, at, func(p model.Payment) (model.OutboxMessage, error) {
-			expireAt := p.PrevExpireAt
-			if approve {
-				expireAt = extendedExpire(p.PrevExpireAt, at, p.Month)
-			}
-			if _, err := h.rw.UpdateUser(ctx, p.TelegramID, p.Username, expireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
-				return model.OutboxMessage{}, err
-			}
-			return model.OutboxMessage{
-				EventType: "payment_result",
-				ChatID:    p.TelegramID,
-				Text:      text,
-				ParseMode: string(models.ParseModeHTML),
-				Keyboard:  kb,
-			}, nil
-		})
-	}
+	p, err := payflow.Resolve(ctx, h.pay, h.rw, payflow.Decision{
+		ID: id, Approve: approve, At: h.now(), Squad: h.cfg.Remnawave.InternalSquadId,
+	})
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		middleware.Answer(ctx, b, u, "Платёж устарел")

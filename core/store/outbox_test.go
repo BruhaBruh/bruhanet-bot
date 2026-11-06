@@ -72,7 +72,7 @@ func TestResolveEnqueues(t *testing.T) {
 	}
 	boom := errors.New("boom")
 	_, err = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(),
-		func(model.Payment) (model.OutboxMessage, error) { return model.OutboxMessage{}, boom })
+		func(model.Payment) ([]model.OutboxMessage, error) { return nil, boom })
 	if !errors.Is(err, boom) {
 		t.Fatalf("want boom, got %v", err)
 	}
@@ -84,8 +84,8 @@ func TestResolveEnqueues(t *testing.T) {
 	}
 
 	_, err = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(),
-		func(model.Payment) (model.OutboxMessage, error) {
-			return model.OutboxMessage{EventType: "payment_result", ChatID: 1, Text: "ok"}, nil
+		func(model.Payment) ([]model.OutboxMessage, error) {
+			return []model.OutboxMessage{{EventType: "payment_result", ChatID: 1, Text: "ok"}}, nil
 		})
 	if err != nil {
 		t.Fatal(err)

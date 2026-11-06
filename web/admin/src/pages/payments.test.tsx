@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
+import type { Payment } from '../types'
+import { extendsTo } from './payment-review'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -217,5 +219,158 @@ describe('Payments', () => {
     expect(table().getByText('Не удалось загрузить платежи')).toBeTruthy()
     expect(table().queryByText('@eve')).toBeNull()
     expect(screen.queryByText(/^900\s₽$/)).toBeNull()
+  })
+
+  describe('review', () => {
+    const NOW = '2026-11-02T12:00:00Z'
+    const pending = payment(1, 'pending', {
+      month: 1,
+      hasPhoto: true,
+      submittedAt: '2026-11-01T10:00:00Z',
+      prevExpireAt: '2099-12-01T12:00:00Z',
+    })
+
+    // Экран + POST: posts — адреса решений; badge — сколько раз перечитали бейдж.
+    function stubReview(answer: () => Response = () => json(200, {})) {
+      const posts: string[] = []
+      const counters = { badge: 0, list: 0 }
+      let rows = [pending]
+      vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          posts.push(url)
+          const res = answer()
+          if (res.ok) rows = [{ ...pending, status: 'confirmed' }]
+          return res
+        }
+        if (!url.startsWith('/api/payments')) return new Promise(() => {})
+        if (url.includes('from=2000-')) {
+          counters.badge++
+          return json(200, { items: [], total: rows[0].status === 'pending' ? 1 : 0, revenue: 0 })
+        }
+        counters.list++
+        return json(200, { items: rows, total: 1, revenue: 0 })
+      })
+      return { posts, counters }
+    }
+    const row = () => within(table().getByText('Подтвердить').closest('tr')!)
+    const dialog = () => within(screen.getByRole('alertdialog'))
+    const accept = async (name: string) => {
+      fireEvent.click(dialog().getByRole('button', { name }))
+      await flush()
+    }
+
+    it('extends from the current term or from now if it has passed', () => {
+      const p = { month: 2, prevExpireAt: '2026-11-10T00:00:00Z' } as Payment
+      expect(extendsTo(p, Date.parse('2026-11-01T00:00:00Z'))).toBe('2027-01-09T00:00:00.000Z')
+      expect(extendsTo(p, Date.parse('2026-12-01T00:00:00Z'))).toBe('2027-01-30T00:00:00.000Z')
+    })
+
+    it('shows actions only on pending rows', async () => {
+      stub(() => json(200, { items: [payment(1, 'confirmed', { hasPhoto: true }), payment(2, 'declined', { submittedAt: NOW }), payment(3, 'cancelled')], total: 3, revenue: 0 }))
+      await renderPage()
+      expect(table().queryByRole('button', { name: 'Подтвердить' })).toBeNull()
+      expect(table().queryByRole('button', { name: 'Отклонить' })).toBeNull()
+      expect(table().getByRole('button', { name: 'Чек' })).toBeTruthy()
+      expect(table().getAllByText('Чек в боте')).toHaveLength(1)
+    })
+
+    it('confirm states the consequence, posts once, then reloads the list and the badge', async () => {
+      const { posts, counters } = stubReview()
+      await renderPage()
+      const { badge, list } = counters
+      fireEvent.click(row().getByRole('button', { name: 'Подтвердить' }))
+      const text = screen.getByRole('alertdialog').textContent
+      expect(text).toContain('Подтвердить платёж?')
+      // prev в будущем: + 30 дней от него
+      expect(text).toContain('продлится до 31 дек. 2099')
+      expect(posts).toEqual([])
+      await accept('Подтвердить')
+      expect(posts).toEqual(['/api/payments/1/confirm'])
+      expect(screen.getByText('Платёж подтверждён')).toBeTruthy()
+      expect(counters.list).toBe(list + 1)
+      expect(counters.badge).toBe(badge + 1)
+      expect(table().queryByRole('button', { name: 'Подтвердить' })).toBeNull()
+    })
+
+    it('decline names the date the term returns to', async () => {
+      const { posts } = stubReview()
+      await renderPage()
+      fireEvent.click(row().getByRole('button', { name: 'Отклонить' }))
+      expect(screen.getByRole('alertdialog').textContent).toContain('вернётся к 1 дек. 2099')
+      await accept('Отклонить')
+      expect(posts).toEqual(['/api/payments/1/decline'])
+      expect(screen.getByText('Платёж отклонён')).toBeTruthy()
+    })
+
+    it('cancel posts nothing', async () => {
+      const { posts } = stubReview()
+      await renderPage()
+      fireEvent.click(row().getByRole('button', { name: 'Отклонить' }))
+      await accept('Отмена')
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+      expect(posts).toEqual([])
+    })
+
+    it('a second decision while the first is in flight sends nothing', async () => {
+      let release!: () => void
+      const posts: string[] = []
+      vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          posts.push(url)
+          await new Promise<void>((r) => (release = r))
+          return json(200, {})
+        }
+        if (!url.startsWith('/api/payments')) return new Promise(() => {})
+        return json(200, { items: [pending], total: 1, revenue: 0 })
+      })
+      await renderPage()
+      fireEvent.click(row().getByRole('button', { name: 'Подтвердить' }))
+      await accept('Подтвердить')
+      fireEvent.click(row().getByRole('button', { name: 'Подтвердить' }))
+      await accept('Подтвердить')
+      expect(posts).toHaveLength(1)
+      await act(async () => release())
+      await flush()
+    })
+
+    it.each([
+      [409, { error: 'already_resolved', message: 'Уже обработано' }, 'Уже обработано'],
+      [404, { error: 'not_found', message: 'Платёж устарел' }, 'Платёж устарел'],
+      [502, { error: 'panel_unavailable', message: 'Панель не ответила, платёж не изменён' }, 'Панель не ответила, платёж не изменён'],
+      [500, { error: 'internal' }, 'Не удалось обновить платёж'],
+    ])('shows the reason on %i and reloads the row', async (code, body, text) => {
+      const { counters } = stubReview(() => json(code, body))
+      await renderPage()
+      const { list } = counters
+      fireEvent.click(row().getByRole('button', { name: 'Подтвердить' }))
+      await accept('Подтвердить')
+      expect(screen.getByText(text)).toBeTruthy()
+      expect(counters.list).toBe(list + 1)
+    })
+
+    it('opens the receipt with alt, falls back on a load error', async () => {
+      stubReview()
+      await renderPage()
+      fireEvent.click(row().getByRole('button', { name: 'Чек' }))
+      const img = screen.getByRole('img', { name: 'Чек платежа 1 от @eve' })
+      expect(img.getAttribute('src')).toBe('/api/payments/1/photo')
+      fireEvent.error(img)
+      expect(screen.getByRole('alert').textContent).toContain('остался в боте')
+    })
+
+    it('on a phone a tap expands the row to reach the actions', async () => {
+      const { posts } = stubReview()
+      await renderPage()
+      // мобильное дерево вне таблицы: кнопок решения там нет, пока строка не раскрыта
+      expect(screen.getAllByRole('button', { name: 'Подтвердить' })).toHaveLength(1)
+      const cell = screen.getAllByText('@eve').map((e) => e.closest('button')).find(Boolean)!
+      expect(cell.getAttribute('aria-expanded')).toBe('false')
+      fireEvent.click(cell)
+      expect(cell.getAttribute('aria-expanded')).toBe('true')
+      expect(screen.getAllByRole('button', { name: 'Открыть пользователя' }).length).toBeGreaterThan(0)
+      fireEvent.click(screen.getAllByRole('button', { name: 'Подтвердить' }).at(-1)!)
+      await accept('Подтвердить')
+      expect(posts).toEqual(['/api/payments/1/confirm'])
+    })
   })
 })

@@ -277,7 +277,7 @@ func TestResolveFreePromoPaymentRejectsRepeat(t *testing.T) {
 	}
 	second := free()
 	applied := false
-	_, err := s.ResolvePayment(ctx, second.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) (model.OutboxMessage, error) {
+	_, err := s.ResolvePayment(ctx, second.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) ([]model.OutboxMessage, error) {
 		applied = true
 		return okApply(second)
 	})
@@ -297,8 +297,8 @@ func TestResolveFreePromoPaymentRejectsRepeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.ResolvePayment(ctx, o.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) (model.OutboxMessage, error) {
-		return model.OutboxMessage{}, errors.New("panel down")
+	if _, err = s.ResolvePayment(ctx, o.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) ([]model.OutboxMessage, error) {
+		return nil, errors.New("panel down")
 	}); err == nil {
 		t.Fatal("ожидалась ошибка apply")
 	}
@@ -350,7 +350,7 @@ func TestResolveFreePromoConcurrentLimit(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range errs {
 		wg.Go(func() {
-			_, errs[i] = s.ResolvePayment(ctx, ids[i], model.PaymentConfirmed, time.Now(), func(p model.Payment) (model.OutboxMessage, error) {
+			_, errs[i] = s.ResolvePayment(ctx, ids[i], model.PaymentConfirmed, time.Now(), func(p model.Payment) ([]model.OutboxMessage, error) {
 				applied.Add(1)
 				<-release // держим tx, пока второй не упрётся в блокировку кода
 				return okApply(p)
@@ -407,7 +407,7 @@ func TestActivateDaysPromoShiftsPending(t *testing.T) {
 			t.Fatal(err)
 		}
 		var got time.Time
-		if _, err = s.ResolvePayment(ctx, p.ID, c.status, now, func(x model.Payment) (model.OutboxMessage, error) {
+		if _, err = s.ResolvePayment(ctx, p.ID, c.status, now, func(x model.Payment) ([]model.OutboxMessage, error) {
 			got = x.PrevExpireAt
 			return okApply(x)
 		}); err != nil {

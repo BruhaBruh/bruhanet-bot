@@ -258,6 +258,30 @@ describe('UserCard', () => {
     expect(within(row).getByText('Оплачено')).toBeTruthy()
   })
 
+  it('resolves a pending payment from the card and reloads it', async () => {
+    const pending = { id: 31, telegramId: 7, username: 'bob', month: 3, price: 900, status: 'pending', prevExpireAt: '2099-01-01T00:00:00Z', createdAt: '2026-11-01T10:00:00Z' }
+    let rows = [pending]
+    const posts: string[] = []
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        posts.push(url)
+        rows = [{ ...pending, status: 'declined' }]
+        return json(200, {})
+      }
+      if (url.startsWith('/api/payments')) return json(200, { items: [], total: 0, revenue: 0 })
+      return json(200, detail({ payments: rows }))
+    })
+    await renderAt('/users/7')
+    const table = within(screen.getByRole('table'))
+    fireEvent.click(table.getByRole('button', { name: 'Отклонить' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Отклонить' }))
+    await flush()
+    expect(posts).toEqual(['/api/payments/31/decline'])
+    expect(screen.getByText('Платёж отклонён')).toBeTruthy()
+    expect(table.queryByRole('button', { name: 'Отклонить' })).toBeNull()
+    expect(table.getByText('Отклонён')).toBeTruthy()
+  })
+
   it('shows name, tariff, last visit, broadcasts and promos from the API', async () => {
     const bob = user(7, 'bob', 2, { name: 'Боб М', tariffMonths: 6, lastSeenAt: '2026-10-05T10:00:00Z', broadcastsReceived: 12, blockedBotAt: '2026-11-01T10:00:00Z' })
     stub({ '/api/users/7': () => json(200, detail({ user: bob, promos: [{ code: 'SUMMER', kind: 'percent', value: 10, activatedAt: '' }, { code: 'DAYS5', kind: 'days', value: 5, activatedAt: '' }] })) })

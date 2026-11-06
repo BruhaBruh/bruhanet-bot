@@ -108,7 +108,7 @@ func TestPhotoMarkAdvanceFailureSkipsGrant(t *testing.T) {
 	e := newEnv(t)
 	e.rw.AddUser(userID, now)
 	awaitPhoto(t, e, now)
-	e.pay.FailMarkAdvance(true)
+	e.pay.FailGrantAdvance(true)
 	e.process(t, tgtest.Photo(userID))
 	if n := len(e.rw.Updates()); n != 0 {
 		t.Fatalf("UpdateUser calls = %d", n)
@@ -255,5 +255,25 @@ func TestPhotoStoresLargestFileID(t *testing.T) {
 	got, err := e.pay.PaymentByID(t.Context(), p.ID)
 	if err != nil || got.PhotoFileID != "big" {
 		t.Fatalf("file = %q, err = %v", got.PhotoFileID, err)
+	}
+}
+
+// Юзер без username: в платеже пусто (id там не место), админ видит сообщение без пустого «@».
+func TestPhotoWithoutUsername(t *testing.T) {
+	e := newEnv(t)
+	e.process(t, tgtest.Callback(userID, "buy:6"))
+	p := e.pending(t, userID)
+	if p.Username != "" {
+		t.Fatalf("username = %q", p.Username)
+	}
+	e.process(t, tgtest.Photo(userID))
+	var admin string
+	for _, c := range e.srv.Calls("sendMessage") {
+		if c.Params.Get("chat_id") == fmt.Sprint(adminID) {
+			admin = c.Params.Get("text")
+		}
+	}
+	if !strings.Contains(admin, "<b>Test</b> (<b>42</b>)") || strings.Contains(admin, "@") {
+		t.Fatalf("admin message = %q", admin)
 	}
 }

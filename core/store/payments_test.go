@@ -99,7 +99,7 @@ func TestSubmitPaymentOnce(t *testing.T) {
 	if err != nil || got.AdminMessageID != 77 || got.SubmittedAt == nil || got.PhotoFileID != "file-77" || !got.HasPhoto {
 		t.Fatalf("got %+v err=%v", got, err)
 	}
-	if err = s.MarkAdvance(ctx, p.ID); err != nil {
+	if err = s.GrantAdvance(ctx, p.ID, func(model.Payment) {}); err != nil {
 		t.Fatal(err)
 	}
 	if byID, err := s.PaymentByID(ctx, p.ID); err != nil || byID.TelegramID != 1 || !byID.AdvanceGranted {
@@ -110,8 +110,8 @@ func TestSubmitPaymentOnce(t *testing.T) {
 	}
 }
 
-func okApply(model.Payment) (model.OutboxMessage, error) {
-	return model.OutboxMessage{EventType: "payment_result", ChatID: 1}, nil
+func okApply(model.Payment) ([]model.OutboxMessage, error) {
+	return []model.OutboxMessage{{EventType: "payment_result", ChatID: 1}}, nil
 }
 
 func TestResolveConcurrent(t *testing.T) {
@@ -129,10 +129,10 @@ func TestResolveConcurrent(t *testing.T) {
 	for i := range errs {
 		wg.Go(func() {
 			<-start
-			_, errs[i] = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) (model.OutboxMessage, error) {
+			_, errs[i] = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) ([]model.OutboxMessage, error) {
 				applied.Add(1)
 				<-release // держим tx открытой, пока второй не упрётся в FOR UPDATE
-				return model.OutboxMessage{EventType: "payment_result", ChatID: 1}, nil
+				return []model.OutboxMessage{{EventType: "payment_result", ChatID: 1}}, nil
 			})
 		})
 	}
@@ -179,7 +179,7 @@ func TestResolveApplyError(t *testing.T) {
 		t.Fatal(err)
 	}
 	boom := errors.New("boom")
-	if _, err = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) (model.OutboxMessage, error) { return model.OutboxMessage{}, boom }); !errors.Is(err, boom) {
+	if _, err = s.ResolvePayment(ctx, p.ID, model.PaymentConfirmed, time.Now(), func(model.Payment) ([]model.OutboxMessage, error) { return nil, boom }); !errors.Is(err, boom) {
 		t.Fatalf("want boom, got %v", err)
 	}
 	got, err := s.PendingPayment(ctx, 1)

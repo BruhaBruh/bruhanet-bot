@@ -4,7 +4,8 @@ import { Button, Card, DataTable, Input, SegmentedControl, StatCard } from '@/ui
 import { get } from '../api'
 import { formatCount, formatDay, formatRub, mskDate } from '../format'
 import type { Payment } from '../types'
-import { payActions, paymentPageColumns, paymentPageMobileRow } from './payment-columns'
+import { paymentPageColumns, paymentPageMobileRow } from './payment-columns'
+import { usePaymentReview } from './payment-review'
 
 const PAGE_SIZE = 50
 
@@ -50,6 +51,11 @@ export default function Payments() {
 
   // Ответ привязан к запросу: чужой не показывается, result нет — ошибка загрузки.
   const [data, setData] = useState<{ url: string; result?: Page }>()
+  const [reloads, setReloads] = useState(0)
+  const review = usePaymentReview(
+    () => setReloads((n) => n + 1),
+    (p) => navigate(`/users/${p.telegramId}`),
+  )
   useEffect(() => {
     let stale = false
     get<Page>(url).then(
@@ -63,7 +69,7 @@ export default function Payments() {
     return () => {
       stale = true
     }
-  }, [url])
+  }, [url, reloads])
 
   // смена фильтра — снова с первой страницы
   const filter = (patch: Partial<typeof f>) => setF((f) => ({ ...f, ...patch, page: 1 }))
@@ -111,8 +117,9 @@ export default function Payments() {
           rows={rows}
           empty={empty}
           onRowClick={(p) => navigate(`/users/${p.telegramId}`)}
-          rowActions={payActions}
-          mobileRow={paymentPageMobileRow}
+          rowActions={review.rowActions}
+          expandedRow={review.expandedRow}
+          mobileRow={(p) => ({ ...paymentPageMobileRow(p), onClick: () => review.toggle(p) })}
           pagination={
             result && !isRefund
               ? {
@@ -128,6 +135,7 @@ export default function Payments() {
           }
         />
       </div>
+      {review.dialogs}
     </>
   )
 }

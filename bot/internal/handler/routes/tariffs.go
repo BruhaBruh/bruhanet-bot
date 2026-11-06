@@ -89,7 +89,7 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 // false — ошибка уже показана юзеру.
 func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Update, np model.Payment) (model.Payment, bool) {
 	from := tgupdate.User(u)
-	username := telegramUsername(from)
+	username := from.Username
 
 	user, err := h.rw.CreateUser(ctx, from.ID, username, h.cfg.Remnawave.InternalSquadId)
 	if err != nil {

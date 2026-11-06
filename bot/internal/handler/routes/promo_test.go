@@ -222,7 +222,7 @@ func confirmedWith(t *testing.T, e *env, promoID *int64) {
 		t.Fatal(err)
 	}
 	if _, err := e.pay.ResolvePayment(t.Context(), p.ID, model.PaymentConfirmed, now,
-		func(model.Payment) (model.OutboxMessage, error) { return model.OutboxMessage{}, nil }); err != nil {
+		func(model.Payment) ([]model.OutboxMessage, error) { return []model.OutboxMessage{{}}, nil }); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -479,9 +479,9 @@ func TestFakeResolveFreePromoRepeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	applied := false
-	_, err = e.pay.ResolvePayment(t.Context(), p.ID, model.PaymentConfirmed, now, func(model.Payment) (model.OutboxMessage, error) {
+	_, err = e.pay.ResolvePayment(t.Context(), p.ID, model.PaymentConfirmed, now, func(model.Payment) ([]model.OutboxMessage, error) {
 		applied = true
-		return model.OutboxMessage{}, nil
+		return []model.OutboxMessage{{}}, nil
 	})
 	if !errors.Is(err, promo.ErrAlreadyUsed) || applied {
 		t.Fatalf("err = %v, applied = %v", err, applied)

@@ -268,7 +268,7 @@ func TestUserGlobals(t *testing.T) {
 	exp := time.Date(2026, 11, 2, 12, 4, 0, 0, time.UTC)
 	src := &fakeSource{
 		texts:    map[string]string{"error.generic": "{{.name}}|{{.username}}|{{.telegramId}}|{{.expireAt}}"},
-		contacts: map[int64]model.UserContact{7: {FirstName: "<Ann>", Username: "ann", ExpireAt: &exp}, 8: {Username: "8"}},
+		contacts: map[int64]model.UserContact{7: {FirstName: "<Ann>", Username: "ann", ExpireAt: &exp}},
 	}
 	p, _, ctx, _ := setup(src)
 	for name, tc := range map[string]struct {
@@ -278,7 +278,6 @@ func TestUserGlobals(t *testing.T) {
 		"no user":     {ctx, "друг|—|—|—"},
 		"from update": {content.WithUser(ctx, 7, "Upd", ""), "Upd|—|7|2 ноября 2026 г. в 15:04, MSK"},
 		"by id":       {content.ForUser(ctx, 7), "&lt;Ann&gt;|ann|7|2 ноября 2026 г. в 15:04, MSK"},
-		"id as nick":  {content.ForUser(ctx, 8), "друг|—|8|—"},
 		"not in db":   {content.ForUser(ctx, 9), "друг|—|9|—"},
 	} {
 		if got := p.Text(tc.ctx, "error.generic", nil); got != tc.want {

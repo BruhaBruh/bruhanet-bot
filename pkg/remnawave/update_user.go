@@ -25,7 +25,7 @@ func (rw *remnawave) UpdateUser(
 		ID:                   api.NewOptInt(user.ID),
 		Status:               api.NewOptUpdateUserBodyStatus(api.UpdateUserBodyStatusACTIVE),
 		ExpireAt:             api.NewOptDateTime(expireAt),
-		Description:          api.NewOptNilString(fmt.Sprintf("@%s (%d)", username, telegramID)),
+		Description:          api.NewOptNilString(fmt.Sprintf("@%s (%d)", panelName(username, telegramID), telegramID)),
 		ActiveInternalSquads: []uuid.UUID{squadUUID},
 	})
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/handler/routes"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
@@ -20,7 +21,7 @@ const adminMessageID = 5
 func awaitPhoto(t *testing.T, e *env, base time.Time) model.Payment {
 	t.Helper()
 	p, _, err := e.pay.CreatePayment(t.Context(),
-		model.Payment{TelegramID: userID, Username: "42", Month: 6, Price: 800, PrevExpireAt: base}, nil)
+		model.Payment{TelegramID: userID, Month: 6, Price: 800, PrevExpireAt: base}, nil)
 	if err != nil {
 		t.Fatalf("CreatePayment: %v", err)
 	}
@@ -38,8 +39,8 @@ func inReview(t *testing.T, e *env, base time.Time) model.Payment {
 	if err := e.pay.SubmitPayment(t.Context(), p.ID, adminMessageID, "file", now); err != nil {
 		t.Fatalf("SubmitPayment: %v", err)
 	}
-	if err := e.pay.MarkAdvance(t.Context(), p.ID); err != nil {
-		t.Fatalf("MarkAdvance: %v", err)
+	if err := e.pay.GrantAdvance(t.Context(), p.ID, func(model.Payment) {}); err != nil {
+		t.Fatalf("GrantAdvance: %v", err)
 	}
 	if err := fsm.Put(t.Context(), fsm.For(e.fsm, userID), "in_review", nil); err != nil {
 		t.Fatalf("Put: %v", err)
@@ -125,10 +126,11 @@ func TestConfirmQueuesNotice(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		press func(int64) *models.Update
+		key   string
 		text  string
 	}{
-		{"confirm", confirmPress, "<b>Администратор подтвердил ваш платеж</b>\n\nВаша подписка была изменена"},
-		{"decline", declinePress, "<b>Администратор отклонил ваш платеж</b>\n\nВаша подписка была изменена на изначальную"},
+		{"confirm", confirmPress, "payment.confirmed", "<b>Администратор подтвердил ваш платеж</b>\n\nВаша подписка была изменена"},
+		{"decline", declinePress, "payment.declined", "<b>Администратор отклонил ваш платеж</b>\n\nВаша подписка была изменена на изначальную"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -146,9 +148,14 @@ func TestConfirmQueuesNotice(t *testing.T) {
 				t.Fatalf("outbox = %+v", out)
 			}
 			m := out[0]
-			if m.EventType != "payment_result" || m.ChatID != userID || m.Text != tc.text ||
-				m.ParseMode != string(models.ParseModeHTML) || m.Keyboard == nil {
+			if m.EventType != "payment_result" || m.ChatID != userID || m.TextKey != tc.key || m.ExpireAt.IsZero() ||
+				m.ParseMode != string(models.ParseModeHTML) {
 				t.Fatalf("outbox message = %+v", m)
+			}
+			// текст и клавиатуру рендерит воркер: те же, что раньше клал бот
+			text, kb := routes.PaymentNotice(t.Context(), e.c, e.rw, m.ChatID, m.TextKey, m.ExpireAt)
+			if text != tc.text || kb == nil {
+				t.Fatalf("notice = %q, keyboard = %v", text, kb)
 			}
 		})
 	}

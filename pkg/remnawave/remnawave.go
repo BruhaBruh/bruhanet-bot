@@ -3,6 +3,7 @@ package remnawave
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
@@ -35,4 +36,12 @@ func New(
 	return &remnawave{
 		client: api.NewClientExt(base),
 	}, nil
+}
+
+// panelName — имя юзера в панели: она требует непустое, а username в Telegram есть не у всех.
+func panelName(username string, telegramID int64) string {
+	if username != "" {
+		return username
+	}
+	return strconv.FormatInt(telegramID, 10)
 }

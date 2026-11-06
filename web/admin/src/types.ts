@@ -42,6 +42,7 @@ export interface Payment {
   resolvedAt: string | null
   promoId?: number | null
   basePrice?: number | null
+  hasPhoto?: boolean
 }
 
 export interface UserDetail {

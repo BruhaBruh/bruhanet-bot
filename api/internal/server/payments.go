@@ -11,9 +11,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/go-telegram/bot"
+	"github.com/google/uuid"
 
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
@@ -124,5 +127,55 @@ func (s *server) paymentPhoto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if _, err = io.Copy(w, br); err != nil {
 		stlog.Warn(r.Context(), "stream payment photo", "error", err)
+	}
+}
+
+// resolveTimeout — потолок решения целиком (транзакция + вызов панели); панель ограничена PanelTimeout.
+const resolveTimeout = 20 * time.Second
+
+// panelWrite — запись срока из транзакции платежа: с потолком времени и сразу в users, как writeThrough бота.
+type panelWrite struct{ s *server }
+
+func (p panelWrite) UpdateUser(ctx context.Context, id int64, username string, expireAt time.Time, squad uuid.UUID) (*api.UserItemInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.s.PanelTimeout)
+	defer cancel()
+	u, err := p.s.Panel.UpdateUser(ctx, id, username, expireAt, squad)
+	if err != nil {
+		return nil, err
+	}
+	// панель — источник правды: сбой записи не откатывает решение, его дочинит синхронизация
+	if err := p.s.Store.SetUserPanel(ctx, id, u.ExpireAt, string(u.Status), p.s.Now()); err != nil {
+		stlog.Warn(ctx, "failed to save panel state", "error", err)
+	}
+	return u, nil
+}
+
+// resolvePayment — подтверждение или отклонение из панели; логика та же, что у кнопок в боте (payflow.Resolve).
+func (s *server) resolvePayment(approve bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			writeBadRequest(w)
+			return
+		}
+		// закрытая вкладка не должна рвать транзакцию после записи в панель
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), resolveTimeout)
+		defer cancel()
+		p, err := payflow.Resolve(ctx, s.Store, panelWrite{s}, payflow.Decision{
+			ID: id, Approve: approve, At: s.Now(), Squad: s.Squad, AdminID: s.AdminID,
+		})
+		switch {
+		case err == nil:
+			writeJSON(w, http.StatusOK, p)
+		case errors.Is(err, store.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "Платёж устарел"})
+		case errors.Is(err, store.ErrNotPending):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "already_resolved", "message": "Уже обработано"})
+		case errors.Is(err, payflow.ErrPanel):
+			stlog.L(r.Context()).Error("resolve payment: panel", slog.Any("error", err))
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "panel_unavailable", "message": "Панель не ответила, платёж не изменён"})
+		default:
+			internal(w, r, "resolve payment", err)
+		}
 	}
 }

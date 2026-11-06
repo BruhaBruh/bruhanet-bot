@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/bruhabruh/bruhanet/core/model"
@@ -33,6 +34,9 @@ type Store interface {
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	PaymentsByUser(ctx context.Context, id int64) ([]model.Payment, error)
 	PaymentByID(ctx context.Context, id int64) (model.Payment, error)
+	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
+		apply func(model.Payment) ([]model.OutboxMessage, error)) (model.Payment, error)
+	SetUserPanel(ctx context.Context, id int64, expireAt time.Time, status string, at time.Time) error
 	ListPayments(ctx context.Context, f model.PaymentFilter) ([]model.Payment, int, error)
 	Revenue(ctx context.Context, from, to time.Time) (int, error)
 	TextOverrides(ctx context.Context) (map[string]string, error)
@@ -59,6 +63,7 @@ type Store interface {
 // Panel — Remnawave (pkg/remnawave).
 type Panel interface {
 	GetUser(ctx context.Context, telegramID int64) (*api.UserItemInfo, error)
+	UpdateUser(ctx context.Context, telegramID int64, username string, expireAt time.Time, squadUUID uuid.UUID) (*api.UserItemInfo, error)
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
 }
 
@@ -76,10 +81,12 @@ type Deps struct {
 	Defaults settings.Settings
 	// PanelTimeout — потолок на один вызов панели; 0 → 5с.
 	PanelTimeout time.Duration
-	AdminID      int64
-	BaseURL      string
-	Now          func() time.Time
-	Static       fs.FS
+	// Squad — внутренний сквад Remnawave для записи срока.
+	Squad   uuid.UUID
+	AdminID int64
+	BaseURL string
+	Now     func() time.Time
+	Static  fs.FS
 }
 
 // Requests — api_http_requests_total; route — шаблон маршрута ServeMux, без id.
@@ -108,6 +115,8 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/sync", s.runSync)
 	apiMux.HandleFunc("GET /api/payments", s.payments)
 	apiMux.HandleFunc("GET /api/payments/{id}/photo", s.paymentPhoto)
+	apiMux.HandleFunc("POST /api/payments/{id}/confirm", s.resolvePayment(true))
+	apiMux.HandleFunc("POST /api/payments/{id}/decline", s.resolvePayment(false))
 	apiMux.HandleFunc("GET /api/texts", s.texts)
 	apiMux.HandleFunc("PUT /api/texts/{key}", s.putText)
 	apiMux.HandleFunc("DELETE /api/texts/{key}", s.deleteText)

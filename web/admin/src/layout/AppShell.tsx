@@ -19,7 +19,8 @@ export function AppShell() {
   const [pending, setPending] = useState(0)
   const [customTitle, setPageTitle] = useState<string>()
   const [syncKey, setSyncKey] = useState(0)
-  const context: ShellContext = { setPageTitle, syncKey }
+  const [pendingKey, setPendingKey] = useState(0)
+  const context: ShellContext = { setPageTitle, syncKey, refreshPending: () => setPendingKey((k) => k + 1) }
   const tabs = useRef<HTMLDivElement>(null)
   const active = sectionOf(pathname).key
 
@@ -32,7 +33,7 @@ export function AppShell() {
     return () => {
       stale = true
     }
-  }, [pathname])
+  }, [pathname, pendingKey])
 
   // Вкладок больше, чем влезает в 390px: активную подкручиваем в зону видимости.
   useEffect(() => {

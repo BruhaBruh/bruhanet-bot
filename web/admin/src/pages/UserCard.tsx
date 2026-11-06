@@ -8,7 +8,8 @@ import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabe
 import { usePageTitle, useSyncKey } from '../layout/page-title'
 import { userLabel } from '../promo'
 import type { DirectMessage, UserDetail } from '../types'
-import { payActions, userPayColumns, userPayMobileRow } from './payment-columns'
+import { userPayColumns, userPayMobileRow } from './payment-columns'
+import { usePaymentReview } from './payment-review'
 
 // tiptap — отдельным чанком
 const Composer = lazy(() => import('../compose/Composer').then((m) => ({ default: m.Composer })))
@@ -75,11 +76,13 @@ function UserCardInner({ id }: { id?: string }) {
   const [composer, setComposer] = useState<'none' | 'open' | 'hidden'>('none')
 
   const syncKey = useSyncKey()
+  const [reloads, setReloads] = useState(0)
+  const review = usePaymentReview(() => setReloads((n) => n + 1))
   useEffect(() => {
     get<UserDetail>(`/api/users/${id}`).then(setD, (e) =>
       setError(e instanceof ApiError && e.status === 404 ? 'Пользователь не найден' : 'Не удалось загрузить пользователя'),
     )
-  }, [id, syncKey])
+  }, [id, syncKey, reloads])
 
   const name = d && (d.user.name || userLabel(d.user))
   usePageTitle(name)
@@ -215,8 +218,9 @@ function UserCardInner({ id }: { id?: string }) {
           title="Платежи"
           columns={userPayColumns}
           rows={d.payments}
-          rowActions={payActions}
-          mobileRow={userPayMobileRow}
+          rowActions={review.rowActions}
+          expandedRow={review.expandedRow}
+          mobileRow={(p) => ({ ...userPayMobileRow(p), chevron: true, onClick: () => review.toggle(p) })}
           empty="У пользователя пока нет платежей"
         />
       </div>
@@ -241,6 +245,7 @@ function UserCardInner({ id }: { id?: string }) {
           </ul>
         )}
       </Card>
+      {review.dialogs}
     </>
   )
 }

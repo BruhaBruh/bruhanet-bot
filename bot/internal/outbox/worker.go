@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
@@ -36,6 +38,9 @@ type Queue interface {
 	AddBroadcastReceived(ctx context.Context, telegramID int64) error
 }
 
+// Notice — текст и клавиатура уведомления о платеже (routes.PaymentNotice).
+type Notice func(ctx context.Context, chatID int64, key string, expireAt time.Time) (string, *models.InlineKeyboardMarkup)
+
 // Render подставляет переменные в текст для получателя (content.Provider): читает не больше строки users.
 type Render func(ctx context.Context, chatID int64, tpl string) string
 
@@ -43,6 +48,7 @@ type Worker struct {
 	q      Queue
 	b      *bot.Bot
 	render Render
+	notice Notice
 
 	interval, idle time.Duration
 	backoff        func(attempt int) time.Duration
@@ -50,9 +56,9 @@ type Worker struct {
 	attempts map[int64]int
 }
 
-func New(q Queue, b *bot.Bot, render Render) *Worker {
+func New(q Queue, b *bot.Bot, render Render, notice Notice) *Worker {
 	return &Worker{
-		q: q, b: b, render: render, interval: interval, idle: idle,
+		q: q, b: b, render: render, notice: notice, interval: interval, idle: idle,
 		backoff:  func(n int) time.Duration { return min(time.Duration(1<<n)*time.Second, time.Minute) },
 		attempts: map[int64]int{},
 	}
@@ -140,6 +146,12 @@ func (w *Worker) remove(ctx context.Context, it model.OutboxItem, ok bool) bool 
 }
 
 func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
+	if it.EventType == payflow.EventAdminClosed {
+		return w.closeAdminMessage(ctx, it)
+	}
+	if it.TextKey != "" {
+		it.Text, it.Keyboard = w.notice(ctx, it.ChatID, it.TextKey, it.ExpireAt)
+	}
 	if it.Template {
 		it.Text = w.render(ctx, it.ChatID, it.Text)
 	}
@@ -178,6 +190,34 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 	}
 }
 
+// closeAdminMessage — платёж решён в панели: у сообщения админа в боте тот же исход, что после кнопки. Платёж уже
+// закоммичен, сбой здесь его не отменяет. BadRequest на кнопках (их уже нет или ещё нет) реакцию не останавливает.
+func (w *Worker) closeAdminMessage(ctx context.Context, it model.OutboxItem) error {
+	if it.MessageID == 0 {
+		return nil
+	}
+	_, err := w.b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{
+		ChatID: it.ChatID, MessageID: it.MessageID,
+		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{}},
+	})
+	if err != nil && !errors.Is(err, bot.ErrorBadRequest) {
+		return err
+	}
+	emoji := "👎"
+	if it.Confirmed {
+		emoji = "👍"
+	}
+	_, err = w.b.SetMessageReaction(ctx, &bot.SetMessageReactionParams{
+		ChatID: it.ChatID, MessageID: it.MessageID,
+		Reaction: []models.ReactionType{{
+			Type:              models.ReactionTypeTypeEmoji,
+			ReactionTypeEmoji: &models.ReactionTypeEmoji{Type: models.ReactionTypeTypeEmoji, Emoji: emoji},
+		}},
+		IsBig: bot.True(),
+	})
+	return err
+}
+
 // summary — итог рассылки из счётчиков в БД; рассылки /a (нет в таблице) — заглушка.
 func (w *Worker) summary(ctx context.Context, it model.OutboxItem) (string, error) {
 	id, perr := uuid.Parse(it.Broadcast)
@@ -200,6 +240,15 @@ func (w *Worker) summary(ctx context.Context, it model.OutboxItem) (string, erro
 func (w *Worker) count(ctx context.Context, it model.OutboxItem, ok bool) {
 	var err error
 	switch it.EventType {
+	case payflow.EventAdminClosed:
+		// решение из панели: у api своего счётчика нет, бизнес-метрики платежей живут в боте
+		stage := "declined"
+		if it.Confirmed {
+			stage = "confirmed"
+			observability.PaymentsConfirmedRubles.WithLabelValues(strconv.Itoa(it.Months)).Add(float64(it.Price))
+		}
+		observability.Payments.WithLabelValues(stage, strconv.Itoa(it.Months)).Inc()
+		return
 	case "broadcast_summary":
 		observability.Broadcasts.Inc() // одна рассылка = один итог (и /a-строки тоже)
 		return

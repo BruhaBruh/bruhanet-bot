@@ -99,15 +99,25 @@ func (s *Store) SubmitPayment(ctx context.Context, id int64, adminMessageID int,
 	return nil
 }
 
-func (s *Store) MarkAdvance(ctx context.Context, id int64) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE payments SET advance_granted = true WHERE id = $1`, id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+// GrantAdvance под блокировкой строки ставит флаг аванса и вызывает apply (запись срока в панель): решение
+// админа не вклинится между проверкой статуса и записью и не будет затёрто авансом. Платёж уже решён — ErrNotPending.
+// Сбой панели apply оставляет у себя: флаг коммитится, перебор счётчика лучше бесплатного дня без учёта.
+func (s *Store) GrantAdvance(ctx context.Context, id int64, apply func(p model.Payment)) error {
+	return s.tx(ctx, func(tx pgx.Tx) error {
+		p, err := scanPayment(tx.QueryRow(ctx, `SELECT `+paymentCols+` FROM payments WHERE id = $1 FOR UPDATE`, id))
+		if err != nil {
+			return err
+		}
+		if p.Status != model.PaymentPending {
+			return ErrNotPending
+		}
+		if _, err = tx.Exec(ctx, `UPDATE payments SET advance_granted = true WHERE id = $1`, id); err != nil {
+			return err
+		}
+		p.AdvanceGranted = true
+		apply(p)
+		return nil
+	})
 }
 
 // UserStats считает статистику юзера; UnpaidAdvances — выданные авансы после последнего confirmed.
@@ -129,11 +139,11 @@ func (s *Store) UserStats(ctx context.Context, telegramID, excludeID int64) (mod
 }
 
 // ResolvePayment под блокировкой строки вызывает apply и переводит pending в confirmed|declined;
-// сообщение из apply кладётся в outbox в той же транзакции. Подтверждение платежа с промокодом
+// сообщения из apply кладутся в outbox в той же транзакции. Подтверждение платежа с промокодом
 // записывает активацию (без проверки лимита; повтор тем же юзером — ничего не делает).
 // При ErrNotPending возвращается и загруженный платёж.
 func (s *Store) ResolvePayment(
-	ctx context.Context, id int64, status model.PaymentStatus, at time.Time, apply func(p model.Payment) (model.OutboxMessage, error),
+	ctx context.Context, id int64, status model.PaymentStatus, at time.Time, apply func(p model.Payment) ([]model.OutboxMessage, error),
 ) (model.Payment, error) {
 	if status != model.PaymentConfirmed && status != model.PaymentDeclined {
 		return model.Payment{}, errors.Join(ErrInvalidStatus, fmt.Errorf("status %q", status))
@@ -154,7 +164,7 @@ func (s *Store) ResolvePayment(
 				return err
 			}
 		}
-		msg, err := apply(p)
+		msgs, err := apply(p)
 		if err != nil {
 			return err
 		}
@@ -162,8 +172,10 @@ func (s *Store) ResolvePayment(
 			id, status, at); err != nil {
 			return err
 		}
-		if err = enqueue(ctx, tx, msg); err != nil {
-			return err
+		for _, m := range msgs {
+			if err = enqueue(ctx, tx, m); err != nil {
+				return err
+			}
 		}
 		p.Status, p.ResolvedAt = status, &at
 		return nil

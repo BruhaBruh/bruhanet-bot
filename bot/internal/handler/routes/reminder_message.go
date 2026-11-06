@@ -21,3 +21,10 @@ func ReminderMessage(ctx context.Context, c *content.Provider, kind string, expi
 		copyButton(ctx, c, "button.subscription", subURL, keyboard.StylePrimary),
 	))
 }
+
+// PaymentNotice — уведомление юзеру о решении по платежу, из строки outbox: текст key с новым сроком и главная клавиатура.
+// Рендерится при доставке: решение принимает и api, у которого нет ни реестра кнопок, ни клавиатур бота.
+func PaymentNotice(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64, key string, expireAt time.Time) (string, *models.InlineKeyboardMarkup) {
+	ctx = content.ForUser(ctx, telegramID)
+	return c.Text(ctx, key, map[string]string{"expireAt": formatTime(expireAt)}), mainKeyboard(ctx, c, rw, telegramID)
+}

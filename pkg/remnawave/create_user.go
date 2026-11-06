@@ -16,6 +16,7 @@ func (rw *remnawave) CreateUser(
 	username string,
 	squadUUID uuid.UUID,
 ) (*api.UserItemInfo, error) {
+	username = panelName(username, telegramID)
 	existingUser, _ := rw.GetUser(ctx, telegramID)
 	if existingUser != nil {
 		return existingUser, nil

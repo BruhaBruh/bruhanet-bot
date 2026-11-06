@@ -155,10 +155,6 @@ func (p *Provider) values(ctx context.Context, s settings.Settings, body string,
 			contact.FirstName, contact.Username = loaded.FirstName, loaded.Username
 		}
 	}
-	// ponytail: users.username бывает telegram id (telegramUsername для панели); уйдёт с багом этапа 3.
-	if contact.Username == strconv.FormatInt(r.id, 10) {
-		contact.Username = ""
-	}
 	nobody := "друг"
 	if r.fromUpdate { // как в сообщении админу о платеже: автор апдейта без имени и username
 		nobody = "#" + strconv.FormatInt(r.id, 10)

@@ -31,14 +31,6 @@ func displayName(u *models.Update) string {
 	return fmt.Sprintf("#%d", user.ID)
 }
 
-// telegramUsername — имя для панели и админа: username, без него — ID.
-func telegramUsername(user *models.User) string {
-	if user.Username != "" {
-		return user.Username
-	}
-	return fmt.Sprintf("%d", user.ID)
-}
-
 func send(ctx context.Context, b *bot.Bot, chatID int64, kb *models.InlineKeyboardMarkup, rows ...string) *models.Message {
 	params := &bot.SendMessageParams{
 		ChatID:    chatID,
