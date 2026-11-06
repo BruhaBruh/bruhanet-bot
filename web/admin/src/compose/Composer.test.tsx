@@ -43,7 +43,7 @@ beforeEach(() => {
   me = NO_ME
   calls = []
   replies = {
-    'GET /api/broadcasts/recipients?days=7': [json(200, { all: 3, active: 2, no_subscription: 1, expiring: 1 })],
+    'GET /api/broadcasts/recipients?days=7': [json(200, { all: 3, active: 2, no_subscription: 1, expiring: 1, trial: 4 })],
     'GET /api/broadcasts/recipients?audience=all': [json(200, { count: 3 })],
   }
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
@@ -679,12 +679,13 @@ describe('Composer', () => {
   })
 
   it('audience radios show counts and the choice goes to the server with days', async () => {
-    replies['GET /api/broadcasts/recipients?days=3'] = [json(200, { all: 3, active: 2, no_subscription: 1, expiring: 5 })]
+    replies['GET /api/broadcasts/recipients?days=3'] = [json(200, { all: 3, active: 2, no_subscription: 1, expiring: 5, trial: 4 })]
     replies['GET /api/broadcasts/recipients?audience=expiring&days=3'] = [json(200, { count: 5 })]
     replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
     const { setText, click } = await setup()
-    const counts = () => ['Все пользователи', 'Активные подписчики', 'Без подписки', 'Подписка истекает через'].map((n) => screen.getByLabelText(`Получателей: ${n}`).textContent)
-    expect(counts()).toEqual(['3', '2', '1', '1'])
+    const counts = () =>
+      ['Все пользователи', 'Активные подписчики', 'Без подписки', 'Подписка истекает через', 'Пробный период'].map((n) => screen.getByLabelText(`Получателей: ${n}`).textContent)
+    expect(counts()).toEqual(['3', '2', '1', '1', '4'])
     expect(screen.getByRole('radio', { name: 'Все пользователи' }).getAttribute('aria-checked')).toBe('true')
     await setText('hi')
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Дней до окончания подписки' }), { target: { value: '3' } })
@@ -695,6 +696,20 @@ describe('Composer', () => {
     expect(screen.getByRole('alertdialog').textContent).toContain('получат 5 пользователей из группы «Подписка истекает через 3 дня»')
     await click(CONFIRM)
     expect(posts()[0].body).toMatchObject({ audience: 'expiring', audienceDays: 3 })
+  })
+
+  it('trial audience is a choice with its own count and is sent without days', async () => {
+    replies['GET /api/broadcasts/recipients?audience=trial'] = [json(200, { count: 4 })]
+    replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
+    const { setText, click } = await setup()
+    await setText('hi')
+    fireEvent.click(screen.getByRole('radio', { name: 'Пробный период' }))
+    await flush()
+    expect(screen.getByRole('radio', { name: 'Пробный период' }).getAttribute('aria-checked')).toBe('true')
+    await click('Отправить 4 получателям')
+    expect(screen.getByRole('alertdialog').textContent).toContain('«Пробный период»')
+    await click(CONFIRM)
+    expect(posts()[0].body).toMatchObject({ audience: 'trial', audienceDays: null })
   })
 
   it('days outside 1..60 disable sending', async () => {

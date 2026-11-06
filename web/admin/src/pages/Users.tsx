@@ -44,6 +44,14 @@ function UserStatus({ user: u }: { user: UserSummary }) {
     )
   }
   if (!u.panelStatus) return DASH
+  // на пробном: подписка действует и ещё не оплачена
+  if (u.inTrial && u.panelStatus === 'ACTIVE' && u.expireAt && new Date(u.expireAt) > new Date()) {
+    return (
+      <StatusTag tone="accent" dot>
+        Пробный
+      </StatusTag>
+    )
+  }
   return (
     <StatusTag tone={panelStatusTones[u.panelStatus] ?? 'neutral'} dot>
       {panelStatusLabels[u.panelStatus] ?? u.panelStatus}

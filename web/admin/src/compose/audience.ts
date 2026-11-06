@@ -6,6 +6,7 @@ export const AUDIENCES: { value: Audience; label: string }[] = [
   { value: 'active', label: 'Активные подписчики' },
   { value: 'no_subscription', label: 'Без подписки' },
   { value: 'expiring', label: 'Подписка истекает через' },
+  { value: 'trial', label: 'Пробный период' },
 ]
 export const DEFAULT_DAYS = '7'
 export const MIN_DAYS = 1

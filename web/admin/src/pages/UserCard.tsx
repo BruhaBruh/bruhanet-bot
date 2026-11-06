@@ -184,6 +184,7 @@ function UserCardInner({ id }: { id?: string }) {
             ['Срок до', panel.error ? PANEL_UNAVAILABLE : day(panel.expireAt)],
             ['Статус', !panel.error && panel.status ? panelStatusLabel(panel.status) : DASH],
             ['Тариф', user.tariffMonths ? `${user.tariffMonths} мес.` : DASH],
+            ['Пробный период', user.trialUsedAt ? `использован ${day(user.trialUsedAt)}` : DASH],
             ['Устройства', devices ? `${devices.base} + ${devices.extra} = ${devices.base + devices.extra}` : DASH],
             [
               'ID в панели',

@@ -30,6 +30,8 @@ const user = (id: number, username: string, confirmed = 0, over = {}) => ({
   tariffMonths: null,
   lastSeenAt: null,
   broadcastsReceived: 0,
+  trialUsedAt: null,
+  inTrial: false,
   ...over,
 })
 const page = (items: unknown[], over = {}) => ({ items, total: items.length, page: 1, pages: 1, ...over })
@@ -169,6 +171,25 @@ describe('Users', () => {
     expect(userCalls(f).at(-1)).toBe('/api/users?q=&tab=trial')
   })
 
+  it('marks users on an active trial with the «Пробный» tag; an expired or paid trial has none', async () => {
+    const future = new Date(Date.now() + 2 * 86400_000).toISOString()
+    const past = new Date(Date.now() - 86400_000).toISOString()
+    stub({
+      '/api/users?': () =>
+        json(200, page([
+          user(1, 'trial', 0, { panelStatus: 'ACTIVE', expireAt: future, inTrial: true, trialUsedAt: '2026-11-05T10:00:00Z' }),
+          user(2, 'ended', 0, { panelStatus: 'EXPIRED', expireAt: past, inTrial: true, trialUsedAt: '2026-10-01T10:00:00Z' }),
+          user(3, 'paid', 1, { panelStatus: 'ACTIVE', expireAt: future, inTrial: false, trialUsedAt: '2026-10-01T10:00:00Z' }),
+        ])),
+    })
+    await renderAt('/users')
+    const rows = within(screen.getByRole('table')).getAllByRole('row')
+    const row = (name: string) => rows.find((r) => within(r).queryByText(name))!
+    expect(within(row('@trial')).getByText('Пробный')).toBeTruthy()
+    expect(within(row('@ended')).queryByText('Пробный')).toBeNull()
+    expect(within(row('@paid')).queryByText('Пробный')).toBeNull()
+  })
+
   it('shows name with username under it and «заблокировал бота» over the panel status', async () => {
     stub({ '/api/users?': () => json(200, page([user(1, 'ann', 0, { name: 'Анна К', panelStatus: 'ACTIVE', blockedBotAt: '2026-11-01T10:00:00Z' })])) })
     await renderAt('/users')
@@ -254,6 +275,7 @@ describe('UserCard', () => {
     expect(screen.getByText('Первая оплата').nextSibling?.textContent).toBe('15 сент. 2026')
     expect(screen.getByText('Последний визит').nextSibling?.textContent).toBe('—')
     expect(screen.getByText('Тариф', { selector: 'dt' }).nextSibling?.textContent).toBe('—')
+    expect(screen.getByText('Пробный период', { selector: 'dt' }).nextSibling?.textContent).toBe('—')
     expect(screen.getByText('Промокоды', { selector: 'dt' }).nextSibling?.textContent).toBe('—')
     expect(screen.getByText('Получил рассылок').nextSibling?.textContent).toBe('0')
     expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('—')
@@ -288,11 +310,12 @@ describe('UserCard', () => {
   })
 
   it('shows name, tariff, last visit, broadcasts and promos from the API', async () => {
-    const bob = user(7, 'bob', 2, { name: 'Боб М', tariffMonths: 6, lastSeenAt: '2026-10-05T10:00:00Z', broadcastsReceived: 12, blockedBotAt: '2026-11-01T10:00:00Z' })
+    const bob = user(7, 'bob', 2, { name: 'Боб М', tariffMonths: 6, lastSeenAt: '2026-10-05T10:00:00Z', broadcastsReceived: 12, blockedBotAt: '2026-11-01T10:00:00Z', trialUsedAt: '2026-11-05T10:00:00Z' })
     stub({ '/api/users/7': () => json(200, detail({ user: bob, promos: [{ code: 'SUMMER', kind: 'percent', value: 10, activatedAt: '' }, { code: 'DAYS5', kind: 'days', value: 5, activatedAt: '' }] })) })
     await renderAt('/users/7')
     expect(screen.getByRole('heading', { level: 2, name: 'Боб М' })).toBeTruthy()
     expect(screen.getByText('Тариф', { selector: 'dt' }).nextSibling?.textContent).toBe('6 мес.')
+    expect(screen.getByText('Пробный период', { selector: 'dt' }).nextSibling?.textContent).toBe('использован 5 нояб. 2026')
     expect(screen.getByText('Последний визит').nextSibling?.textContent).toMatch(/^5 окт.*13:00$/)
     expect(screen.getByText('Получил рассылок').nextSibling?.textContent).toBe('12')
     expect(screen.getByText('Промокоды', { selector: 'dt' }).nextSibling?.textContent).toBe('SUMMER, DAYS5')
