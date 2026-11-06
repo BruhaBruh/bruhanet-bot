@@ -111,6 +111,18 @@ func (s *Store) LastPanelSync(ctx context.Context) (model.PanelSync, error) {
 	return r, err
 }
 
+// MarkBotBlocked отмечает, что юзер заблокировал бота; время первой блокировки сохраняется. Нет юзера — ничего.
+func (s *Store) MarkBotBlocked(ctx context.Context, id int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE users SET blocked_bot_at = coalesce(blocked_bot_at, now()) WHERE telegram_id = $1`, id)
+	return err
+}
+
+// AddBroadcastReceived учитывает доставленную юзеру рассылку. Нет юзера — ничего.
+func (s *Store) AddBroadcastReceived(ctx context.Context, id int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE users SET broadcasts_received = broadcasts_received + 1 WHERE telegram_id = $1`, id)
+	return err
+}
+
 // UserPromos — применённые юзером коды, новые первыми.
 func (s *Store) UserPromos(ctx context.Context, id int64) ([]model.UserPromo, error) {
 	rows, err := s.pool.Query(ctx, `SELECT c.code, c.kind, c.value, a.created_at

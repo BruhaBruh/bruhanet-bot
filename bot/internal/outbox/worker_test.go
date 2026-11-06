@@ -25,6 +25,26 @@ type fakeQueue struct {
 
 	broadcasts map[uuid.UUID]*model.Broadcast // счётчики «в БД»
 	direct     map[int64]string               // direct_id → статус
+	blocked    []int64
+	received   map[int64]int
+	markErr    error
+}
+
+func (q *fakeQueue) MarkBotBlocked(_ context.Context, id int64) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.blocked = append(q.blocked, id)
+	return q.markErr
+}
+
+func (q *fakeQueue) AddBroadcastReceived(_ context.Context, id int64) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.received == nil {
+		q.received = map[int64]int{}
+	}
+	q.received[id]++
+	return nil
 }
 
 func (q *fakeQueue) addBroadcast(total int) uuid.UUID {
@@ -415,5 +435,41 @@ func TestWorkerBroadcastsTotal(t *testing.T) {
 	drain(t, w, q)
 	if got := testutil.ToFloat64(observability.Broadcasts) - before; got != 2 {
 		t.Fatalf("broadcasts_total delta = %v, want 2", got)
+	}
+}
+
+func TestWorkerForbiddenMarksUserBlocked(t *testing.T) {
+	srv, q, w := setup(t)
+	srv.FailChat(7, 403, "Forbidden: bot was blocked by the user")
+	srv.FailChat(8, 400, "Bad Request: chat not found")
+	q.add(
+		model.OutboxMessage{EventType: "payment_result", ChatID: 7, Text: "x"},
+		model.OutboxMessage{EventType: "reminder", ChatID: 8, Text: "x"},
+	)
+	drain(t, w, q)
+	if !slices.Equal(q.blocked, []int64{7}) {
+		t.Fatalf("blocked = %v", q.blocked)
+	}
+
+	// Сбой записи флага не держит очередь.
+	q.markErr = errors.New("db down")
+	q.add(model.OutboxMessage{EventType: "reminder", ChatID: 7, Text: "x"})
+	drain(t, w, q)
+}
+
+func TestWorkerCountsReceivedBroadcasts(t *testing.T) {
+	srv, q, w := setup(t)
+	srv.FailChat(8, 403, "Forbidden: bot was blocked by the user")
+	id := q.addBroadcast(2).String()
+	q.add(
+		model.OutboxMessage{EventType: "broadcast", ChatID: 7, Text: "x", Broadcast: id},
+		model.OutboxMessage{EventType: "broadcast", ChatID: 8, Text: "x", Broadcast: id},
+		model.OutboxMessage{EventType: "broadcast", ChatID: 7, Text: "y", Broadcast: "legacy"},
+		model.OutboxMessage{EventType: "direct", ChatID: 7, Text: "z", DirectID: 1},
+		model.OutboxMessage{EventType: "reminder", ChatID: 7, Text: "z"},
+	)
+	drain(t, w, q)
+	if q.received[7] != 2 || q.received[8] != 0 {
+		t.Fatalf("received = %v", q.received)
 	}
 }

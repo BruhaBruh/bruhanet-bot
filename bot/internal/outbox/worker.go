@@ -32,6 +32,8 @@ type Queue interface {
 	BroadcastDelivered(ctx context.Context, id uuid.UUID, ok bool) error
 	FinishBroadcast(ctx context.Context, id uuid.UUID) (model.Broadcast, error)
 	DirectDelivered(ctx context.Context, id int64, ok bool) error
+	MarkBotBlocked(ctx context.Context, telegramID int64) error
+	AddBroadcastReceived(ctx context.Context, telegramID int64) error
 }
 
 type Worker struct {
@@ -86,6 +88,12 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 			observability.OutboxMessages.WithLabelValues(it.EventType, "sent").Inc()
 			return w.remove(ctx, it, true)
 		case errors.Is(err, bot.ErrorForbidden), errors.Is(err, bot.ErrorBadRequest):
+			if errors.Is(err, bot.ErrorForbidden) {
+				// Повтор идемпотентен: остаётся время первой блокировки.
+				if merr := w.q.MarkBotBlocked(context.WithoutCancel(ctx), it.ChatID); merr != nil {
+					stlog.Error(ctx, "failed to mark bot blocked", "error", merr)
+				}
+			}
 			stlog.Warn(ctx, "outbox message rejected", "event_type", it.EventType, "error", err)
 			observability.OutboxMessages.WithLabelValues(it.EventType, "dropped").Inc()
 			return w.remove(ctx, it, false)
@@ -194,6 +202,13 @@ func (w *Worker) count(ctx context.Context, it model.OutboxItem, ok bool) {
 			result = "sent"
 		}
 		observability.BroadcastMessages.WithLabelValues(result).Inc()
+		if ok {
+			// count идёт раз на строку outbox, после её удаления: повторная отправка не удваивает счётчик.
+			// Падение между удалением и этой записью теряет одну отметку, как и у счётчиков рассылки.
+			if rerr := w.q.AddBroadcastReceived(ctx, it.ChatID); rerr != nil {
+				stlog.Error(ctx, "broadcast receipt not recorded", "error", rerr)
+			}
+		}
 		id, perr := uuid.Parse(it.Broadcast)
 		if perr != nil {
 			return // строка /a без uuid

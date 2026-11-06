@@ -173,3 +173,34 @@ func TestWithPanelSyncLock(t *testing.T) {
 		t.Fatalf("after release: ran=%v err=%v", ran, err)
 	}
 }
+
+func TestDeliveryMarks(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	addUser(t, s, 1, "a")
+	for _, f := range []func(context.Context, int64) error{s.MarkBotBlocked, s.AddBroadcastReceived, s.AddBroadcastReceived} {
+		if err := f(ctx, 1); err != nil {
+			t.Fatal(err)
+		}
+		if err := f(ctx, 999); err != nil { // юзера нет — не ошибка
+			t.Fatal(err)
+		}
+	}
+	u, err := s.UserByID(ctx, 1)
+	if err != nil || u.BlockedBotAt == nil || u.BroadcastsReceived != 2 {
+		t.Fatalf("%+v %v", u, err)
+	}
+	first := *u.BlockedBotAt
+	if err = s.MarkBotBlocked(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if u, err = s.UserByID(ctx, 1); err != nil || !u.BlockedBotAt.Equal(first) {
+		t.Fatalf("first time lost: %+v %v", u, err)
+	}
+	if err = s.TouchUser(ctx, model.UserSeen{TelegramID: 1, Username: "a", At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if u, err = s.UserByID(ctx, 1); err != nil || u.BlockedBotAt != nil {
+		t.Fatalf("not cleared: %+v %v", u, err)
+	}
+}
