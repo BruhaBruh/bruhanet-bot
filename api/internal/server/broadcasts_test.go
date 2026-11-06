@@ -2,7 +2,7 @@ package server_test
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -98,35 +98,14 @@ func TestBroadcastPreviewSend(t *testing.T) {
 	}
 }
 
-func TestBroadcastRecipients(t *testing.T) {
-	h, _, c := bcServer(t, &fakePanel{ids: []int{5, 0, 7, 5}})
-	if w := send(h, http.MethodGet, "/api/broadcasts/recipients", c, ""); w.Code != http.StatusOK ||
-		strings.TrimSpace(w.Body.String()) != `{"count":2}` {
-		t.Fatalf("%d %s", w.Code, w.Body)
-	}
-
-	h, _, c = bcServer(t, &fakePanel{ids: []int{5}, usersErr: errors.New("boom")})
-	if w := send(h, http.MethodGet, "/api/broadcasts/recipients", c, ""); w.Code != http.StatusBadGateway ||
-		strings.TrimSpace(w.Body.String()) != `{"error":"panel_unavailable"}` {
-		t.Fatalf("panel down: %d %s", w.Code, w.Body)
-	}
-}
-
-func TestBroadcastRecipientsTimeout(t *testing.T) {
-	h, st := newServerTimeout(t, "http://localhost:5173", blockingPanel{}, 20*time.Millisecond)
-	c := st.addSession(t, adminID, now.Add(time.Hour))
-	if w := send(h, http.MethodGet, "/api/broadcasts/recipients", c, ""); w.Code != http.StatusBadGateway {
-		t.Fatalf("%d %s", w.Code, w.Body)
-	}
-}
-
 type bcResp struct {
 	Broadcast model.Broadcast `json:"broadcast"`
 }
 
 // Review Focus 1: двойной клик «Разослать» с тем же ключом — одна рассылка.
 func TestBroadcastCreateIdempotent(t *testing.T) {
-	h, st, c := bcServer(t, &fakePanel{ids: []int{5, 7, 5}})
+	h, st, c := bcServer(t, &fakePanel{})
+	st.bcRecipients = []int64{5, 7}
 	key := uuid.New()
 	body := jsonBody(t, map[string]any{"idempotencyKey": key, "text": "Новости", "photo": "AgAD"})
 
@@ -161,7 +140,7 @@ func TestBroadcastCreateIdempotent(t *testing.T) {
 
 // Review Focus 3: подпись к фото длиннее 1024 — 400 с понятным текстом, ничего не создано.
 func TestBroadcastCaptionLimit(t *testing.T) {
-	h, st, c := bcServer(t, &fakePanel{ids: []int{5}})
+	h, st, c := bcServer(t, &fakePanel{})
 	long := "<b>" + strings.Repeat("я", 1025) + "</b>"
 
 	w := send(h, http.MethodPost, "/api/broadcasts", c, jsonBody(t, map[string]any{"idempotencyKey": uuid.New(), "text": long, "photo": "AgAD"}))
@@ -189,11 +168,7 @@ func TestBroadcastCaptionLimit(t *testing.T) {
 }
 
 func TestBroadcastCreateErrors(t *testing.T) {
-	h, st, c := bcServer(t, &fakePanel{ids: []int{5}, usersErr: errors.New("boom")})
-	if w := send(h, http.MethodPost, "/api/broadcasts", c, jsonBody(t, map[string]any{"idempotencyKey": uuid.New(), "text": "x"})); w.Code != http.StatusBadGateway ||
-		strings.TrimSpace(w.Body.String()) != `{"error":"panel_unavailable"}` {
-		t.Fatalf("panel down: %d %s", w.Code, w.Body)
-	}
+	h, st, c := bcServer(t, &fakePanel{})
 	for _, body := range []string{`{"text":"x"}`, `{"idempotencyKey":"nope","text":"x"}`, jsonBody(t, map[string]any{"idempotencyKey": uuid.New(), "text": ""})} {
 		if w := send(h, http.MethodPost, "/api/broadcasts", c, body); w.Code != http.StatusBadRequest {
 			t.Fatalf("%s: %d %s", body, w.Code, w.Body)
@@ -205,7 +180,7 @@ func TestBroadcastCreateErrors(t *testing.T) {
 }
 
 func TestBroadcastList(t *testing.T) {
-	h, st, c := bcServer(t, &fakePanel{ids: []int{5}})
+	h, st, c := bcServer(t, &fakePanel{})
 	for range 21 {
 		if w := send(h, http.MethodPost, "/api/broadcasts", c, jsonBody(t, map[string]any{"idempotencyKey": uuid.New(), "text": "x"})); w.Code != http.StatusCreated {
 			t.Fatal(w.Code)
@@ -220,8 +195,8 @@ func TestBroadcastList(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	if out.Total != 21 || len(out.Items) != 1 || out.Items[0].ID != st.broadcasts[0].b.ID ||
-		st.lastF.Limit != 20 || st.lastF.Offset != 20 {
-		t.Fatalf("out = %+v, f = %+v", out, st.lastF)
+		st.lastBF.Limit != 20 || st.lastBF.Offset != 20 {
+		t.Fatalf("out = %+v, f = %+v", out, st.lastBF)
 	}
 	if w := send(h, http.MethodGet, "/api/broadcasts?page=0", c, ""); w.Code != http.StatusBadRequest {
 		t.Fatalf("page=0: %d", w.Code)
@@ -230,7 +205,7 @@ func TestBroadcastList(t *testing.T) {
 
 // Худший случай после подстановки: ошибка называет переменную; граница, эмодзи = 2 единицы UTF-16, личные — те же правила.
 func TestMessageWorstCaseNamesVar(t *testing.T) {
-	h, st, c := bcServer(t, &fakePanel{ids: []int{5}})
+	h, st, c := bcServer(t, &fakePanel{})
 	st.setRaw = map[string][]byte{"vars": []byte(`{"my":"a"}`)}
 	post := func(path string, in map[string]any) (int, string) {
 		w := send(h, http.MethodPost, path, c, jsonBody(t, in))
@@ -262,5 +237,141 @@ func TestMessageWorstCaseNamesVar(t *testing.T) {
 	}
 	if code, body := post("/api/users/7/messages", map[string]any{"text": strings.Repeat("a", 4001) + "{{.my}}"}); code != http.StatusBadRequest || !strings.Contains(body, "{{.my}}") {
 		t.Fatalf("direct: %d %s", code, body)
+	}
+}
+
+func postBC(t *testing.T, h http.Handler, c string, in map[string]any) (int, model.Broadcast) {
+	t.Helper()
+	w := send(h, http.MethodPost, "/api/broadcasts", c, jsonBody(t, in))
+	var out bcResp
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	return w.Code, out.Broadcast
+}
+
+// now = 2026-11-02 12:00 UTC = 15:00 МСК. Время приходит по Москве, хранится в UTC; прошедшее и кривое — 400.
+func TestBroadcastSchedule(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	st.bcRecipients = []int64{5}
+	key := uuid.New()
+	in := map[string]any{"idempotencyKey": key, "text": "позже", "scheduledAt": "2026-11-02T18:30"}
+	code, b := postBC(t, h, c, in)
+	want := time.Date(2026, 11, 2, 15, 30, 0, 0, time.UTC)
+	if code != http.StatusCreated || b.Status != "scheduled" || b.ScheduledAt == nil || !b.ScheduledAt.Equal(want) || b.Total != 0 {
+		t.Fatalf("%d %+v", code, b)
+	}
+	if len(st.broadcasts[0].recipients) != 0 {
+		t.Fatal("scheduled must not resolve recipients")
+	}
+	// двойной клик: одна строка
+	if code, again := postBC(t, h, c, in); code != http.StatusOK || again.ID != b.ID || len(st.broadcasts) != 1 {
+		t.Fatalf("repeat: %d %+v n=%d", code, again, len(st.broadcasts))
+	}
+	for at, wantCode := range map[string]int{
+		"2026-11-02T15:01": http.StatusCreated,
+		"2026-11-02T15:00": http.StatusBadRequest, // ровно сейчас — уже не будущее
+		"2026-11-02T14:59": http.StatusBadRequest,
+		"2026-11-01T10:00": http.StatusBadRequest,
+		// пояс и секунды не принимаем: поле всегда московское
+		"2026-11-02T18:30:00Z":      http.StatusBadRequest,
+		"2026-11-02T18:30:00+03:00": http.StatusBadRequest,
+		"2026-11-02 18:30":          http.StatusBadRequest,
+		"2026-13-02T18:30":          http.StatusBadRequest,
+		"завтра":                    http.StatusBadRequest,
+	} {
+		code, _ := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "x", "scheduledAt": at})
+		if code != wantCode {
+			t.Errorf("%q: %d, want %d", at, code, wantCode)
+		}
+	}
+	// без времени — сразу
+	if code, now := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "x"}); code != http.StatusCreated || now.Status != "sending" || now.Total != 1 {
+		t.Fatalf("now: %d %+v", code, now)
+	}
+}
+
+func TestBroadcastEditCancelGet(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	st.bcRecipients = []int64{5}
+	_, sched := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "v1", "scheduledAt": "2026-11-03T10:00"})
+	_, sent := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "now"})
+	put := func(id any, body map[string]any) (int, string) {
+		w := send(h, http.MethodPut, "/api/broadcasts/"+fmt.Sprint(id), c, jsonBody(t, body))
+		return w.Code, w.Body.String()
+	}
+
+	code, body := put(sched.ID, map[string]any{"text": "v2", "scheduledAt": "2026-11-04T09:15"})
+	var out bcResp
+	_ = json.Unmarshal([]byte(body), &out)
+	if code != http.StatusOK || out.Broadcast.Text != "v2" || !out.Broadcast.ScheduledAt.Equal(time.Date(2026, 11, 4, 6, 15, 0, 0, time.UTC)) {
+		t.Fatalf("edit: %d %s", code, body)
+	}
+	for name, tc := range map[string]struct {
+		id   any
+		body map[string]any
+		want int
+	}{
+		"no time":       {sched.ID, map[string]any{"text": "x"}, http.StatusBadRequest},
+		"past":          {sched.ID, map[string]any{"text": "x", "scheduledAt": "2026-11-02T10:00"}, http.StatusBadRequest},
+		"empty text":    {sched.ID, map[string]any{"text": "", "scheduledAt": "2026-11-04T09:15"}, http.StatusBadRequest},
+		"already sent":  {sent.ID, map[string]any{"text": "x", "scheduledAt": "2026-11-04T09:15"}, http.StatusConflict},
+		"unknown":       {uuid.New(), map[string]any{"text": "x", "scheduledAt": "2026-11-04T09:15"}, http.StatusNotFound},
+		"bad id":        {"nope", map[string]any{"text": "x", "scheduledAt": "2026-11-04T09:15"}, http.StatusBadRequest},
+		"unclosed html": {sched.ID, map[string]any{"text": "<b>x", "scheduledAt": "2026-11-04T09:15"}, http.StatusBadRequest},
+	} {
+		if code, body := put(tc.id, tc.body); code != tc.want {
+			t.Errorf("%s: %d %s", name, code, body)
+		}
+	}
+	// содержимое не испортилось отказами
+	if w := send(h, http.MethodGet, "/api/broadcasts/"+sched.ID.String(), c, ""); !strings.Contains(w.Body.String(), `"text":"v2"`) {
+		t.Fatalf("get: %d %s", w.Code, w.Body)
+	}
+
+	cancel := func(id any) int {
+		return send(h, http.MethodPost, "/api/broadcasts/"+fmt.Sprint(id)+"/cancel", c, `{}`).Code
+	}
+	if cancel(sent.ID) != http.StatusConflict || cancel(uuid.New()) != http.StatusNotFound || cancel("nope") != http.StatusBadRequest {
+		t.Fatal("cancel errors")
+	}
+	first := cancel(sched.ID)
+	if first != http.StatusOK || cancel(sched.ID) != http.StatusOK {
+		t.Fatal("cancel scheduled (repeat is harmless)")
+	}
+	if code, _ := put(sched.ID, map[string]any{"text": "x", "scheduledAt": "2026-11-04T09:15"}); code != http.StatusConflict {
+		t.Fatalf("edit cancelled: %d", code)
+	}
+	if w := send(h, http.MethodGet, "/api/broadcasts/"+uuid.New().String(), c, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("get unknown: %d", w.Code)
+	}
+}
+
+func TestBroadcastListStatusFilter(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "a"})
+	postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "b", "scheduledAt": "2026-11-03T10:00"})
+	list := func(q string) (int, int, []string) {
+		w := send(h, http.MethodGet, "/api/broadcasts"+q, c, "")
+		var out struct {
+			Items []model.Broadcast `json:"items"`
+			Total int               `json:"total"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		texts := make([]string, 0, len(out.Items))
+		for _, b := range out.Items {
+			texts = append(texts, b.Text)
+		}
+		return w.Code, out.Total, texts
+	}
+	if code, total, got := list("?status=scheduled"); code != 200 || total != 1 || !slices.Equal(got, []string{"b"}) {
+		t.Fatalf("scheduled: %d %d %v", code, total, got)
+	}
+	if code, total, _ := list("?status=sending,sent"); code != 200 || total != 1 || !slices.Equal(st.lastBF.Statuses, []string{"sending", "sent"}) {
+		t.Fatalf("sent: %d %d %v", code, total, st.lastBF.Statuses)
+	}
+	if code, total, _ := list(""); code != 200 || total != 2 {
+		t.Fatalf("all: %d %d", code, total)
+	}
+	if code, _, _ := list("?status=bogus"); code != http.StatusBadRequest {
+		t.Fatalf("bogus: %d", code)
 	}
 }

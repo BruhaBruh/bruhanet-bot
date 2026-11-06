@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/api/internal/server"
 	"github.com/bruhabruh/bruhanet/core/auth"
+	"github.com/bruhabruh/bruhanet/core/broadcast"
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
@@ -49,9 +51,13 @@ type fakeStore struct {
 	setRaw    map[string][]byte
 	outbox    []model.OutboxMessage
 
-	broadcasts []fakeBroadcast // по порядку создания
-	styles     map[string]string
-	directs    []model.DirectMessage
+	broadcasts   []fakeBroadcast // по порядку создания
+	bcRecipients []int64         // кого «нашла» отправка
+	counts       model.AudienceCounts
+	lastDays     int
+	lastBF       model.BroadcastFilter
+	styles       map[string]string
+	directs      []model.DirectMessage
 
 	userPromos []model.UserPromo
 
@@ -509,7 +515,8 @@ func (blockingPanel) Users(ctx context.Context) iter.Seq2[api.UserItemInfo, erro
 	}
 }
 
-func (f *fakeStore) CreateBroadcast(_ context.Context, d model.BroadcastDraft, recipients []int64, admin int64) (model.Broadcast, bool, error) {
+// SendBroadcast повторяет семантику core/store: ключ, черновик, расписание; получатели — f.bcRecipients.
+func (f *fakeStore) SendBroadcast(_ context.Context, d model.BroadcastDraft, admin int64, at time.Time) (model.Broadcast, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, b := range f.broadcasts {
@@ -517,20 +524,123 @@ func (f *fakeStore) CreateBroadcast(_ context.Context, d model.BroadcastDraft, r
 			return b.b, false, nil
 		}
 	}
-	b := model.Broadcast{ID: uuid.New(), Text: d.Text, Photo: d.Photo, Total: len(recipients), CreatedAt: now}
-	f.broadcasts = append(f.broadcasts, fakeBroadcast{b: b, key: d.IdempotencyKey, recipients: recipients, adminID: admin})
-	return b, true, nil
+	var idx int
+	if d.DraftID != uuid.Nil {
+		idx = f.bcIndex(d.DraftID)
+		if idx < 0 {
+			return model.Broadcast{}, false, store.ErrNotFound
+		}
+		if f.broadcasts[idx].b.Status != broadcast.StatusDraft {
+			return model.Broadcast{}, false, store.ErrBroadcastLocked
+		}
+	} else {
+		f.broadcasts = append(f.broadcasts, fakeBroadcast{b: model.Broadcast{ID: uuid.New(), CreatedAt: now}})
+		idx = len(f.broadcasts) - 1
+	}
+	fb := &f.broadcasts[idx]
+	fb.key, fb.adminID = d.IdempotencyKey, admin
+	fb.b = fillBroadcast(fb.b, d)
+	fb.b.Status = broadcast.StatusScheduled
+	if d.ScheduledAt == nil {
+		fb.b.Status, fb.b.Total = broadcast.StatusSending, len(f.bcRecipients)
+		fb.recipients = f.bcRecipients
+	}
+	return fb.b, true, nil
 }
 
-func (f *fakeStore) ListBroadcasts(_ context.Context, limit, offset int) ([]model.Broadcast, int, error) {
+func fillBroadcast(b model.Broadcast, d model.BroadcastDraft) model.Broadcast {
+	b.Text, b.Photo, b.Audience, b.AudienceDays, b.Silent, b.ScheduledAt = d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, d.ScheduledAt
+	b.Buttons = d.Buttons
+	if b.Buttons == nil {
+		b.Buttons = []broadcast.Button{}
+	}
+	b.UpdatedAt = now
+	return b
+}
+
+func (f *fakeStore) bcIndex(id uuid.UUID) int {
+	return slices.IndexFunc(f.broadcasts, func(b fakeBroadcast) bool { return b.b.ID == id })
+}
+
+func (f *fakeStore) SaveDraft(_ context.Context, id uuid.UUID, d model.BroadcastDraft) (model.Broadcast, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.lastF = model.PaymentFilter{Limit: limit, Offset: offset}
-	out := []model.Broadcast{}
-	for i := len(f.broadcasts) - 1 - offset; i >= 0 && len(out) < limit; i-- {
-		out = append(out, f.broadcasts[i].b)
+	i := f.bcIndex(id)
+	if i < 0 {
+		f.broadcasts = append(f.broadcasts, fakeBroadcast{b: model.Broadcast{ID: id, Status: broadcast.StatusDraft, CreatedAt: now}})
+		i = len(f.broadcasts) - 1
 	}
-	return out, len(f.broadcasts), nil
+	if f.broadcasts[i].b.Status != broadcast.StatusDraft {
+		return model.Broadcast{}, store.ErrBroadcastLocked
+	}
+	f.broadcasts[i].b = fillBroadcast(f.broadcasts[i].b, d)
+	return f.broadcasts[i].b, nil
+}
+
+func (f *fakeStore) UpdateScheduled(_ context.Context, id uuid.UUID, d model.BroadcastDraft) (model.Broadcast, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	i := f.bcIndex(id)
+	switch {
+	case i < 0:
+		return model.Broadcast{}, store.ErrNotFound
+	case f.broadcasts[i].b.Status != broadcast.StatusScheduled:
+		return model.Broadcast{}, store.ErrBroadcastLocked
+	}
+	f.broadcasts[i].b = fillBroadcast(f.broadcasts[i].b, d)
+	return f.broadcasts[i].b, nil
+}
+
+func (f *fakeStore) CancelBroadcast(_ context.Context, id uuid.UUID) (model.Broadcast, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	i := f.bcIndex(id)
+	if i < 0 {
+		return model.Broadcast{}, store.ErrNotFound
+	}
+	switch st := f.broadcasts[i].b.Status; st {
+	case broadcast.StatusDraft, broadcast.StatusScheduled:
+		f.broadcasts[i].b.Status = broadcast.StatusCancelled
+	case broadcast.StatusCancelled:
+	default:
+		return model.Broadcast{}, store.ErrBroadcastLocked
+	}
+	return f.broadcasts[i].b, nil
+}
+
+func (f *fakeStore) Broadcast(_ context.Context, id uuid.UUID) (model.Broadcast, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if i := f.bcIndex(id); i >= 0 {
+		return f.broadcasts[i].b, nil
+	}
+	return model.Broadcast{}, store.ErrNotFound
+}
+
+func (f *fakeStore) ListBroadcasts(_ context.Context, bf model.BroadcastFilter) ([]model.Broadcast, int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastBF = bf
+	var all []model.Broadcast
+	for i := len(f.broadcasts) - 1; i >= 0; i-- {
+		b := f.broadcasts[i].b
+		if len(bf.Statuses) > 0 && !slices.Contains(bf.Statuses, b.Status) {
+			continue
+		}
+		all = append(all, b)
+	}
+	out := []model.Broadcast{}
+	for i := bf.Offset; i < len(all) && len(out) < bf.Limit; i++ {
+		out = append(out, all[i])
+	}
+	return out, len(all), nil
+}
+
+func (f *fakeStore) AudienceCounts(_ context.Context, _ time.Time, days int) (model.AudienceCounts, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastDays = days
+	return f.counts, nil
 }
 
 func (f *fakeStore) CreateDirect(_ context.Context, telegramID int64, text, photo string) (int64, error) {

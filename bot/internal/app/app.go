@@ -17,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/broadcast"
 	"github.com/bruhabruh/bruhanet/bot/internal/config"
 	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
@@ -113,6 +114,8 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		return routes.PaymentNotice(ctx, cnt, rwObs, id, key, expireAt)
 	})
 	outboxDone := make(chan struct{})
+	bcDone := make(chan struct{})
+	bcSched := broadcast.New(st, config.Telegram.AdminID)
 	if err = observability.Registry.Register(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "bot_outbox_pending", Help: "Messages waiting in the outbox.",
 	}, func() float64 {
@@ -255,6 +258,24 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 				cancelRun()
 				select {
 				case <-outboxDone:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+		)),
+		app.WithComponent("broadcasts", lifecycle.New(
+			func(context.Context) error {
+				go func() {
+					defer close(bcDone)
+					bcSched.Run(stlog.Wrap(runCtx, logger, "component", "broadcasts"))
+				}()
+				return nil
+			},
+			func(ctx context.Context) error {
+				cancelRun()
+				select {
+				case <-bcDone:
 					return nil
 				case <-ctx.Done():
 					return ctx.Err()

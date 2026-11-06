@@ -18,6 +18,8 @@ type OutboxMessage struct {
 	// Template — Text содержит {{.переменные}}: воркер подставляет их на получателя. Нет флага — текст уходит как есть
 	// (строки до этой версии, готовые тексты и обычный текст с «{{»).
 	Template bool `json:"template,omitempty"`
+	// Silent — без звука уведомления (disable_notification); только рассылки.
+	Silent bool `json:"silent,omitempty"`
 
 	// copy, если MessageID != 0
 	FromChatID int64 `json:"from_chat_id,omitempty"`
