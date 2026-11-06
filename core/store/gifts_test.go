@@ -589,3 +589,20 @@ func TestGiftNoDeadlockMix(t *testing.T) {
 		}
 	}
 }
+
+// Блокировка запрещает бесплатное, а не платное: заблокированный покупает и получает ссылку, но сам по ссылке не активирует.
+func TestBlockedBuyerCanPayForGift(t *testing.T) {
+	f := newGiftFixture(t)
+	ctx := t.Context()
+	f.touch(t, 1)
+	if err := f.s.SetUserBlocked(ctx, 1, true, f.now); err != nil {
+		t.Fatal(err)
+	}
+	code := f.ready(t, 1, 2)
+	if _, _, err := f.redeem(ctx, code, 1); !errors.Is(err, ErrGiftUnavailable) {
+		t.Fatalf("blocked buyer redeems his own gift: %v", err)
+	}
+	if _, _, err := f.redeem(ctx, code, 2); err != nil {
+		t.Fatalf("a friend redeems: %v", err)
+	}
+}
