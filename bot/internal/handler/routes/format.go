@@ -42,13 +42,25 @@ func formatBytes(n int) string {
 }
 
 func pluralMonths(n int) string {
+	return plural(n, "месяц", "месяца", "месяцев")
+}
+
+func plural(n int, one, few, many string) string {
 	switch {
 	case n%10 == 1 && n%100 != 11:
-		return "месяц"
+		return one
 	case n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14):
-		return "месяца"
+		return few
 	}
-	return "месяцев"
+	return many
+}
+
+// advanceText — длина аванса для текста: «1 день», «36 часов».
+func advanceText(hours int) string {
+	if hours%24 == 0 {
+		return fmt.Sprintf("%d %s", hours/24, plural(hours/24, "день", "дня", "дней"))
+	}
+	return fmt.Sprintf("%d %s", hours, plural(hours, "час", "часа", "часов"))
 }
 
 // tariffVars — переменные months («3 месяца») и price для текстов о тарифе.

@@ -8,7 +8,9 @@ import (
 	"time"
 )
 
-const goodSettings = `{"prices":{"1":200,"3":500},"phone":"+7 111","bank":"Сбер","comments":[" Кофе ","Чай"],"supportUrl":"https://t.me/new"}`
+const botKeys = `"reminderTime":"09:30","advanceLimit":2,"advanceHours":48,"reminderWeekDays":5,"reminderDayHours":12`
+
+const goodSettings = `{"prices":{"1":200,"3":500},"phone":"+7 111","bank":"Сбер","comments":[" Кофе ","Чай"],"supportUrl":"https://t.me/new",` + botKeys + `}`
 
 func TestSettingsGetDefaults(t *testing.T) {
 	h, st := newServer(t, "http://localhost:5173")
@@ -30,7 +32,7 @@ func TestSettingsPutThenGet(t *testing.T) {
 	if w := send(h, http.MethodPut, "/api/settings", c, goodSettings); w.Code != http.StatusNoContent {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if len(st.setRaw) != 5 {
+	if len(st.setRaw) != 10 {
 		t.Fatalf("saved keys = %v", st.setRaw)
 	}
 	w := send(h, http.MethodGet, "/api/settings", c, "")
@@ -40,9 +42,18 @@ func TestSettingsPutThenGet(t *testing.T) {
 		Bank       string
 		Comments   []string
 		SupportURL string
+
+		ReminderTime     string
+		AdvanceLimit     int
+		AdvanceHours     int
+		ReminderWeekDays int
+		ReminderDayHours int
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
+	}
+	if out.ReminderTime != "09:30" || out.AdvanceLimit != 2 || out.AdvanceHours != 48 || out.ReminderWeekDays != 5 || out.ReminderDayHours != 12 {
+		t.Fatalf("bot keys: %s", w.Body)
 	}
 	if out.Prices["3"] != 500 || len(out.Prices) != 2 || out.Phone != "+7 111" || out.Bank != "Сбер" ||
 		strings.Join(out.Comments, "|") != "Кофе|Чай" || out.SupportURL != "https://t.me/new" {
@@ -54,7 +65,7 @@ func TestSettingsInvalid(t *testing.T) {
 	h, st := newServer(t, "http://localhost:5173")
 	c := st.addSession(t, adminID, now.Add(time.Hour))
 
-	w := send(h, http.MethodPut, "/api/settings", c, `{"prices":{},"phone":"+7","bank":"B","comments":["a"],"supportUrl":"https://x.io"}`)
+	w := send(h, http.MethodPut, "/api/settings", c, `{"prices":{},"phone":"+7","bank":"B","comments":["a"],"supportUrl":"https://x.io",`+botKeys+`}`)
 	var out struct {
 		Error    string
 		Message  string
@@ -66,7 +77,7 @@ func TestSettingsInvalid(t *testing.T) {
 	}
 
 	// несколько проблем — через «; », без служебного префикса
-	w = send(h, http.MethodPut, "/api/settings", c, `{"prices":{"2":0,"1":0},"phone":"","bank":"B","comments":["a"],"supportUrl":"x"}`)
+	w = send(h, http.MethodPut, "/api/settings", c, `{"prices":{"2":0,"1":0},"phone":"","bank":"B","comments":["a"],"supportUrl":"x",`+botKeys+`}`)
 	_ = json.Unmarshal(w.Body.Bytes(), &out)
 	if w.Code != http.StatusBadRequest || strings.Contains(out.Message, "некорректная настройка") ||
 		!strings.Contains(out.Message, "на 1 мес.") || strings.Index(out.Message, "на 1 мес.") > strings.Index(out.Message, "на 2 мес.") ||

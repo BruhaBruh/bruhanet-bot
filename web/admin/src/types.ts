@@ -84,6 +84,11 @@ export interface Settings {
   bank: string
   comments: string[]
   supportUrl: string
+  reminderTime: string
+  advanceLimit: number
+  advanceHours: number
+  reminderWeekDays: number
+  reminderDayHours: number
   usingDefaults?: boolean
   problems?: string[]
 }

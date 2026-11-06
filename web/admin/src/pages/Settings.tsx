@@ -6,7 +6,18 @@ import { formatRub } from '../format'
 import type { Settings as S } from '../types'
 
 type Tariff = { months: string; price: string }
-type Form = { tariffs: Tariff[]; phone: string; bank: string; comments: string[]; supportUrl: string }
+type Form = {
+  tariffs: Tariff[]
+  phone: string
+  bank: string
+  comments: string[]
+  supportUrl: string
+  reminderTime: string
+  advanceLimit: string
+  advanceHours: string
+  reminderWeekDays: string
+  reminderDayHours: string
+}
 
 const toForm = (s: S): Form => ({
   tariffs: Object.entries(s.prices)
@@ -16,6 +27,11 @@ const toForm = (s: S): Form => ({
   bank: s.bank,
   comments: [...s.comments],
   supportUrl: s.supportUrl,
+  reminderTime: s.reminderTime,
+  advanceLimit: String(s.advanceLimit),
+  advanceHours: String(s.advanceHours),
+  reminderWeekDays: String(s.reminderWeekDays),
+  reminderDayHours: String(s.reminderDayHours),
 })
 
 function perMonth(t: Tariff, first: Tariff, i: number): string {
@@ -93,6 +109,11 @@ export default function Settings() {
       bank: form.bank,
       comments: form.comments,
       supportUrl: form.supportUrl,
+      reminderTime: form.reminderTime,
+      advanceLimit: Number(form.advanceLimit),
+      advanceHours: Number(form.advanceHours),
+      reminderWeekDays: Number(form.reminderWeekDays),
+      reminderDayHours: Number(form.reminderDayHours),
     }
     inFlight.current = true
     setBusy(true)
@@ -214,6 +235,16 @@ export default function Settings() {
           hint="Открывается по кнопке «Поддержка» в боте"
           error={supportError}
         />
+      </Card>
+
+      <Card title="Бот" aside="применяется без перезапуска">
+        <div className="flex flex-wrap gap-3">
+          <Input className="min-w-0 grow basis-60" label="Время напоминаний" type="time" value={form.reminderTime} onChange={(e) => patch({ reminderTime: e.target.value })} hint="По Москве, раз в день" />
+          <Input className="min-w-0 grow basis-60" label="Первое напоминание" type="number" min={1} max={60} after="дн. до конца" value={form.reminderWeekDays} onChange={(e) => patch({ reminderWeekDays: e.target.value })} />
+          <Input className="min-w-0 grow basis-60" label="Второе напоминание" type="number" min={1} after="ч. до конца" value={form.reminderDayHours} onChange={(e) => patch({ reminderDayHours: e.target.value })} />
+          <Input className="min-w-0 grow basis-60" label="Длина аванса" type="number" min={1} max={720} after="ч." value={form.advanceHours} onChange={(e) => patch({ advanceHours: e.target.value })} hint="Доступ на время проверки платежа" />
+          <Input className="min-w-0 grow basis-60" label="Лимит авансов" type="number" min={0} max={100} after="шт." value={form.advanceLimit} onChange={(e) => patch({ advanceLimit: e.target.value })} hint="Неоплаченных подряд; 0 — без авансов" />
+        </div>
       </Card>
 
       {error && (

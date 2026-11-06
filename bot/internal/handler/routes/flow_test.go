@@ -80,6 +80,36 @@ func TestAdvanceLimit(t *testing.T) {
 	}
 }
 
+// Лимит и длина аванса — из настроек: правка из админки применяется без перезапуска, база для продления прежняя.
+func TestAdvanceFromSettings(t *testing.T) {
+	e := newEnv(t)
+	e.src.SetSettings(map[string][]byte{"advanceHours": []byte(`36`), "advanceLimit": []byte(`1`)})
+
+	e.process(t, tgtest.Callback(userID, "buy:6"))
+	e.process(t, tgtest.Photo(userID))
+	if got := e.rw.ExpireAt(userID); !got.Equal(now.Add(36 * time.Hour)) {
+		t.Fatalf("после фото expireAt = %v", got)
+	}
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "на 36 часов") {
+		t.Fatalf("юзеру: %s", text)
+	}
+	id := e.pending(t, userID).ID
+	e.process(t, declinePress(id))
+	if got := e.rw.ExpireAt(userID); !got.Equal(now) {
+		t.Fatalf("после отклонения expireAt = %v, want prev %v", got, now)
+	}
+
+	before := len(e.rw.Updates())
+	e.process(t, tgtest.Callback(userID, "buy:6"))
+	e.process(t, tgtest.Photo(userID))
+	if len(e.rw.Updates()) != before {
+		t.Fatal("аванс выдан сверх лимита 1")
+	}
+	if text := e.lastReview(t); !strings.Contains(text, "⚠️ Авансов без оплаты: 1 — без аванса") {
+		t.Fatalf("review = %s", text)
+	}
+}
+
 func TestAdvanceBypassBlocked(t *testing.T) {
 	e := newEnv(t)
 	for i := range 3 {

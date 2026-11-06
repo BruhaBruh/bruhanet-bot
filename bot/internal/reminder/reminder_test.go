@@ -77,6 +77,8 @@ type env struct {
 	mr *miniredis.Miniredis
 	r  *reminder.Reminder
 	db *redis.Client
+
+	week, day time.Duration
 }
 
 func newEnv(t *testing.T) *env {
@@ -89,13 +91,36 @@ func newEnv(t *testing.T) *env {
 		n:  &fakeEnq{errs: map[int64]error{}},
 		mr: mr,
 		db: db,
+
+		week: 7 * 24 * time.Hour,
+		day:  24 * time.Hour,
 	}
 	e.r = e.at(now)
 	return e
 }
 
 func (e *env) at(t time.Time) *reminder.Reminder {
-	return reminder.New(e.rw, e.n, render, e.db, func() time.Time { return t })
+	return reminder.New(e.rw, e.n, render, e.db, func(context.Context) (time.Duration, time.Duration) { return e.week, e.day }, func() time.Time { return t })
+}
+
+// Пороги читаются на каждый проход: правка из админки применяется без перезапуска.
+func TestThresholdsFromSettings(t *testing.T) {
+	e := newEnv(t)
+	e.rw.AddUser(1001, now.Add(10*24*time.Hour))
+	e.rw.AddUser(1002, now.Add(3*time.Hour))
+	e.week, e.day = 14*24*time.Hour, 2*time.Hour
+	e.r.Run(t.Context())
+	if got := e.n.forID(1001); len(got) != 1 || got[0].kind != reminder.Week {
+		t.Fatalf("10 дней при пороге 14: %+v", got)
+	}
+	if got := e.n.forID(1002); len(got) != 1 || got[0].kind != reminder.Week {
+		t.Fatalf("3 часа при пороге 2 часа: %+v", got)
+	}
+	// ключ живёт дольше окна, иначе напоминание за 14 дней повторится
+	key := fmt.Sprintf("notify:1001:%d:week", now.Add(10*24*time.Hour).Unix())
+	if ttl := e.mr.TTL(key); ttl < 14*24*time.Hour {
+		t.Fatalf("ttl = %v", ttl)
+	}
 }
 
 func TestWindows(t *testing.T) {

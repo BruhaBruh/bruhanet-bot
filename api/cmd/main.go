@@ -93,13 +93,17 @@ func newApp(logger *slog.Logger, conf *config.Config) (app.App, error) {
 	obs := &http.Server{Addr: conf.ObservabilityAddr, Handler: obsMux, ReadHeaderTimeout: 5 * time.Second}
 
 	ctx := stlog.Wrap(context.Background(), logger)
+	defaults, cronWarning := settings.Defaults(conf.Payment.Prices, conf.Payment.Phone, conf.Payment.Bank, conf.Support.URL).WithCron(conf.Notification.Cron)
+	if cronWarning != "" {
+		logger.Warn(cronWarning)
+	}
 	srv := &http.Server{
 		Addr: conf.Addr,
 		Handler: server.New(server.Deps{
 			Store:    st,
 			Panel:    panel,
 			Telegram: tg,
-			Defaults: settings.Defaults(conf.Payment.Prices, conf.Payment.Phone, conf.Payment.Bank, conf.Support.URL),
+			Defaults: defaults,
 			AdminID:  conf.Telegram.AdminID,
 			BaseURL:  conf.Admin.BaseURL,
 			Now:      time.Now,

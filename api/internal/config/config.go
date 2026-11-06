@@ -10,6 +10,7 @@ type Config struct {
 	Admin             coreconfig.AdminConfig
 	Payment           coreconfig.PaymentConfig
 	Support           coreconfig.SupportConfig
+	Notification      coreconfig.NotificationConfig
 	Addr              string `env:"API_ADDR" envDefault:":8090" validate:"required"`
 	ObservabilityAddr string `env:"API_OBSERVABILITY_ADDR" envDefault:":8091" validate:"required"`
 }

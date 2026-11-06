@@ -9,7 +9,7 @@ import (
 )
 
 // formatStats — блок статистики юзера в сообщении проверки; строки уже экранированы для HTML.
-func formatStats(s model.UserStats) []string {
+func formatStats(s model.UserStats, advanceLimit int) []string {
 	if !s.HasHistory {
 		return []string{"🆕 первая оплата"}
 	}

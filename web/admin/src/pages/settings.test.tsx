@@ -11,7 +11,18 @@ let replies: Record<string, () => Response | Promise<Response>>
 const json = (status: number, body?: unknown) => () =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
-const s = { prices: { '3': 1290, '1': 490 }, phone: '+7900', bank: 'Банк', comments: ['На кофе'], supportUrl: 'https://t.me/x' }
+const s = {
+  prices: { '3': 1290, '1': 490 },
+  phone: '+7900',
+  bank: 'Банк',
+  comments: ['На кофе'],
+  supportUrl: 'https://t.me/x',
+  reminderTime: '12:00',
+  advanceLimit: 3,
+  advanceHours: 24,
+  reminderWeekDays: 7,
+  reminderDayHours: 24,
+}
 
 beforeEach(() => {
   calls = []
@@ -50,9 +61,21 @@ describe('Settings', () => {
     fireEvent.click(save)
     await act(() => new Promise((r) => setTimeout(r, 30)))
     expect(puts()).toEqual([{ url: '/api/settings', method: 'PUT', body: { ...s, bank: 'Т-Банк' } }])
-    expect(Object.keys(puts()[0].body as object).sort()).toEqual(['bank', 'comments', 'phone', 'prices', 'supportUrl'])
+    expect(Object.keys(puts()[0].body as object).sort()).toEqual(Object.keys(s).sort())
     expect(screen.getByText('Все изменения сохранены')).toBeTruthy()
     expect(btn('Сохранить изменения').disabled).toBe(true)
+  })
+
+  it('bot card sends numbers and time', async () => {
+    await open()
+    edit(field('Время напоминаний'), '09:30')
+    edit(field('Лимит авансов'), '0')
+    edit(field('Длина аванса'), '48')
+    edit(field('Первое напоминание'), '10')
+    edit(field('Второе напоминание'), '12')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()[0].body).toMatchObject({ reminderTime: '09:30', advanceLimit: 0, advanceHours: 48, reminderWeekDays: 10, reminderDayHours: 12 })
   })
 
   it('edited comments go into the PUT', async () => {

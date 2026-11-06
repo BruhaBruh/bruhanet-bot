@@ -8,12 +8,18 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
 
 var ErrInvalidSetting = errors.New("некорректная настройка")
+
+const fallbackReminderTime = "12:00"
+
+var clockTime = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 
 type Settings struct {
 	Prices     map[int]int `json:"prices"` // месяцы → ₽
@@ -21,6 +27,12 @@ type Settings struct {
 	Bank       string      `json:"bank"`
 	Comments   []string    `json:"comments"` // комментарии к переводу
 	SupportURL string      `json:"supportUrl"`
+
+	ReminderTime     string `json:"reminderTime"`     // время напоминаний по МСК, HH:MM
+	AdvanceLimit     int    `json:"advanceLimit"`     // сколько неоплаченных авансов подряд допустимо; 0 — авансов нет
+	AdvanceHours     int    `json:"advanceHours"`     // длина аванса
+	ReminderWeekDays int    `json:"reminderWeekDays"` // порог «скоро закончится»
+	ReminderDayHours int    `json:"reminderDayHours"` // порог «в течение суток»
 }
 
 func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
@@ -30,7 +42,33 @@ func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
 		Bank:       bank,
 		Comments:   []string{"На кофе", "Перекус", "Одолжил", "Вернул долг"},
 		SupportURL: supportURL,
+
+		ReminderTime:     fallbackReminderTime,
+		AdvanceLimit:     3,
+		AdvanceHours:     24,
+		ReminderWeekDays: 7,
+		ReminderDayHours: 24,
 	}
+}
+
+// WithCron берёт время напоминаний по умолчанию из NOTIFICATION_CRON.
+// Выражение не вида «M H * * *» — остаётся запасное время и непустое предупреждение для лога.
+func (s Settings) WithCron(spec string) (Settings, string) {
+	f := strings.Fields(spec)
+	if len(f) != 5 || f[2] != "*" || f[3] != "*" || f[4] != "*" {
+		return s, "NOTIFICATION_CRON is not a daily expression, using " + s.ReminderTime
+	}
+	hours := strings.Split(f[1], ",")
+	minute, merr := strconv.Atoi(f[0])
+	hour, herr := strconv.Atoi(hours[0])
+	if merr != nil || herr != nil || minute < 0 || minute > 59 || hour < 0 || hour > 23 {
+		return s, "NOTIFICATION_CRON is not a daily expression, using " + s.ReminderTime
+	}
+	s.ReminderTime = fmt.Sprintf("%02d:%02d", hour, minute)
+	if len(hours) > 1 {
+		return s, "NOTIFICATION_CRON has several hours, only the first is used: " + s.ReminderTime
+	}
+	return s, ""
 }
 
 // ValidationError — список проблем настроек; Problems отдаёт их без служебного префикса.
@@ -105,6 +143,14 @@ func Merge(def Settings, raw map[string][]byte) (Settings, error) {
 		return nil
 	})
 	apply("supportUrl", str(&def.SupportURL))
+	apply("reminderTime", str(&def.ReminderTime))
+	num := func(dst *int) func([]byte) error {
+		return func(b []byte) error { return json.Unmarshal(b, dst) }
+	}
+	apply("advanceLimit", num(&def.AdvanceLimit))
+	apply("advanceHours", num(&def.AdvanceHours))
+	apply("reminderWeekDays", num(&def.ReminderWeekDays))
+	apply("reminderDayHours", num(&def.ReminderDayHours))
 	return def, problemsErr(p)
 }
 
@@ -138,6 +184,21 @@ func (s Settings) Validate() error {
 	}
 	if u, err := url.Parse(s.SupportURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		p = append(p, "ссылка поддержки должна начинаться с http:// или https://")
+	}
+	if !clockTime.MatchString(s.ReminderTime) {
+		p = append(p, "время напоминаний должно быть в формате ЧЧ:ММ")
+	}
+	if s.AdvanceLimit < 0 || s.AdvanceLimit > 100 {
+		p = append(p, "лимит авансов должен быть от 0 до 100")
+	}
+	if s.AdvanceHours < 1 || s.AdvanceHours > 720 {
+		p = append(p, "длина аванса должна быть от 1 до 720 часов")
+	}
+	if s.ReminderWeekDays < 1 || s.ReminderWeekDays > 60 {
+		p = append(p, "первое напоминание должно быть за 1–60 дней")
+	}
+	if s.ReminderDayHours < 1 || s.ReminderDayHours >= s.ReminderWeekDays*24 {
+		p = append(p, "второе напоминание должно быть позже первого и не меньше чем за 1 час")
 	}
 	return problemsErr(p)
 }

@@ -49,6 +49,8 @@ func (s *server) putSettings(w http.ResponseWriter, r *http.Request) {
 	vals := map[string][]byte{}
 	for k, v := range map[string]any{
 		"prices": in.Prices, "phone": in.Phone, "bank": in.Bank, "comments": in.Comments, "supportUrl": in.SupportURL,
+		"reminderTime": in.ReminderTime, "advanceLimit": in.AdvanceLimit, "advanceHours": in.AdvanceHours,
+		"reminderWeekDays": in.ReminderWeekDays, "reminderDayHours": in.ReminderDayHours,
 	} {
 		b, err := json.Marshal(v)
 		if err != nil {

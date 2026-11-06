@@ -11,6 +11,78 @@ func def() Settings {
 	return Defaults(map[int]int{1: 100, 3: 250}, "+7 900", "Bank", "https://t.me/sup")
 }
 
+func TestBotDefaultsMatchOldConstants(t *testing.T) {
+	d := def()
+	if d.ReminderTime != "12:00" || d.AdvanceLimit != 3 || d.AdvanceHours != 24 || d.ReminderWeekDays != 7 || d.ReminderDayHours != 24 {
+		t.Fatalf("got %+v", d)
+	}
+}
+
+func TestWithCron(t *testing.T) {
+	for _, tc := range []struct {
+		spec, want string
+		warns      bool
+	}{
+		{"30 9 * * *", "09:30", false},
+		{"0 0 * * *", "00:00", false},
+		{"0 12,15,18 * * *", "12:00", true}, // несколько раз в день: одно время из настроек
+		{"*/5 * * * *", "12:00", true},
+		{"0 9 * * 1", "12:00", true},
+		{"0 25 * * *", "12:00", true},
+		{"60 9 * * *", "12:00", true},
+		{"@daily", "12:00", true},
+		{"", "12:00", true},
+	} {
+		got, warn := def().WithCron(tc.spec)
+		if got.ReminderTime != tc.want || (warn != "") != tc.warns {
+			t.Errorf("%q: time %q warn %q", tc.spec, got.ReminderTime, warn)
+		}
+	}
+}
+
+func TestMergeBotKeys(t *testing.T) {
+	got, err := Merge(def(), map[string][]byte{
+		"reminderTime": []byte(`"09:05"`), "advanceLimit": []byte(`0`), "advanceHours": []byte(`48`),
+		"reminderWeekDays": []byte(`10`), "reminderDayHours": []byte(`12`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ReminderTime != "09:05" || got.AdvanceLimit != 0 || got.AdvanceHours != 48 || got.ReminderWeekDays != 10 || got.ReminderDayHours != 12 {
+		t.Fatalf("got %+v", got)
+	}
+	if _, err := Merge(def(), map[string][]byte{"advanceLimit": []byte(`"x"`)}); !errors.Is(err, ErrInvalidSetting) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidateBotKeys(t *testing.T) {
+	for name, mutate := range map[string]func(*Settings){
+		"time empty":     func(s *Settings) { s.ReminderTime = "" },
+		"time 24:00":     func(s *Settings) { s.ReminderTime = "24:00" },
+		"time 9:00":      func(s *Settings) { s.ReminderTime = "9:00" },
+		"limit negative": func(s *Settings) { s.AdvanceLimit = -1 },
+		"limit big":      func(s *Settings) { s.AdvanceLimit = 101 },
+		"hours zero":     func(s *Settings) { s.AdvanceHours = 0 },
+		"hours big":      func(s *Settings) { s.AdvanceHours = 721 },
+		"week zero":      func(s *Settings) { s.ReminderWeekDays = 0 },
+		"week big":       func(s *Settings) { s.ReminderWeekDays = 61 },
+		"day zero":       func(s *Settings) { s.ReminderDayHours = 0 },
+		"day over week":  func(s *Settings) { s.ReminderWeekDays, s.ReminderDayHours = 1, 24 },
+	} {
+		s := def()
+		mutate(&s)
+		if err := s.Validate(); !errors.Is(err, ErrInvalidSetting) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	s := def()
+	s.AdvanceLimit = 0 // 0 = авансы выключены
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	d := def()
 	if !slices.Equal(d.Comments, []string{"На кофе", "Перекус", "Одолжил", "Вернул долг"}) {

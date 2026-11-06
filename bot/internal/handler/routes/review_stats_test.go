@@ -51,7 +51,7 @@ func TestFormatStats(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := formatStats(tc.in); !slices.Equal(got, tc.want) {
+			if got := formatStats(tc.in, 3); !slices.Equal(got, tc.want) {
 				t.Fatalf("formatStats = %q, want %q", got, tc.want)
 			}
 		})

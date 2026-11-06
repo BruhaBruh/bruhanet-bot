@@ -25,11 +25,8 @@ const (
 	Day  Kind = "day"
 )
 
-const (
-	dedupTTL   = 8 * 24 * time.Hour
-	dayWindow  = 24 * time.Hour
-	weekWindow = 7 * 24 * time.Hour
-)
+// Thresholds — пороги напоминаний из настроек: за сколько до окончания слать Week и Day.
+type Thresholds func(ctx context.Context) (week, day time.Duration)
 
 type Enqueuer interface {
 	Enqueue(ctx context.Context, m model.OutboxMessage) error
@@ -48,18 +45,22 @@ type Reminder struct {
 	render Render
 	rdb    *redis.Client
 	now    func() time.Time
+	limits Thresholds
 }
 
-func New(users Users, q Enqueuer, render Render, rdb *redis.Client, now func() time.Time) *Reminder {
+func New(users Users, q Enqueuer, render Render, rdb *redis.Client, limits Thresholds, now func() time.Time) *Reminder {
 	if now == nil {
 		now = time.Now
 	}
-	return &Reminder{users: users, q: q, render: render, rdb: rdb, now: now}
+	return &Reminder{users: users, q: q, render: render, rdb: rdb, now: now, limits: limits}
 }
 
 // Run — один проход по всем юзерам панели.
 func (r *Reminder) Run(ctx context.Context) {
 	now := r.now()
+	weekWindow, dayWindow := r.limits(ctx)
+	// ключ должен пережить окно: иначе при длинном пороге напоминание придёт снова
+	dedupTTL := weekWindow + 24*time.Hour
 	for u, err := range r.users.Users(ctx) {
 		if err != nil {
 			stlog.Error(ctx, "failed to list remnawave users", "error", err)
@@ -81,11 +82,11 @@ func (r *Reminder) Run(ctx context.Context) {
 		default:
 			continue
 		}
-		r.remind(stlog.With(ctx, "telegram_id", id, "kind", string(kind)), u, id, kind)
+		r.remind(stlog.With(ctx, "telegram_id", id, "kind", string(kind)), u, id, kind, dedupTTL)
 	}
 }
 
-func (r *Reminder) remind(ctx context.Context, u api.UserItemInfo, id int64, kind Kind) {
+func (r *Reminder) remind(ctx context.Context, u api.UserItemInfo, id int64, kind Kind, dedupTTL time.Duration) {
 	key := fmt.Sprintf("notify:%d:%d:%s", id, u.ExpireAt.Unix(), kind)
 	fresh, err := r.rdb.SetNX(ctx, key, 1, dedupTTL).Result()
 	if err != nil {

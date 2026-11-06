@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"math"
@@ -90,7 +91,11 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	var inflight sync.WaitGroup
 
 	// env PAYMENT_*/SUPPORT_URL — значения по умолчанию, правки из админки доходят за contentTTL
-	cnt := content.New(st, settings.Defaults(config.Payment.Prices, config.Payment.Phone, config.Payment.Bank, config.Support.URL), contentTTL, nil)
+	defaults, cronWarning := settings.Defaults(config.Payment.Prices, config.Payment.Phone, config.Payment.Bank, config.Support.URL).WithCron(config.Notification.Cron)
+	if cronWarning != "" {
+		logger.Warn(cronWarning)
+	}
+	cnt := content.New(st, defaults, contentTTL, nil)
 	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight, Remnawave: rwObs, Payments: st, Content: cnt})
 	if err != nil {
 		return nil, errors.Join(
@@ -122,7 +127,10 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 
 	rem := reminder.New(rwObs, st, func(ctx context.Context, k reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
 		return routes.ReminderMessage(ctx, cnt, string(k), exp, sub)
-	}, rdb, nil)
+	}, rdb, func(ctx context.Context) (time.Duration, time.Duration) {
+		s := cnt.Settings(ctx)
+		return time.Duration(s.ReminderWeekDays) * 24 * time.Hour, time.Duration(s.ReminderDayHours) * time.Hour
+	}, nil)
 	cl := cronLogger(logger)
 	c := cron.New(
 		cron.WithLocation(loc),
@@ -132,7 +140,8 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
-	if _, err = c.AddFunc(config.Notification.Cron, func() { rem.Run(stlog.Wrap(runCtx, logger, "component", "reminder")) }); err != nil {
+	remJob := &reminderJob{c: c, run: func() { rem.Run(stlog.Wrap(runCtx, logger, "component", "reminder")) }}
+	if err = remJob.reschedule(cnt.Settings(context.Background()).ReminderTime); err != nil {
 		cancelRun()
 		return nil, errors.Join(errors.New("failed to schedule reminders"), err)
 	}
@@ -253,6 +262,9 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		app.WithComponent("reminder", lifecycle.New(
 			func(context.Context) error {
 				c.Start()
+				go remJob.follow(stlog.Wrap(runCtx, logger, "component", "reminder"), contentTTL, func(ctx context.Context) string {
+					return cnt.Settings(ctx).ReminderTime
+				})
 				return nil
 			},
 			func(ctx context.Context) error {
@@ -269,6 +281,56 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 			logger.Info("service started")
 		}),
 	), nil
+}
+
+// reminderJob держит задачу напоминаний на времени из настроек.
+type reminderJob struct {
+	c   *cron.Cron
+	run func()
+	id  cron.EntryID
+	at  string
+}
+
+// reschedule ставит задачу на at (HH:MM по зоне cron); при ошибке прежняя задача остаётся.
+func (j *reminderJob) reschedule(at string) error {
+	if at == j.at {
+		return nil
+	}
+	t, err := time.Parse("15:04", at)
+	if err != nil {
+		return err
+	}
+	id, err := j.c.AddFunc(fmt.Sprintf("%d %d * * *", t.Minute(), t.Hour()), j.run)
+	if err != nil {
+		return err
+	}
+	if j.id != 0 {
+		j.c.Remove(j.id)
+	}
+	j.id, j.at = id, at
+	return nil
+}
+
+// follow переставляет задачу, когда время в настройках изменилось.
+func (j *reminderJob) follow(ctx context.Context, every time.Duration, at func(context.Context) string) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			next := at(ctx)
+			if next == j.at {
+				continue
+			}
+			if err := j.reschedule(next); err != nil {
+				stlog.Error(ctx, "failed to reschedule reminders", "error", err, "time", next)
+				continue
+			}
+			stlog.Info(ctx, "reminders rescheduled", "time", next)
+		}
+	}
 }
 
 // syncPanel — один проход по cron. Занято ручным запуском из админки — не сбой, данные и так свежие.

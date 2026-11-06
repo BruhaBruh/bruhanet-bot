@@ -11,6 +11,6 @@ type Config struct {
 	Remnawave     coreconfig.RemnawaveConfig
 	Redis         RedisConfig
 	Database      coreconfig.DatabaseConfig
-	Notification  NotificationConfig
+	Notification  coreconfig.NotificationConfig
 	Observability ObservabilityConfig
 }

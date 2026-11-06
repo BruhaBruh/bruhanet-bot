@@ -100,8 +100,9 @@ var registry = []Def{
 			Sample: "- <code>На кофе</code>\n- <code>Перекус</code>\n- <code>Одолжил</code>\n- <code>Вернул долг</code>",
 		}),
 	msg("payment.photo_sent", groupPayment, "Фото отправлено (без аванса)", photoSent),
-	msg("payment.photo_sent_advance", groupPayment, "Фото отправлено, выдан 1 день",
-		photoSent+"\n\nВам выдан доступ на 1 день на время проверки"),
+	msg("payment.photo_sent_advance", groupPayment, "Фото отправлено, выдан аванс",
+		photoSent+"\n\nВам выдан доступ на {{.advance}} на время проверки",
+		Var{Name: "advance", Description: "Длина аванса из настроек: «1 день»", Sample: "1 день", Max: 16}),
 	msg("payment.confirmed", groupPayment, "Платёж подтверждён",
 		"<b>Администратор подтвердил ваш платеж</b>\n\nВаша подписка была изменена"),
 	msg("payment.declined", groupPayment, "Платёж отклонён",
@@ -133,9 +134,9 @@ var registry = []Def{
 		"<b>Подписка оплачена промокодом</b>\n\nТариф на <b>{{.months}}</b> активирован\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}",
 		varMonths, varExpireAt),
 
-	msg("reminder.week", groupReminder, "Подписка скоро закончится (≤ 7 дней)",
+	msg("reminder.week", groupReminder, "Подписка скоро закончится (первый порог)",
 		reminderHead+"Ваша подписка скоро закончится"+reminderTail, varExpireAt),
-	msg("reminder.day", groupReminder, "Подписка закончится в течение суток",
+	msg("reminder.day", groupReminder, "Подписка заканчивается (второй порог)",
 		reminderHead+"Ваша подписка закончится в течение суток"+reminderTail, varExpireAt),
 
 	msg("error.generic", groupError, "Ошибка", "К сожалению, произошла ошибка, обратитесь в поддержку"),
