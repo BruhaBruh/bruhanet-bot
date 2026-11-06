@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -143,7 +142,7 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		h.showError(ctx, b, u)
 		return
 	}
-	observability.Payments.WithLabelValues("photo", strconv.Itoa(p.Month)).Inc()
+	observability.Payments.WithLabelValues("photo", observability.PaymentLabel(string(p.Kind), p.Month)).Inc()
 	// Аванс — день подписки на время проверки; за докупку устройств и подарок срока нет, аванса тоже.
 	if stats.UnpaidAdvances < limit && p.Kind == model.KindTariff {
 		h.grantAdvance(ctx, b, u, p)

@@ -6,7 +6,6 @@ import (
 	"html"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -178,7 +177,7 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 	if cancelled != nil {
 		h.closeAdminMessage(ctx, b, cancelled.AdminMessageID, "Отменён пользователем")
 	}
-	observability.Payments.WithLabelValues("started", strconv.Itoa(np.Month)).Inc()
+	observability.Payments.WithLabelValues("started", observability.PaymentLabel(string(np.Kind), np.Month)).Inc()
 	return p, true
 }
 

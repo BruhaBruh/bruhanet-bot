@@ -295,8 +295,7 @@ func TestTariffVsPendingOtherKinds(t *testing.T) {
 			s := testStore(t)
 			ctx := t.Context()
 			old := model.Payment{TelegramID: 1, Username: "u", Month: 1, Price: 150, Kind: tc.kind, PrevExpireAt: time.Now()}
-			switch tc.kind {
-			case model.KindDevices:
+			if tc.kind == model.KindDevices {
 				old.Month, old.ExtraDevices = 0, 1
 			}
 			first, _, err := s.CreatePayment(ctx, old, noRollback, nil)

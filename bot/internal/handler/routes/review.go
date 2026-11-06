@@ -3,7 +3,6 @@ package routes
 import (
 	"context"
 	"errors"
-	"strconv"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -57,7 +56,7 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 
 	removeKeyboard(ctx, b, msg.Chat.ID, msg.ID)
 	h.payReferrer(ctx, p)
-	months := strconv.Itoa(p.Month)
+	months := observability.PaymentLabel(string(p.Kind), p.Month)
 	if approve {
 		observability.Payments.WithLabelValues("confirmed", months).Inc()
 		observability.PaymentsConfirmedRubles.WithLabelValues(months).Add(float64(p.Price))

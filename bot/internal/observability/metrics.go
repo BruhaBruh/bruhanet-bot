@@ -65,11 +65,19 @@ func init() {
 	)
 }
 
+// PaymentLabel — значение метки months: месяцы тарифа; для докупки устройств и подарка — вид платежа
+// (ограниченный набор: месяцы тарифов, "devices", "gift"), а не бессмысленный "0".
+func PaymentLabel(kind string, months int) string {
+	if kind == "devices" || kind == "gift" {
+		return kind
+	}
+	return strconv.Itoa(months)
+}
+
 // InitBusinessSeries заранее создаёт серии бизнес-счётчиков нулём: иначе increase() теряет
 // первое событие серии после каждого рестарта.
 func InitBusinessSeries(months []int) {
-	for _, m := range months {
-		ms := strconv.Itoa(m)
+	for _, ms := range append(labelsOf(months), "devices", "gift") {
 		for _, stage := range []string{"started", "photo", "confirmed", "declined"} {
 			Payments.WithLabelValues(stage, ms)
 		}
@@ -101,4 +109,12 @@ func RegisterBackupGauge(last func(ctx context.Context) (time.Time, error)) erro
 		}
 		return float64(t.Unix())
 	}))
+}
+
+func labelsOf(months []int) []string {
+	out := make([]string, 0, len(months))
+	for _, m := range months {
+		out = append(out, strconv.Itoa(m))
+	}
+	return out
 }
