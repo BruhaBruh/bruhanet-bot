@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -150,5 +151,36 @@ func TestAuthBotIsPublicAndMinimal(t *testing.T) {
 	h3, _ := newServer(t, "http://localhost:5173")
 	if w := do(h3, http.MethodGet, "/auth/bot", "", ""); w.Code != http.StatusOK {
 		t.Fatalf("nil identity: %d", w.Code)
+	}
+}
+
+// ctxIdentity падает, если ему передали отменённый контекст.
+type ctxIdentity struct{ fakeIdentity }
+
+func (f *ctxIdentity) Me(ctx context.Context) (string, string, error) {
+	if err := ctx.Err(); err != nil {
+		f.mu.Lock()
+		f.meCalls++
+		f.mu.Unlock()
+		return "", "", err
+	}
+	return f.fakeIdentity.Me(ctx)
+}
+
+// Клиент оборвал запрос: Telegram всё равно опрашивается живым контекстом, окно сбоя не взводится.
+func TestIdentityIgnoresClientCancel(t *testing.T) {
+	clock := now
+	id := &ctxIdentity{fakeIdentity{botUser: "mybot", botName: "My Bot"}}
+	h, _ := identityServer(t, id, &clock)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/auth/bot", nil)
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	var got struct{ Username string }
+	getJSON(t, h, "/auth/bot", "", &got)
+	if got.Username != "mybot" {
+		t.Fatalf("cancelled client armed the failure window: %+v", got)
 	}
 }

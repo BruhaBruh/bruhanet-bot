@@ -44,7 +44,8 @@ func (l *lazyWho) get(ctx context.Context, now time.Time, fetch func(context.Con
 		return l.v
 	}
 	l.tried = now
-	ctx, cancel := context.WithTimeout(ctx, identityTimeout)
+	// Запрос клиента мог оборваться: ответ Telegram кэшируется для всех, а отмена не должна взводить окно сбоя.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), identityTimeout)
 	defer cancel()
 	username, name, err := fetch(ctx)
 	if err != nil {
