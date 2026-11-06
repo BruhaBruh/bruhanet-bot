@@ -550,7 +550,7 @@ func TestWorkerPaymentResultRendersOnDelivery(t *testing.T) {
 	exp := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
 	var gotKey string
 	var gotExp time.Time
-	w := New(q, srv.Bot(t), nil, func(_ context.Context, chatID int64, key string, expireAt time.Time, _ int) (string, *models.InlineKeyboardMarkup) {
+	w := New(q, srv.Bot(t), nil, func(_ context.Context, chatID int64, key string, expireAt time.Time, _, _ int) (string, *models.InlineKeyboardMarkup) {
 		gotKey, gotExp = key, expireAt
 		return "готово " + strconv.FormatInt(chatID, 10), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{{Text: "Меню", CallbackData: "menu"}}}}
 	})
@@ -576,7 +576,7 @@ func TestWorkerGrantDaysPassesDays(t *testing.T) {
 	exp := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
 	var gotKey string
 	var gotDays int
-	w := New(q, srv.Bot(t), nil, func(_ context.Context, _ int64, key string, _ time.Time, days int) (string, *models.InlineKeyboardMarkup) {
+	w := New(q, srv.Bot(t), nil, func(_ context.Context, _ int64, key string, _ time.Time, days, _ int) (string, *models.InlineKeyboardMarkup) {
 		gotKey, gotDays = key, days
 		return "дни " + strconv.Itoa(days), nil
 	})

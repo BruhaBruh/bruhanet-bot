@@ -40,7 +40,7 @@ func TestGlobalVarInReminder(t *testing.T) {
 // grant.days: дни и срок подставляются при доставке, под текстом главная клавиатура.
 func TestGrantNotice(t *testing.T) {
 	e := newEnv(t)
-	text, kb := routes.PaymentNotice(t.Context(), e.c, e.rw, userID, "grant.days", now, 7)
+	text, kb := routes.PaymentNotice(t.Context(), e.c, e.rw, userID, "grant.days", now, 7, 0)
 	if !strings.Contains(text, "Добавлено дней: <b>7</b>") || !strings.Contains(text, "10 января 2026 г. в 15:00, MSK") || kb == nil {
 		t.Fatalf("text = %s kb = %v", text, kb)
 	}

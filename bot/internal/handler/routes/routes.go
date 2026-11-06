@@ -33,6 +33,8 @@ type Remnawave interface {
 	GetUser(ctx context.Context, telegramID int64) (*api.UserItemInfo, error)
 	CreateUser(ctx context.Context, telegramID int64, username string, squadUUID uuid.UUID) (*api.UserItemInfo, error)
 	UpdateUser(ctx context.Context, telegramID int64, username string, expireAt time.Time, squadUUID uuid.UUID) (*api.UserItemInfo, error)
+	// SetDeviceLimit пишет лимит устройств (база + купленные) — только при событии с устройствами.
+	SetDeviceLimit(ctx context.Context, telegramID int64, limit int) (*api.UserItemInfo, error)
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
 }
 

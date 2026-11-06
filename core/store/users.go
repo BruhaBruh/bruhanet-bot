@@ -153,3 +153,13 @@ func (s *Store) UserPromos(ctx context.Context, id int64) ([]model.UserPromo, er
 	}
 	return out, rows.Err()
 }
+
+// ExtraDevices — купленные юзером устройства сверх базы; юзера нет — 0.
+func (s *Store) ExtraDevices(ctx context.Context, id int64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT extra_devices FROM users WHERE telegram_id = $1`, id).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return n, err
+}

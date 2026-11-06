@@ -15,7 +15,7 @@ import (
 
 const paymentCols = `id, telegram_id, username, months, price, status, prev_expire_at, advance_granted,
 	coalesce(admin_message_id, 0), created_at, submitted_at, resolved_at, promo_id, base_price,
-	coalesce(photo_file_id, ''), (SELECT c.code FROM promo_codes c WHERE c.id = payments.promo_id)`
+	coalesce(photo_file_id, ''), (SELECT c.code FROM promo_codes c WHERE c.id = payments.promo_id), kind, extra_devices`
 
 // unpaidAdvance — условие на строку payments: выданный и неоплаченный аванс, считается после последнего confirmed.
 const unpaidAdvance = `status IN ('declined', 'cancelled') AND advance_granted`
@@ -23,7 +23,7 @@ const unpaidAdvance = `status IN ('declined', 'cancelled') AND advance_granted`
 func scanPayment(row pgx.Row) (model.Payment, error) {
 	var p model.Payment
 	err := row.Scan(&p.ID, &p.TelegramID, &p.Username, &p.Month, &p.Price, &p.Status, &p.PrevExpireAt,
-		&p.AdvanceGranted, &p.AdminMessageID, &p.CreatedAt, &p.SubmittedAt, &p.ResolvedAt, &p.PromoID, &p.BasePrice, &p.PhotoFileID, &p.PromoCode)
+		&p.AdvanceGranted, &p.AdminMessageID, &p.CreatedAt, &p.SubmittedAt, &p.ResolvedAt, &p.PromoID, &p.BasePrice, &p.PhotoFileID, &p.PromoCode, &p.Kind, &p.ExtraDevices)
 	p.HasPhoto = p.PhotoFileID != ""
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound
@@ -46,11 +46,16 @@ func lockUserTerm(ctx context.Context, tx pgx.Tx, telegramID int64) error {
 // Иначе PrevExpireAt даёт readPrev (срок юзера в панели), вызванный уже под advisory-замком юзера: выдача дней
 // (GrantDays/ActivateDaysPromo), начатая раньше, уже закоммичена и видна в панели, начатая позже — сдвинет новый pending.
 // readPrev == nil — берётся p.PrevExpireAt.
+// Платёж за устройства (Kind devices) чужой pending не отменяет: есть открытый платёж — ErrPendingExists. Открытый платёж
+// за устройства новая оплата подписки отменяет, а срок для неё читается заново: prev_expire_at у него ничего не значит.
 func (s *Store) CreatePayment(
 	ctx context.Context, p model.Payment, rollback func(old model.Payment) error,
 	readPrev func(ctx context.Context) (time.Time, error),
 ) (created model.Payment, cancelled *model.Payment, err error) {
 	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if p.Kind == "" {
+			p.Kind = model.KindTariff
+		}
 		if err := lockUserTerm(ctx, tx, p.TelegramID); err != nil {
 			return err
 		}
@@ -72,6 +77,8 @@ func (s *Store) CreatePayment(
 			`SELECT `+paymentCols+` FROM payments WHERE telegram_id = $1 AND status = 'pending' FOR UPDATE`,
 			p.TelegramID))
 		switch {
+		case err == nil && p.Kind == model.KindDevices:
+			return ErrPendingExists
 		case err == nil:
 			if err = rollback(old); err != nil {
 				return err
@@ -82,7 +89,13 @@ func (s *Store) CreatePayment(
 			}
 			old.Status = model.PaymentCancelled
 			cancelled = &old
-			p.PrevExpireAt = old.PrevExpireAt
+			if old.Kind == model.KindDevices && readPrev != nil {
+				if p.PrevExpireAt, err = readPrev(ctx); err != nil {
+					return err
+				}
+			} else if old.Kind != model.KindDevices {
+				p.PrevExpireAt = old.PrevExpireAt
+			}
 		case !errors.Is(err, ErrNotFound):
 			return err
 		case readPrev != nil:
@@ -92,9 +105,9 @@ func (s *Store) CreatePayment(
 		}
 
 		created, err = scanPayment(tx.QueryRow(ctx,
-			`INSERT INTO payments (telegram_id, username, months, price, status, prev_expire_at, promo_id, base_price)
-			 VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7) RETURNING `+paymentCols,
-			p.TelegramID, p.Username, p.Month, p.Price, p.PrevExpireAt, p.PromoID, p.BasePrice))
+			`INSERT INTO payments (telegram_id, username, months, price, status, prev_expire_at, promo_id, base_price, kind, extra_devices)
+			 VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9) RETURNING `+paymentCols,
+			p.TelegramID, p.Username, p.Month, p.Price, p.PrevExpireAt, p.PromoID, p.BasePrice, p.Kind, p.ExtraDevices))
 		return err
 	})
 	if err != nil {
@@ -161,7 +174,7 @@ func (s *Store) UserStats(ctx context.Context, telegramID, excludeID int64) (mod
 	var st model.UserStats
 	err := s.pool.QueryRow(ctx, `
 		WITH p AS (SELECT * FROM payments WHERE telegram_id = $1 AND id <> $2),
-		last AS (SELECT coalesce(max(id) FILTER (WHERE status = 'confirmed'), 0) AS id FROM p)
+		last AS (SELECT coalesce(max(id) FILTER (WHERE status = 'confirmed' AND kind = 'tariff'), 0) AS id FROM p)
 		SELECT
 			count(*) FILTER (WHERE status = 'confirmed'),
 			coalesce(sum(price) FILTER (WHERE status = 'confirmed'), 0),
@@ -187,6 +200,21 @@ func (s *Store) ResolvePayment(
 	}
 	var p model.Payment
 	err := s.tx(ctx, func(tx pgx.Tx) error {
+		// Порядок блокировок как у CreatePayment: advisory юзера -> строка users -> строка платежа. Строка юзера нужна
+		// для доп. устройств: их число читается и пишется под ней, параллельные решения и выдачи не перемежаются.
+		var owner int64
+		if err := tx.QueryRow(ctx, `SELECT telegram_id FROM payments WHERE id = $1`, id).Scan(&owner); errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if err := lockUserTerm(ctx, tx, owner); err != nil {
+			return err
+		}
+		var curExtra int
+		if err := tx.QueryRow(ctx, `SELECT extra_devices FROM users WHERE telegram_id = $1 FOR UPDATE`, owner).Scan(&curExtra); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
 		var err error
 		p, err = scanPayment(tx.QueryRow(ctx, `SELECT `+paymentCols+` FROM payments WHERE id = $1 FOR UPDATE`, id))
 		if err != nil {
@@ -195,6 +223,7 @@ func (s *Store) ResolvePayment(
 		if p.Status != model.PaymentPending {
 			return ErrNotPending
 		}
+		p.UserExtra = curExtra
 		// Активация — до apply: повтор бесплатного платежа отклоняется раньше, чем тронута панель.
 		if status == model.PaymentConfirmed && p.PromoID != nil {
 			if err = activatePaymentPromo(ctx, tx, p, at); err != nil {
@@ -208,6 +237,14 @@ func (s *Store) ResolvePayment(
 		if _, err = tx.Exec(ctx, `UPDATE payments SET status = $2, resolved_at = $3 WHERE id = $1`,
 			id, status, at); err != nil {
 			return err
+		}
+		// Устройства юзера меняет только подтверждение; то же правило (ExtraAfter) применил apply при записи лимита в панель.
+		if status == model.PaymentConfirmed {
+			if next := p.ExtraAfter(curExtra); next != curExtra {
+				if _, err = tx.Exec(ctx, `UPDATE users SET extra_devices = $2 WHERE telegram_id = $1`, owner, next); err != nil {
+					return err
+				}
+			}
 		}
 		for _, m := range msgs {
 			if err = enqueue(ctx, tx, m); err != nil {

@@ -46,7 +46,8 @@ type UserSummary struct {
 	PanelStatus        *string    `json:"panelStatus"`
 	BlockedBotAt       *time.Time `json:"blockedBotAt"`
 	BlockedAt          *time.Time `json:"blockedAt"`    // ручная блокировка админом: без авансов и промокодов
-	TariffMonths       *int       `json:"tariffMonths"` // последний подтверждённый платёж
+	TariffMonths       *int       `json:"tariffMonths"` // последний подтверждённый платёж за подписку
+	ExtraDevices       int        `json:"extraDevices"` // куплено устройств сверх базы
 	LastSeenAt         *time.Time `json:"lastSeenAt"`
 	BroadcastsReceived int        `json:"broadcastsReceived"`
 }

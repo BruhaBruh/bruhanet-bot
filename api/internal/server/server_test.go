@@ -509,6 +509,7 @@ type fakePanel struct {
 	usersErr error
 
 	updates   []time.Time
+	limits    []int
 	updateErr error
 	createErr error
 	squad     uuid.UUID
@@ -533,6 +534,14 @@ func (p *fakePanel) UpdateUser(_ context.Context, _ int64, _ string, expireAt ti
 	p.updates = append(p.updates, expireAt)
 	p.squad = squad
 	return &api.UserItemInfo{ExpireAt: expireAt, Status: api.UserItemInfoStatusACTIVE}, nil
+}
+
+func (p *fakePanel) SetDeviceLimit(_ context.Context, _ int64, limit int) (*api.UserItemInfo, error) {
+	if p.updateErr != nil {
+		return nil, p.updateErr
+	}
+	p.limits = append(p.limits, limit)
+	return &api.UserItemInfo{Status: api.UserItemInfoStatusACTIVE}, nil
 }
 
 func (p *fakePanel) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
@@ -566,6 +575,11 @@ func (blockingPanel) CreateUser(ctx context.Context, _ int64, _ string, _ uuid.U
 }
 
 func (blockingPanel) UpdateUser(ctx context.Context, _ int64, _ string, _ time.Time, _ uuid.UUID) (*api.UserItemInfo, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (blockingPanel) SetDeviceLimit(ctx context.Context, _ int64, _ int) (*api.UserItemInfo, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

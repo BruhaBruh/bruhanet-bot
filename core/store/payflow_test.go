@@ -20,7 +20,19 @@ import (
 type racePanel struct {
 	mu      sync.Mutex
 	expires []time.Time
+	limits  []int
 	err     error
+}
+
+func (p *racePanel) SetDeviceLimit(_ context.Context, _ int64, limit int) (*api.UserItemInfo, error) {
+	time.Sleep(100 * time.Millisecond)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.err != nil {
+		return nil, p.err
+	}
+	p.limits = append(p.limits, limit)
+	return &api.UserItemInfo{}, nil
 }
 
 func (p *racePanel) UpdateUser(_ context.Context, _ int64, _ string, expireAt time.Time, _ uuid.UUID) (*api.UserItemInfo, error) {

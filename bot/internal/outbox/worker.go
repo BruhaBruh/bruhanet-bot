@@ -39,7 +39,7 @@ type Queue interface {
 }
 
 // Notice — текст и клавиатура уведомления о платеже (routes.PaymentNotice).
-type Notice func(ctx context.Context, chatID int64, key string, expireAt time.Time, days int) (string, *models.InlineKeyboardMarkup)
+type Notice func(ctx context.Context, chatID int64, key string, expireAt time.Time, days, devices int) (string, *models.InlineKeyboardMarkup)
 
 // Render подставляет переменные в текст для получателя (content.Provider): читает не больше строки users.
 type Render func(ctx context.Context, chatID int64, tpl string) string
@@ -150,7 +150,7 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 		return w.closeAdminMessage(ctx, it)
 	}
 	if it.TextKey != "" {
-		it.Text, it.Keyboard = w.notice(ctx, it.ChatID, it.TextKey, it.ExpireAt, it.Days)
+		it.Text, it.Keyboard = w.notice(ctx, it.ChatID, it.TextKey, it.ExpireAt, it.Days, it.Devices)
 	}
 	if it.Template {
 		it.Text = w.render(ctx, it.ChatID, it.Text)

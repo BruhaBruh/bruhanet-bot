@@ -45,8 +45,14 @@ type Settings struct {
 	ReminderWeekDays int      `json:"reminderWeekDays"` // порог «скоро закончится»
 	ReminderDayHours int      `json:"reminderDayHours"` // порог «в течение суток»
 
+	DevicesBase int `json:"devicesBase"` // устройств в подписке без доплаты, 1..100
+	DevicePrice int `json:"devicePrice"` // ₽ за каждое доп. устройство в месяц; 0 — продажа устройств выключена
+
 	Vars map[string]string `json:"vars"` // свои переменные текстов: имя → значение
 }
+
+// DevicesEnabled — продажа доп. устройств включена.
+func (s Settings) DevicesEnabled() bool { return s.DevicePrice > 0 }
 
 func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
 	return Settings{
@@ -61,6 +67,9 @@ func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
 		AdvanceHours:     24,
 		ReminderWeekDays: 7,
 		ReminderDayHours: 24,
+
+		DevicesBase: 5,
+		DevicePrice: 0,
 
 		Vars: map[string]string{},
 	}
@@ -201,6 +210,8 @@ func Merge(def Settings, raw map[string][]byte) (Settings, error) {
 	apply("advanceHours", num(&def.AdvanceHours))
 	apply("reminderWeekDays", num(&def.ReminderWeekDays))
 	apply("reminderDayHours", num(&def.ReminderDayHours))
+	apply("devicesBase", num(&def.DevicesBase))
+	apply("devicePrice", num(&def.DevicePrice))
 	apply("vars", func(b []byte) error {
 		var v map[string]string
 		if err := json.Unmarshal(b, &v); err != nil {
@@ -257,6 +268,12 @@ func (s Settings) Validate() error {
 	}
 	if s.ReminderDayHours < 1 || s.ReminderDayHours >= s.ReminderWeekDays*24 {
 		p = append(p, "второе напоминание должно быть позже первого и не меньше чем за 1 час")
+	}
+	if s.DevicesBase < 1 || s.DevicesBase > 100 {
+		p = append(p, "устройств в базе должно быть от 1 до 100")
+	}
+	if s.DevicePrice < 0 || s.DevicePrice > 100_000 {
+		p = append(p, "цена доп. устройства должна быть от 0 до 100 000 ₽ в месяц")
 	}
 	if len(s.Vars) > maxVars {
 		p = append(p, fmt.Sprintf("своих переменных должно быть не больше %d", maxVars))

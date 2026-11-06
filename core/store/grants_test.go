@@ -21,6 +21,7 @@ type statePanel struct {
 	expire time.Time
 	err    error
 	writes []time.Time
+	limits []int
 	fast   bool // короткая задержка записи: для стресс-тестов
 }
 
@@ -44,6 +45,14 @@ func (p *statePanel) UpdateUser(_ context.Context, _ int64, _ string, expireAt t
 	p.expire = expireAt
 	p.writes = append(p.writes, expireAt)
 	return &api.UserItemInfo{ExpireAt: expireAt}, nil
+}
+
+func (p *statePanel) SetDeviceLimit(_ context.Context, _ int64, limit int) (*api.UserItemInfo, error) {
+	time.Sleep(50 * time.Millisecond)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.limits = append(p.limits, limit)
+	return &api.UserItemInfo{ExpireAt: p.expire}, nil
 }
 
 func (p *statePanel) CreateUser(context.Context, int64, string, uuid.UUID) (*api.UserItemInfo, error) {

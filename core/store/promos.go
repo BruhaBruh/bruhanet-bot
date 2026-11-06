@@ -148,14 +148,14 @@ func promoUsage(ctx context.Context, q rowQuerier, promoID, telegramID int64) (u
 	return used, alreadyActivated, err
 }
 
-// HasConfirmed — есть ли у юзера подтверждённая оплата («только новым»).
+// HasConfirmed — есть ли у юзера подтверждённая оплата подписки («только новым»; докупка устройств не в счёт).
 func (s *Store) HasConfirmed(ctx context.Context, telegramID int64) (bool, error) {
 	return hasConfirmed(ctx, s.pool, telegramID)
 }
 
 func hasConfirmed(ctx context.Context, q rowQuerier, telegramID int64) (has bool, err error) {
 	err = q.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM payments WHERE telegram_id = $1 AND status = 'confirmed')`, telegramID).Scan(&has)
+		`SELECT EXISTS (SELECT 1 FROM payments WHERE telegram_id = $1 AND status = 'confirmed' AND kind = 'tariff')`, telegramID).Scan(&has)
 	return has, err
 }
 

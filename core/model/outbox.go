@@ -32,7 +32,8 @@ type OutboxMessage struct {
 	// (строки до этой версии несут готовые Text и Keyboard).
 	TextKey  string    `json:"text_key,omitempty"`
 	ExpireAt time.Time `json:"expire_at,omitzero"`
-	Days     int       `json:"days,omitempty"` // grant_days: сколько дней выдано (переменная {{.days}})
+	Devices  int       `json:"devices,omitempty"` // payment_result за устройства: куплено штук (переменная {{.devices}})
+	Days     int       `json:"days,omitempty"`    // grant_days: сколько дней выдано (переменная {{.days}})
 
 	// payment_admin_closed: решение из панели закрывает MessageID у админа; 0 — чека не было, закрывать нечего.
 	Confirmed bool `json:"confirmed,omitempty"`

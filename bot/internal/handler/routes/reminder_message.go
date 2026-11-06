@@ -25,11 +25,14 @@ func ReminderMessage(ctx context.Context, c *content.Provider, kind string, expi
 
 // PaymentNotice — уведомление юзеру о решении по платежу, из строки outbox: текст key с новым сроком и главная клавиатура.
 // Рендерится при доставке: решение принимает и api, у которого нет ни реестра кнопок, ни клавиатур бота.
-func PaymentNotice(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64, key string, expireAt time.Time, days int) (string, *models.InlineKeyboardMarkup) {
+func PaymentNotice(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64, key string, expireAt time.Time, days, devices int) (string, *models.InlineKeyboardMarkup) {
 	ctx = content.ForUser(ctx, telegramID)
 	vars := map[string]string{"expireAt": formatTime(expireAt)}
 	if days > 0 {
 		vars["days"] = strconv.Itoa(days)
+	}
+	if devices > 0 {
+		vars["devices"] = strconv.Itoa(devices)
 	}
 	return c.Text(ctx, key, vars), mainKeyboard(ctx, c, rw, telegramID)
 }

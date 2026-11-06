@@ -150,6 +150,13 @@ func (p panelWrite) UpdateUser(ctx context.Context, id int64, username string, e
 	return u, nil
 }
 
+// SetDeviceLimit — лимит устройств при подтверждении покупки; срок в users не меняется.
+func (p panelWrite) SetDeviceLimit(ctx context.Context, id int64, limit int) (*api.UserItemInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.s.PanelTimeout)
+	defer cancel()
+	return p.s.Panel.SetDeviceLimit(ctx, id, limit)
+}
+
 // resolvePayment — подтверждение или отклонение из панели; логика та же, что у кнопок в боте (payflow.Resolve).
 func (s *server) resolvePayment(approve bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

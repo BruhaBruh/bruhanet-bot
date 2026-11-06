@@ -17,6 +17,7 @@ type Remnawave interface {
 	GetUser(ctx context.Context, telegramID int64) (*api.UserItemInfo, error)
 	CreateUser(ctx context.Context, telegramID int64, username string, squadUUID uuid.UUID) (*api.UserItemInfo, error)
 	UpdateUser(ctx context.Context, telegramID int64, username string, expireAt time.Time, squadUUID uuid.UUID) (*api.UserItemInfo, error)
+	SetDeviceLimit(ctx context.Context, telegramID int64, limit int) (*api.UserItemInfo, error)
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
 }
 
@@ -53,6 +54,12 @@ func (i instrumented) CreateUser(ctx context.Context, id int64, username string,
 func (i instrumented) UpdateUser(ctx context.Context, id int64, username string, expireAt time.Time, squad uuid.UUID) (*api.UserItemInfo, error) {
 	return call(ctx, "UpdateUser", func(ctx context.Context) (*api.UserItemInfo, error) {
 		return i.rw.UpdateUser(ctx, id, username, expireAt, squad)
+	})
+}
+
+func (i instrumented) SetDeviceLimit(ctx context.Context, id int64, limit int) (*api.UserItemInfo, error) {
+	return call(ctx, "SetDeviceLimit", func(ctx context.Context) (*api.UserItemInfo, error) {
+		return i.rw.SetDeviceLimit(ctx, id, limit)
 	})
 }
 

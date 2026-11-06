@@ -17,13 +17,13 @@ const userSummaryQuery = `
 		count(p.id) FILTER (WHERE p.status = 'confirmed'),
 		coalesce(sum(p.price) FILTER (WHERE p.status = 'confirmed'), 0),
 		u.expire_at, u.panel_status, u.blocked_bot_at, u.blocked_at,
-		(SELECT c.months FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed' ORDER BY c.id DESC LIMIT 1),
-		u.last_seen_at, u.broadcasts_received
+		(SELECT c.months FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed' AND c.kind = 'tariff' ORDER BY c.id DESC LIMIT 1),
+		u.last_seen_at, u.broadcasts_received, u.extra_devices
 	FROM users u LEFT JOIN payments p ON p.telegram_id = u.telegram_id`
 
 func scanUserSummary(row pgx.Row) (u model.UserSummary, err error) {
 	err = row.Scan(&u.TelegramID, &u.Username, &u.Name, &u.CreatedAt, &u.Confirmed, &u.ConfirmedSum,
-		&u.ExpireAt, &u.PanelStatus, &u.BlockedBotAt, &u.BlockedAt, &u.TariffMonths, &u.LastSeenAt, &u.BroadcastsReceived)
+		&u.ExpireAt, &u.PanelStatus, &u.BlockedBotAt, &u.BlockedAt, &u.TariffMonths, &u.LastSeenAt, &u.BroadcastsReceived, &u.ExtraDevices)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -41,7 +41,7 @@ const userFilterWhere = `
 			OR ($4 = 'blocked' AND u.blocked_at IS NOT NULL))
 		AND (NOT $6 OR EXISTS (SELECT 1 FROM payments h WHERE h.telegram_id = u.telegram_id AND h.status = 'confirmed'))
 		AND (NOT $7 OR EXISTS (SELECT 1 FROM payments a WHERE a.telegram_id = u.telegram_id AND ` + unpaidAdvance + `
-			AND a.id > coalesce((SELECT max(c.id) FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed'), 0)))
+			AND a.id > coalesce((SELECT max(c.id) FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed' AND c.kind = 'tariff'), 0)))
 		AND ($8::timestamptz IS NULL OR u.created_at >= $8) AND ($9::timestamptz IS NULL OR u.created_at < $9)`
 
 // ListUsers — страница юзеров (новые сверху) и общее число под фильтр. Q ищет по подстроке username и имени

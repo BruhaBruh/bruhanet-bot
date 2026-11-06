@@ -128,6 +128,10 @@ func (f fakeRW) UpdateUser(context.Context, int64, string, time.Time, uuid.UUID)
 	return nil, f.err
 }
 
+func (f fakeRW) SetDeviceLimit(context.Context, int64, int) (*api.UserItemInfo, error) {
+	return nil, f.err
+}
+
 func (f fakeRW) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
 	return func(yield func(api.UserItemInfo, error) bool) {
 		yield(api.UserItemInfo{}, nil)

@@ -16,6 +16,9 @@ func TestBotDefaultsMatchOldConstants(t *testing.T) {
 	if !slices.Equal(d.ReminderTimes, []string{"12:00"}) || d.AdvanceLimit != 3 || d.AdvanceHours != 24 || d.ReminderWeekDays != 7 || d.ReminderDayHours != 24 {
 		t.Fatalf("got %+v", d)
 	}
+	if d.DevicesBase != 5 || d.DevicePrice != 0 || d.DevicesEnabled() {
+		t.Fatalf("devices defaults: %+v", d)
+	}
 }
 
 func TestWithCron(t *testing.T) {
@@ -60,12 +63,16 @@ func TestMergeBotKeys(t *testing.T) {
 	got, err := Merge(def(), map[string][]byte{
 		"reminderTimes": []byte(`["09:05","18:00"]`), "advanceLimit": []byte(`0`), "advanceHours": []byte(`48`),
 		"reminderWeekDays": []byte(`10`), "reminderDayHours": []byte(`12`),
+		"devicesBase": []byte(`3`), "devicePrice": []byte(`80`),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(got.ReminderTimes, []string{"09:05", "18:00"}) || got.AdvanceLimit != 0 || got.AdvanceHours != 48 || got.ReminderWeekDays != 10 || got.ReminderDayHours != 12 {
 		t.Fatalf("got %+v", got)
+	}
+	if got.DevicesBase != 3 || got.DevicePrice != 80 || !got.DevicesEnabled() {
+		t.Fatalf("devices: %+v", got)
 	}
 	if _, err := Merge(def(), map[string][]byte{"advanceLimit": []byte(`"x"`)}); !errors.Is(err, ErrInvalidSetting) {
 		t.Fatalf("err = %v", err)
@@ -90,6 +97,10 @@ func TestValidateBotKeys(t *testing.T) {
 		"week big":       func(s *Settings) { s.ReminderWeekDays = 61 },
 		"day zero":       func(s *Settings) { s.ReminderDayHours = 0 },
 		"day over week":  func(s *Settings) { s.ReminderWeekDays, s.ReminderDayHours = 1, 24 },
+		"base zero":      func(s *Settings) { s.DevicesBase = 0 },
+		"base big":       func(s *Settings) { s.DevicesBase = 101 },
+		"price negative": func(s *Settings) { s.DevicePrice = -1 },
+		"price big":      func(s *Settings) { s.DevicePrice = 100_001 },
 	} {
 		s := def()
 		mutate(&s)

@@ -34,7 +34,13 @@ func (f *fakeStore) ResolvePayment(_ context.Context, _ int64, status model.Paym
 
 type fakePanel struct {
 	expire time.Time
+	limits []int
 	err    error
+}
+
+func (f *fakePanel) SetDeviceLimit(_ context.Context, _ int64, limit int) (*api.UserItemInfo, error) {
+	f.limits = append(f.limits, limit)
+	return &api.UserItemInfo{}, f.err
 }
 
 func (f *fakePanel) UpdateUser(_ context.Context, _ int64, _ string, expireAt time.Time, _ uuid.UUID) (*api.UserItemInfo, error) {
@@ -99,5 +105,85 @@ func TestResolvePanelError(t *testing.T) {
 	_, err := payflow.Resolve(t.Context(), st, &fakePanel{err: boom}, payflow.Decision{ID: 1, Approve: true, At: at, AdminID: 99})
 	if !errors.Is(err, payflow.ErrPanel) || !errors.Is(err, boom) || st.status != "" || st.out != nil {
 		t.Fatalf("err = %v, status = %q, out = %+v", err, st.status, st.out)
+	}
+}
+
+func TestResolveDevices(t *testing.T) {
+	prev := at.Add(5 * 24 * time.Hour)
+	for _, tc := range []struct {
+		name    string
+		approve bool
+		limits  []int
+		key     string
+	}{
+		{"confirm writes limit only", true, []int{7}, "payment.devices_confirmed"},
+		{"decline touches nothing", false, nil, "payment.devices_declined"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := &fakeStore{p: model.Payment{ID: 1, TelegramID: 7, Kind: model.KindDevices, ExtraDevices: 2, Price: 90, PrevExpireAt: prev, UserExtra: 0}}
+			panel := &fakePanel{}
+			if _, err := payflow.Resolve(t.Context(), st, panel, payflow.Decision{ID: 1, Approve: tc.approve, At: at, DevicesBase: 5}); err != nil {
+				t.Fatal(err)
+			}
+			if !panel.expire.IsZero() {
+				t.Fatalf("term written: %v", panel.expire)
+			}
+			if len(panel.limits) != len(tc.limits) || (len(tc.limits) > 0 && panel.limits[0] != tc.limits[0]) {
+				t.Fatalf("limits = %v", panel.limits)
+			}
+			m := st.out[0]
+			if m.TextKey != tc.key || m.Devices != 2 || !m.ExpireAt.IsZero() {
+				t.Fatalf("message = %+v", m)
+			}
+		})
+	}
+}
+
+func TestResolveDevicesAddsToCurrent(t *testing.T) {
+	st := &fakeStore{p: model.Payment{ID: 1, TelegramID: 7, Kind: model.KindDevices, ExtraDevices: 1, UserExtra: 3}}
+	panel := &fakePanel{}
+	if _, err := payflow.Resolve(t.Context(), st, panel, payflow.Decision{ID: 1, Approve: true, At: at, DevicesBase: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if len(panel.limits) != 1 || panel.limits[0] != 9 {
+		t.Fatalf("limits = %v", panel.limits)
+	}
+}
+
+func TestResolveTariffDevices(t *testing.T) {
+	base := model.Payment{ID: 1, TelegramID: 7, Month: 1, PrevExpireAt: at}
+	for _, tc := range []struct {
+		name         string
+		extra, cur   int
+		approve      bool
+		limits       []int
+		panelBaseErr bool
+	}{
+		{"unchanged", 2, 2, true, nil, false},
+		{"increase", 3, 1, true, []int{8}, false},
+		{"drop to base", 0, 2, true, []int{5}, false},
+		{"decline", 0, 2, false, nil, false},
+		{"no base", 1, 0, true, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := base
+			p.ExtraDevices, p.UserExtra = tc.extra, tc.cur
+			st := &fakeStore{p: p}
+			panel := &fakePanel{}
+			d := payflow.Decision{ID: 1, Approve: tc.approve, At: at, DevicesBase: 5}
+			if tc.panelBaseErr {
+				d.DevicesBase = 0
+			}
+			_, err := payflow.Resolve(t.Context(), st, panel, d)
+			if tc.panelBaseErr {
+				if !errors.Is(err, payflow.ErrDevicesBase) || st.status != "" {
+					t.Fatalf("err = %v", err)
+				}
+				return
+			}
+			if err != nil || len(panel.limits) != len(tc.limits) || (len(tc.limits) > 0 && panel.limits[0] != tc.limits[0]) {
+				t.Fatalf("err %v limits = %v", err, panel.limits)
+			}
+		})
 	}
 }

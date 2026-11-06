@@ -26,6 +26,8 @@ var ErrPanel = errors.New("payflow: panel update failed")
 
 type Panel interface {
 	UpdateUser(ctx context.Context, telegramID int64, username string, expireAt time.Time, squadUUID uuid.UUID) (*api.UserItemInfo, error)
+	// SetDeviceLimit пишет только лимит устройств; срок и остальное не трогает.
+	SetDeviceLimit(ctx context.Context, telegramID int64, limit int) (*api.UserItemInfo, error)
 }
 
 // Store — core/store: ошибки store.ErrNotFound и store.ErrNotPending проходят как есть.
@@ -42,6 +44,8 @@ type Decision struct {
 	At      time.Time
 	Squad   uuid.UUID
 	AdminID int64
+	// DevicesBase — устройств в базе (settings.DevicesBase): лимит в панели = база + доп. устройства.
+	DevicesBase int
 }
 
 // ExtendedExpire — срок после подтверждения: от прежнего срока или от at, если он в прошлом.
@@ -52,14 +56,47 @@ func ExtendedExpire(prev, at time.Time, months int) time.Time {
 	return prev.Add(time.Duration(months) * Month)
 }
 
+// ErrDevicesBase — не задана база устройств, лимит в панель не пишем.
+var ErrDevicesBase = errors.New("payflow: devices base is not set")
+
+// ApplyDeviceLimit пишет лимит устройств в панель, если подтверждение платежа меняет доп. устройства юзера
+// (p.UserExtra — текущие под блокировкой, store.ResolvePayment): докупка — всегда, подписка — только при изменении числа.
+// Отклонение и неизменное число панель не трогают. Тот же вызов нужен любому месту, которое подтверждает платёж само.
+func ApplyDeviceLimit(ctx context.Context, panel Panel, p model.Payment, approve bool, base int) error {
+	next := p.ExtraAfter(p.UserExtra)
+	if !approve || next == p.UserExtra {
+		return nil
+	}
+	if base < 1 {
+		return ErrDevicesBase
+	}
+	_, err := panel.SetDeviceLimit(ctx, p.TelegramID, base+next)
+	return err
+}
+
 // Resolve под блокировкой строки платежа записывает в панель абсолютную дату (подтверждение — ExtendedExpire,
 // отклонение — возврат PrevExpireAt) и кладёт уведомления в outbox. Текст и клавиатуру юзеру рендерит воркер при доставке.
+// Платёж за устройства срок не трогает вовсе: подтверждение пишет только лимит устройств, отклонение — ничего.
 func Resolve(ctx context.Context, st Store, panel Panel, d Decision) (model.Payment, error) {
 	status, key := model.PaymentDeclined, "payment.declined"
 	if d.Approve {
 		status, key = model.PaymentConfirmed, "payment.confirmed"
 	}
 	return st.ResolvePayment(ctx, d.ID, status, d.At, func(p model.Payment) ([]model.OutboxMessage, error) {
+		var msgs []model.OutboxMessage
+		if p.Kind == model.KindDevices {
+			if err := ApplyDeviceLimit(ctx, panel, p, d.Approve, d.DevicesBase); err != nil {
+				return nil, errors.Join(ErrPanel, err)
+			}
+			key = "payment.devices_declined"
+			if d.Approve {
+				key = "payment.devices_confirmed"
+			}
+			msgs = []model.OutboxMessage{{
+				EventType: EventResult, ChatID: p.TelegramID, TextKey: key, Devices: p.ExtraDevices, ParseMode: "HTML",
+			}}
+			return withAdminClosed(msgs, p, d), nil
+		}
 		expireAt := p.PrevExpireAt
 		if d.Approve {
 			expireAt = ExtendedExpire(p.PrevExpireAt, d.At, p.Month)
@@ -67,15 +104,22 @@ func Resolve(ctx context.Context, st Store, panel Panel, d Decision) (model.Paym
 		if _, err := panel.UpdateUser(ctx, p.TelegramID, p.Username, expireAt, d.Squad); err != nil {
 			return nil, errors.Join(ErrPanel, err)
 		}
-		msgs := []model.OutboxMessage{{EventType: EventResult, ChatID: p.TelegramID, TextKey: key, ExpireAt: expireAt, ParseMode: "HTML"}}
-		if d.AdminID != 0 {
-			msgs = append(msgs, model.OutboxMessage{
-				EventType: EventAdminClosed, ChatID: d.AdminID, MessageID: p.AdminMessageID,
-				Confirmed: d.Approve, Months: p.Month, Price: p.Price,
-			})
+		if err := ApplyDeviceLimit(ctx, panel, p, d.Approve, d.DevicesBase); err != nil {
+			return nil, errors.Join(ErrPanel, err)
 		}
-		return msgs, nil
+		msgs = []model.OutboxMessage{{EventType: EventResult, ChatID: p.TelegramID, TextKey: key, ExpireAt: expireAt, ParseMode: "HTML"}}
+		return withAdminClosed(msgs, p, d), nil
 	})
+}
+
+func withAdminClosed(msgs []model.OutboxMessage, p model.Payment, d Decision) []model.OutboxMessage {
+	if d.AdminID != 0 {
+		msgs = append(msgs, model.OutboxMessage{
+			EventType: EventAdminClosed, ChatID: d.AdminID, MessageID: p.AdminMessageID,
+			Confirmed: d.Approve, Months: p.Month, Price: p.Price,
+		})
+	}
+	return msgs
 }
 
 // EventGrant — уведомление юзеру о днях, выданных из панели.

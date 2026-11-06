@@ -19,12 +19,19 @@ type RemnawaveUpdate struct {
 	ExpireAt   time.Time
 }
 
+// DeviceLimitWrite — вызов SetDeviceLimit.
+type DeviceLimitWrite struct {
+	TelegramID int64
+	Limit      int
+}
+
 // Remnawave — фейк панели для тестов хендлеров.
 type Remnawave struct {
 	mu        sync.Mutex
 	now       func() time.Time
 	users     map[int64]api.UserItemInfo
 	updates   []RemnawaveUpdate
+	limits    []DeviceLimitWrite
 	err       error
 	updErr    error
 	failAfter int
@@ -118,6 +125,33 @@ func (r *Remnawave) Updates() []RemnawaveUpdate {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]RemnawaveUpdate(nil), r.updates...)
+}
+
+// DeviceLimitWrites — все вызовы SetDeviceLimit по порядку.
+func (r *Remnawave) DeviceLimitWrites() []DeviceLimitWrite {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]DeviceLimitWrite(nil), r.limits...)
+}
+
+// SetDeviceLimit запоминает лимит в юзере панели; сбой UpdateUser (FailUpdateWith) действует и тут.
+func (r *Remnawave) SetDeviceLimit(_ context.Context, telegramID int64, limit int) (*api.UserItemInfo, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.updErr != nil {
+		return nil, r.updErr
+	}
+	u, ok := r.users[telegramID]
+	if !ok {
+		return nil, remnawave.ErrUserNotFound
+	}
+	u.HwidDeviceLimit = api.NewNilInt(limit)
+	r.users[telegramID] = u
+	r.limits = append(r.limits, DeviceLimitWrite{TelegramID: telegramID, Limit: limit})
+	return &u, nil
 }
 
 func (r *Remnawave) GetUser(_ context.Context, telegramID int64) (*api.UserItemInfo, error) {
