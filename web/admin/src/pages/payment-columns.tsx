@@ -23,15 +23,17 @@ export function statusTag(status: string) {
 }
 
 const isDevices = (p: Payment) => p.kind === 'devices'
-// Подписка: «3 мес.» и «+2 устр.», если в цену входят доп. устройства; докупка: «+2 устр.» без срока.
+const isGift = (p: Payment) => p.kind === 'gift'
+// Подписка: «3 мес.» и «+2 устр.», если в цену входят доп. устройства; докупка: «+2 устр.» без срока; подарок: «3 мес.».
 const planLabel = (p: Payment) => {
   const extra = p.extraDevices ? `+${p.extraDevices}\u00a0устр.` : ''
   if (isDevices(p)) return extra
+  if (isGift(p)) return `${p.month}\u00a0мес.`
   return [`${p.month}\u00a0мес.`, extra].filter(Boolean).join(' · ')
 }
 const planCell = (p: Payment) => (
   <span className="inline-flex flex-wrap items-center gap-1.5">
-    <StatusTag tone={isDevices(p) ? 'accent' : 'neutral'}>{isDevices(p) ? 'Устройства' : 'Подписка'}</StatusTag>
+    <StatusTag tone={isDevices(p) || isGift(p) ? 'accent' : 'neutral'}>{isDevices(p) ? 'Устройства' : isGift(p) ? 'Подарок' : 'Подписка'}</StatusTag>
     <span>{planLabel(p)}</span>
   </span>
 )
@@ -106,6 +108,9 @@ export const userPayColumns: Column[] = [
   dateColumn,
 ]
 
+// «Устройства »/«Подарок » перед сроком в мобильной строке; у подписки без приставки.
+const kindPrefix = (p: Payment) => (isDevices(p) ? 'Устройства ' : isGift(p) ? 'Подарок ' : '')
+
 const mobileSubtitle = (p: Payment, ...lead: string[]) =>
   [...lead, formatShortDate(paymentDate(p)), p.advanceGranted && 'аванс', promoNote(p)].filter(Boolean).join(' · ')
 
@@ -118,11 +123,11 @@ export const paymentMobileRow = (p: Payment): CellProps => ({
 
 export const paymentPageMobileRow = (p: Payment): CellProps => ({
   ...paymentMobileRow(p),
-  subtitle: mobileSubtitle(p, isDevices(p) ? `Устройства ${planLabel(p)}` : planLabel(p)),
+  subtitle: mobileSubtitle(p, kindPrefix(p) + planLabel(p)),
   chevron: true,
 })
 
-export const userPayMobileRow = (p: Payment): CellProps => ({ ...paymentMobileRow(p), title: isDevices(p) ? `Устройства ${planLabel(p)}` : planLabel(p) })
+export const userPayMobileRow = (p: Payment): CellProps => ({ ...paymentMobileRow(p), title: kindPrefix(p) + planLabel(p) })
 
 async function copyId(id: Payment['id']) {
   try {

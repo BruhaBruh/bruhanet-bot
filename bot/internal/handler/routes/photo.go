@@ -102,7 +102,8 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 			pluralMonths(p.Month),
 		),
 	}
-	if p.Kind == model.KindDevices {
+	switch p.Kind {
+	case model.KindDevices:
 		head = []string{
 			"<b>Покупка устройств BruhaNet</b>",
 			"",
@@ -111,7 +112,7 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 				html.EscapeString(displayName(u)), handle, p.TelegramID, devicesCount(p.ExtraDevices), groupThousands(p.Price),
 			),
 		}
-	} else if p.Kind == model.KindGift {
+	case model.KindGift:
 		head = []string{
 			"<b>Покупка подарка BruhaNet</b>",
 			"",
@@ -120,8 +121,10 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 				html.EscapeString(displayName(u)), handle, p.TelegramID, p.Month, pluralMonths(p.Month), groupThousands(p.Price),
 			),
 		}
-	} else if p.ExtraDevices > 0 {
-		head = append(head, fmt.Sprintf("🖥 доп. устройств в тарифе: %d", p.ExtraDevices))
+	case model.KindTariff:
+		if p.ExtraDevices > 0 {
+			head = append(head, fmt.Sprintf("🖥 доп. устройств в тарифе: %d", p.ExtraDevices))
+		}
 	}
 	msg := send(ctx, b, admin, nil, slices.Concat(head, promoRows, []string{""}, formatStats(stats, limit))...)
 	if msg == nil {

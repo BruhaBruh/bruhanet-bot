@@ -73,6 +73,10 @@ type Store interface {
 	GrantDays(ctx context.Context, telegramID, adminID int64, days int, now time.Time, apply func() ([]model.OutboxMessage, error)) error
 	SetUserBlocked(ctx context.Context, telegramID int64, blocked bool, at time.Time) error
 	UserGrants(ctx context.Context, telegramID int64, limit int) ([]model.Grant, error)
+	// Подарки: выдача админом, отмена готового, список со страницами.
+	CreateAdminGifts(ctx context.Context, months, count int, at time.Time) ([]model.Gift, error)
+	CancelGift(ctx context.Context, id int64) error
+	ListGifts(ctx context.Context, f model.GiftFilter) ([]model.Gift, int, error)
 }
 
 // Panel — Remnawave (pkg/remnawave).
@@ -161,6 +165,9 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/promos/{id}/enable", s.enablePromo)
 	apiMux.HandleFunc("POST /api/promos/{id}/disable", s.disablePromo)
 	apiMux.HandleFunc("GET /api/promos/{id}/activations", s.promoActivations)
+	apiMux.HandleFunc("GET /api/gifts", s.gifts)
+	apiMux.HandleFunc("POST /api/gifts", s.createGifts)
+	apiMux.HandleFunc("POST /api/gifts/{id}/cancel", s.cancelGift)
 	apiMux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})

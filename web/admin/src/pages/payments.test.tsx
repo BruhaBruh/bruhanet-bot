@@ -353,6 +353,31 @@ describe('Payments', () => {
       expect(posts).toEqual(['/api/payments/1/confirm'])
     })
 
+    it('gift payment: tag, term and a dialog that says the buyer keeps his term', async () => {
+      const gift = payment(1, 'pending', { month: 6, kind: 'gift', hasPhoto: true, submittedAt: NOW, prevExpireAt: '2099-12-01T12:00:00Z' })
+      const { posts } = stubReview(undefined, gift)
+      await renderPage()
+      expect(table().getByText('Подарок')).toBeTruthy()
+      expect(table().getByText('6 мес.')).toBeTruthy()
+      fireEvent.click(row().getByRole('button', { name: 'Подтвердить' }))
+      const d = screen.getByRole('alertdialog').textContent
+      expect(d).toContain('Подтвердить подарок на 6 мес.?')
+      expect(d).toContain('Срок покупателя не изменится')
+      expect(d).not.toContain('продлится')
+      await accept('Подтвердить')
+      expect(posts).toEqual(['/api/payments/1/confirm'])
+    })
+
+    it('declining a gift says nothing is created and the term stays', async () => {
+      stubReview(undefined, payment(1, 'pending', { month: 6, kind: 'gift', hasPhoto: true, submittedAt: NOW }))
+      await renderPage()
+      fireEvent.click(row().getByRole('button', { name: 'Отклонить' }))
+      const d = screen.getByRole('alertdialog').textContent
+      expect(d).toContain('Отклонить подарок?')
+      expect(d).toContain('Подарок не будет создан')
+      expect(d).not.toContain('вернётся')
+    })
+
     it('tariff payment with devices shows +N next to the term', async () => {
       stubReview(undefined, payment(1, 'pending', { kind: 'tariff', extraDevices: 3, hasPhoto: true, submittedAt: NOW }))
       await renderPage()

@@ -88,6 +88,7 @@ func (p Payment) ExtraAfter(cur int) int {
 		return cur + p.ExtraDevices
 	case KindGift:
 		return cur // подарок устройств покупателя не трогает
+	case KindTariff:
 	}
 	return p.ExtraDevices
 }

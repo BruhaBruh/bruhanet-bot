@@ -10,6 +10,7 @@ export const nav: Array<Section | { section: string }> = [
   { section: 'Маркетинг' },
   section('/broadcasts', 'Рассылки', 'Рассылки', 'megaphone'),
   section('/promos', 'Промокоды', 'Промо', 'ticket'),
+  section('/gifts', 'Подарки', 'Подарки', 'gift'),
   { section: 'Бот' },
   section('/texts', 'Редактор сообщений', 'Тексты', 'message'),
   { section: 'Данные' },

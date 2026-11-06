@@ -75,6 +75,7 @@ type fakeStore struct {
 
 	panelWrites []panelWrite
 	grants      []model.Grant
+	gifts       []model.Gift // по возрастанию id
 }
 
 type panelWrite struct {

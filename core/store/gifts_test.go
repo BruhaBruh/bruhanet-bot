@@ -552,7 +552,7 @@ func TestGiftNoDeadlockMix(t *testing.T) {
 	}
 	for round := range 12 {
 		a, b := users[round%3], users[(round+1)%3]
-		var codes []string
+		codes := make([]string, 0, 2)
 		for range 2 {
 			c, err := f.s.CreateAdminGifts(ctx, 1, 1, f.now)
 			if err != nil {

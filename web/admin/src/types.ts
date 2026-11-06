@@ -54,7 +54,7 @@ export interface Payment {
   basePrice?: number | null
   hasPhoto?: boolean
   promoCode?: string | null
-  kind?: 'tariff' | 'devices'
+  kind?: 'tariff' | 'devices' | 'gift'
   extraDevices?: number
 }
 
@@ -189,5 +189,23 @@ export interface PromoActivation {
   telegramId: number
   username: string
   paymentId: number | null
+  createdAt: string
+}
+
+export type GiftStatus = 'pending' | 'ready' | 'redeemed' | 'cancelled'
+
+// code пуст у pending: пока платёж не подтверждён, код не отдаётся.
+export interface Gift {
+  id: number
+  code: string
+  months: number
+  status: GiftStatus
+  buyerId: number | null
+  buyerUsername: string
+  paymentId: number | null
+  byAdmin: boolean
+  redeemedBy: number | null
+  redeemedUsername: string
+  redeemedAt: string | null
   createdAt: string
 }

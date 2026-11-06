@@ -4,6 +4,7 @@ import { ToastProvider } from '@/ui'
 import { setUnauthorizedHandler } from './api'
 import { AppShell } from './layout/AppShell'
 import { sectionOf } from './layout/nav'
+import Gifts from './pages/Gifts'
 import LoginRequired from './pages/LoginRequired'
 import Overview from './pages/Overview'
 import Payments from './pages/Payments'
@@ -46,6 +47,7 @@ export function App() {
           <Route path="/broadcasts/:id" element={<BroadcastView />} />
           <Route path="/promos" element={<Promos />} />
           <Route path="/promos/new" element={<PromoNew />} />
+          <Route path="/gifts" element={<Gifts />} />
           <Route path="/users" element={<Users />} />
           <Route path="/users/:id" element={<UserCard />} />
           <Route path="/payments" element={<Payments />} />

@@ -18,6 +18,7 @@ export const extendsTo = (p: Payment, now = Date.now()) =>
 const noReceipt = (p: Payment, approve: boolean) => approve && !p.submittedAt
 
 const isDevices = (p: Payment) => p.kind === 'devices'
+const isGift = (p: Payment) => p.kind === 'gift'
 
 function consequence(p: Payment, approve: boolean) {
   const who = userLabel(p)
@@ -27,6 +28,11 @@ function consequence(p: Payment, approve: boolean) {
     if (approve) return `${who} получит ${n}. Срок подписки не изменится. Пользователь получит уведомление.`
     return `Устройства не добавятся, срок подписки не изменится. Пользователь получит уведомление.`
   }
+  if (isGift(p)) {
+    if (noReceipt(p, approve)) return `Пользователь не присылал чек. Подарок на ${p.month} мес. будет готов, срок покупателя не изменится.`
+    if (approve) return `Срок покупателя не изменится. ${who} получит ссылку на подарок и уведомление.`
+    return `Подарок не будет создан, срок покупателя не изменится. Пользователь получит уведомление.`
+  }
   if (noReceipt(p, approve)) return `Пользователь не присылал чек. Срок продлится на ${p.month} мес. до ${formatFullDay(extendsTo(p))}.`
   if (approve) return `Подписка ${who} продлится до ${formatFullDay(extendsTo(p))}. Пользователь получит уведомление.`
   const back = p.prevExpireAt ? `Срок подписки ${who} вернётся к ${formatFullDay(p.prevExpireAt)}. ` : ''
@@ -35,6 +41,7 @@ function consequence(p: Payment, approve: boolean) {
 
 function decisionTitle(p: Payment, approve: boolean) {
   if (noReceipt(p, approve)) return 'Подтвердить без чека?'
+  if (isGift(p)) return approve ? `Подтвердить подарок на ${p.month} мес.?` : 'Отклонить подарок?'
   if (isDevices(p)) return approve ? `Подтвердить покупку ${formatDevices(p.extraDevices ?? 0)}?` : 'Отклонить покупку устройств?'
   return approve ? 'Подтвердить платёж?' : 'Отклонить платёж?'
 }
