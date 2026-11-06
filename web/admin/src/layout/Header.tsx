@@ -1,11 +1,11 @@
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { OWNER_NAME, OWNER_USERNAME } from '@/brand'
-import { notWired } from '@/lib/not-wired'
 import { Avatar, Button, SearchField } from '@/ui'
 import { useTheme } from '../theme'
+import { SyncButton } from './SyncButton'
 
-export function Header({ title, onLogout }: { title: string; onLogout: () => void }) {
+export function Header({ title, onLogout, onSynced }: { title: string; onLogout: () => void; onSynced: () => void }) {
   const { theme, toggle } = useTheme()
   const navigate = useNavigate()
   const themeLabel = theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'
@@ -24,8 +24,7 @@ export function Header({ title, onLogout }: { title: string; onLogout: () => voi
         <SearchField name="q" placeholder="Поиск по пользователям и платежам" />
       </form>
       <Button variant="gray" icon={theme === 'dark' ? 'sun' : 'moon'} aria-label={themeLabel} title={themeLabel} onClick={toggle} />
-      {/* На телефоне ещё и не подключённая кнопка отнимала бы место у заголовка. */}
-      <Button variant="gray" icon="bell" aria-label="Уведомления" title="Уведомления" className="max-md:hidden" onClick={notWired} />
+      <SyncButton onSynced={onSynced} />
       {/* На телефоне аватар уступает место заголовку. */}
       <div className="hidden items-center gap-2.5 pl-1 md:flex">
         <Avatar name={OWNER_NAME} colorIndex={2} size={32} />

@@ -26,6 +26,9 @@ type Store interface {
 	DeleteSession(ctx context.Context, hash []byte) error
 	ListUsers(ctx context.Context, f model.UserFilter) ([]model.UserSummary, int, error)
 	UserPromos(ctx context.Context, id int64) ([]model.UserPromo, error)
+	WithPanelSyncLock(ctx context.Context, fn func(context.Context) error) error
+	ApplyPanelSync(ctx context.Context, users []model.PanelUser, started, finished time.Time) (int, error)
+	LastPanelSync(ctx context.Context) (model.PanelSync, error)
 	UserByID(ctx context.Context, id int64) (model.UserSummary, error)
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	PaymentsByUser(ctx context.Context, id int64) ([]model.Payment, error)
@@ -96,6 +99,8 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/logout", s.logout)
 	apiMux.HandleFunc("GET /api/users", s.users)
 	apiMux.HandleFunc("GET /api/users/{id}", s.userCard)
+	apiMux.HandleFunc("GET /api/sync", s.lastSync)
+	apiMux.HandleFunc("POST /api/sync", s.runSync)
 	apiMux.HandleFunc("GET /api/payments", s.payments)
 	apiMux.HandleFunc("GET /api/texts", s.texts)
 	apiMux.HandleFunc("PUT /api/texts/{key}", s.putText)

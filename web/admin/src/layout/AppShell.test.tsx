@@ -112,6 +112,54 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: 'Светлая тема' })).toBeTruthy()
   })
 
+  describe('sync with the panel', () => {
+    const syncButton = () => screen.getByRole('button', { name: 'Синхронизировать с панелью' })
+    const posts = (f: ReturnType<typeof vi.fn>) => f.mock.calls.filter(([u, o]) => u === '/api/sync' && (o as RequestInit).method === 'POST')
+
+    function stubSync(sync: () => Response | Promise<Response>) {
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/sync') return init?.method === 'POST' ? sync() : json(200, { lastSyncAt: '2026-10-05T10:00:00Z' })
+        if (url.startsWith('/api/payments')) return json(200, { items: [], total: 0, revenue: 0 })
+        return json(200, { items: [], total: 0, page: 1, pages: 1 })
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      return fetchMock
+    }
+
+    it('replaces the bell and shows the last sync in the title', async () => {
+      stubSync(() => json(200, {}))
+      await renderAt('/')
+      expect(screen.queryByRole('button', { name: 'Уведомления' })).toBeNull()
+      expect(syncButton().getAttribute('title')).toMatch(/^Синхронизировать с панелью\. Последняя: 5 окт.*13:00$/)
+    })
+
+    it('syncs once on a double click, toasts the count and reloads the screen', async () => {
+      const f = stubSync(() => json(200, { total: 1200, updated: 3, finishedAt: '2026-11-01T10:00:00Z' }))
+      await renderAt('/users')
+      const before = f.mock.calls.filter(([u]) => u.startsWith('/api/users?')).length
+      fireEvent.click(syncButton())
+      fireEvent.click(syncButton())
+      expect((syncButton() as HTMLButtonElement).disabled).toBe(true)
+      await flush()
+      expect(posts(f)).toHaveLength(1)
+      expect(screen.getByText(/^Синхронизировано: 1\s200$/)).toBeTruthy()
+      expect((syncButton() as HTMLButtonElement).disabled).toBe(false)
+      expect(syncButton().getAttribute('title')).toContain('1 нояб')
+      expect(f.mock.calls.filter(([u]) => u.startsWith('/api/users?')).length).toBe(before + 1)
+    })
+
+    it('toasts the server message on failure and does not reload', async () => {
+      const f = stubSync(() => json(409, { error: 'sync_running', message: 'Синхронизация уже идёт' }))
+      await renderAt('/users')
+      const before = f.mock.calls.filter(([u]) => u.startsWith('/api/users?')).length
+      fireEvent.click(syncButton())
+      await flush()
+      expect(screen.getByText('Синхронизация уже идёт')).toBeTruthy()
+      expect(f.mock.calls.filter(([u]) => u.startsWith('/api/users?')).length).toBe(before)
+      expect((syncButton() as HTMLButtonElement).disabled).toBe(false)
+    })
+  })
+
   it('logs out through the sidebar', async () => {
     const fetchMock = stubFetch()
     await renderAt('/')

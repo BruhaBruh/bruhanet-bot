@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Avatar, Button, Card, Checkbox, DataTable, Input, RowAction, SearchField, SegmentedControl, StatusTag, type DataTableColumn } from '@/ui'
 import { get } from '../api'
 import { formatCount, formatFullDay, formatRub, panelStatusLabels, panelStatusTones } from '../format'
+import { useSyncKey } from '../layout/page-title'
 import { userLabel } from '../promo'
 import type { UserPage, UserSummary } from '../types'
 
@@ -99,6 +100,7 @@ export default function Users() {
   const url = `/api/users?${request}`
 
   // Ответ привязан к запросу: чужой не показывается, result нет — ошибка загрузки.
+  const syncKey = useSyncKey()
   const [data, setData] = useState<{ url: string; result?: UserPage }>()
   useEffect(() => {
     let stale = false
@@ -113,7 +115,7 @@ export default function Users() {
     return () => {
       stale = true
     }
-  }, [url])
+  }, [url, syncKey])
 
   // смена фильтра — снова с первой страницы
   const filter = (patch: Partial<typeof f>) => setF((f) => ({ ...f, ...patch, page: 1 }))

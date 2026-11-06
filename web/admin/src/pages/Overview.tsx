@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { Button, Cell, DataTable, StatCard } from '@/ui'
 import { get } from '../api'
 import { formatCount, formatDelta, formatRub, mskDate } from '../format'
+import { useSyncKey } from '../layout/page-title'
 import type { Payment, Promo } from '../types'
 import { paymentColumns, paymentMobileRow } from './payment-columns'
 
@@ -17,6 +18,7 @@ interface PaymentsPage {
 
 // undefined — грузится, null — не вышло: ошибка одной секции не трогает остальные.
 function useGet<T>(path: string) {
+  const syncKey = useSyncKey()
   const [data, setData] = useState<T | null>()
   useEffect(() => {
     let stale = false
@@ -27,7 +29,7 @@ function useGet<T>(path: string) {
     return () => {
       stale = true
     }
-  }, [path])
+  }, [path, syncKey])
   return data
 }
 

@@ -52,6 +52,11 @@ type fakeStore struct {
 
 	userPromos []model.UserPromo
 
+	syncBusy    bool
+	syncUsers   []model.PanelUser
+	syncApplied int
+	syncLast    *model.PanelSync
+
 	promos []model.PromoWithUsage // по возрастанию id
 	acts   []model.PromoActivation
 }

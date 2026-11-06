@@ -5,7 +5,7 @@ import { Avatar, Button, Card, DataTable, RowAction, Spinner, StatusTag, toast, 
 import { ApiError, get } from '../api'
 import { snippet } from '../editor/serialize'
 import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabels, panelStatusTones } from '../format'
-import { usePageTitle } from '../layout/page-title'
+import { usePageTitle, useSyncKey } from '../layout/page-title'
 import { userLabel } from '../promo'
 import type { DirectMessage, UserDetail } from '../types'
 import { payActions, userPayColumns, userPayMobileRow } from './payment-columns'
@@ -74,11 +74,12 @@ function UserCardInner({ id }: { id?: string }) {
   // hidden — скрыт, но смонтирован: черновик не пропадает при повторном клике.
   const [composer, setComposer] = useState<'none' | 'open' | 'hidden'>('none')
 
+  const syncKey = useSyncKey()
   useEffect(() => {
     get<UserDetail>(`/api/users/${id}`).then(setD, (e) =>
       setError(e instanceof ApiError && e.status === 404 ? 'Пользователь не найден' : 'Не удалось загрузить пользователя'),
     )
-  }, [id])
+  }, [id, syncKey])
 
   const name = d && (d.user.name || userLabel(d.user))
   usePageTitle(name)
