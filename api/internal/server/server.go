@@ -24,7 +24,8 @@ type Store interface {
 	CreateSession(ctx context.Context, hash []byte, telegramID int64, expiresAt time.Time) error
 	SessionTelegramID(ctx context.Context, hash []byte, now time.Time) (int64, error)
 	DeleteSession(ctx context.Context, hash []byte) error
-	SearchUsers(ctx context.Context, q string, limit int) ([]model.UserSummary, error)
+	ListUsers(ctx context.Context, f model.UserFilter) ([]model.UserSummary, int, error)
+	UserPromos(ctx context.Context, id int64) ([]model.UserPromo, error)
 	UserByID(ctx context.Context, id int64) (model.UserSummary, error)
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	PaymentsByUser(ctx context.Context, id int64) ([]model.Payment, error)

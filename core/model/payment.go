@@ -39,15 +39,6 @@ type UserStats struct {
 	HasHistory bool `json:"hasHistory"`
 }
 
-// UserSummary — строка списка юзеров в админке.
-type UserSummary struct {
-	TelegramID   int64     `json:"telegramId"`
-	Username     string    `json:"username"`
-	CreatedAt    time.Time `json:"createdAt"`
-	Confirmed    int       `json:"confirmed"`
-	ConfirmedSum int       `json:"confirmedSum"`
-}
-
 // PaymentFilter — Status "" = все; From/To — полуинтервал по created_at (нулевое время = без границы).
 type PaymentFilter struct {
 	Status        PaymentStatus

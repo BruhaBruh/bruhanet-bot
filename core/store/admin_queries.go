@@ -13,13 +13,17 @@ import (
 )
 
 const userSummaryQuery = `
-	SELECT u.telegram_id, u.username, u.created_at,
+	SELECT u.telegram_id, u.username, concat_ws(' ', u.first_name, u.last_name), u.created_at,
 		count(p.id) FILTER (WHERE p.status = 'confirmed'),
-		coalesce(sum(p.price) FILTER (WHERE p.status = 'confirmed'), 0)
+		coalesce(sum(p.price) FILTER (WHERE p.status = 'confirmed'), 0),
+		u.expire_at, u.panel_status, u.blocked_bot_at,
+		(SELECT c.months FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed' ORDER BY c.id DESC LIMIT 1),
+		u.last_seen_at, u.broadcasts_received
 	FROM users u LEFT JOIN payments p ON p.telegram_id = u.telegram_id`
 
 func scanUserSummary(row pgx.Row) (u model.UserSummary, err error) {
-	err = row.Scan(&u.TelegramID, &u.Username, &u.CreatedAt, &u.Confirmed, &u.ConfirmedSum)
+	err = row.Scan(&u.TelegramID, &u.Username, &u.Name, &u.CreatedAt, &u.Confirmed, &u.ConfirmedSum,
+		&u.ExpireAt, &u.PanelStatus, &u.BlockedBotAt, &u.TariffMonths, &u.LastSeenAt, &u.BroadcastsReceived)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -28,31 +32,46 @@ func scanUserSummary(row pgx.Row) (u model.UserSummary, err error) {
 
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-// SearchUsers ищет по подстроке username (без учёта регистра, ведущий @ срезается);
-// q из одних цифр дополнительно совпадает по telegram_id. Пустой q — все. Новые сверху.
-func (s *Store) SearchUsers(ctx context.Context, q string, limit int) ([]model.UserSummary, error) {
-	q = strings.TrimPrefix(strings.TrimSpace(q), "@")
+// userFilterWhere — условия ListUsers; неоплаченный аванс считается как в UserStats.
+const userFilterWhere = `
+	WHERE ($1 = '' OR u.username ILIKE '%'||$2||'%' ESCAPE '\'
+			OR concat_ws(' ', u.first_name, u.last_name) ILIKE '%'||$2||'%' ESCAPE '\' OR u.telegram_id = $3)
+		AND ($4 = '' OR ($4 = 'active' AND u.panel_status = 'ACTIVE' AND u.expire_at > $5)
+			OR ($4 = 'blocked_bot' AND u.blocked_bot_at IS NOT NULL))
+		AND (NOT $6 OR EXISTS (SELECT 1 FROM payments h WHERE h.telegram_id = u.telegram_id AND h.status = 'confirmed'))
+		AND (NOT $7 OR EXISTS (SELECT 1 FROM payments a WHERE a.telegram_id = u.telegram_id AND ` + unpaidAdvance + `
+			AND a.id > coalesce((SELECT max(c.id) FROM payments c WHERE c.telegram_id = u.telegram_id AND c.status = 'confirmed'), 0)))
+		AND ($8::timestamptz IS NULL OR u.created_at >= $8) AND ($9::timestamptz IS NULL OR u.created_at < $9)`
+
+// ListUsers — страница юзеров (новые сверху) и общее число под фильтр. Q ищет по подстроке username и имени
+// (без учёта регистра, ведущий @ срезается); из одних цифр — ещё и по telegram_id.
+func (s *Store) ListUsers(ctx context.Context, f model.UserFilter) ([]model.UserSummary, int, error) {
+	q := strings.TrimPrefix(strings.TrimSpace(f.Q), "@")
 	var id *int64 // nil — по id не ищем (не число или не влезает в int64)
 	if n, err := strconv.ParseInt(q, 10, 64); err == nil && !strings.ContainsAny(q, "+-") {
 		id = &n
 	}
-	rows, err := s.pool.Query(ctx, userSummaryQuery+`
-		WHERE $1 = '' OR u.username ILIKE '%'||$2||'%' ESCAPE '\' OR u.telegram_id = $3
-		GROUP BY u.telegram_id ORDER BY u.created_at DESC, u.telegram_id DESC LIMIT $4`,
-		q, likeEscaper.Replace(q), id, limit)
+	args := []any{q, likeEscaper.Replace(q), id, string(f.Tab), f.Now, f.HasPayments, f.HasUnpaidAdvances, nullTime(f.From), nullTime(f.To)}
+	var total int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users u`+userFilterWhere, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.pool.Query(ctx, userSummaryQuery+userFilterWhere+`
+		GROUP BY u.telegram_id ORDER BY u.created_at DESC, u.telegram_id DESC LIMIT $10 OFFSET $11`,
+		append(args, f.Limit, f.Offset)...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	out := []model.UserSummary{}
 	for rows.Next() {
 		u, err := scanUserSummary(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, u)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 func (s *Store) UserByID(ctx context.Context, id int64) (model.UserSummary, error) {

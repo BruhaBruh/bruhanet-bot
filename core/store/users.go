@@ -110,3 +110,23 @@ func (s *Store) LastPanelSync(ctx context.Context) (model.PanelSync, error) {
 	}
 	return r, err
 }
+
+// UserPromos — применённые юзером коды, новые первыми.
+func (s *Store) UserPromos(ctx context.Context, id int64) ([]model.UserPromo, error) {
+	rows, err := s.pool.Query(ctx, `SELECT c.code, c.kind, c.value, a.created_at
+		FROM promo_activations a JOIN promo_codes c ON c.id = a.promo_id
+		WHERE a.telegram_id = $1 ORDER BY a.id DESC`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.UserPromo{}
+	for rows.Next() {
+		var p model.UserPromo
+		if err = rows.Scan(&p.Code, &p.Kind, &p.Value, &p.ActivatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

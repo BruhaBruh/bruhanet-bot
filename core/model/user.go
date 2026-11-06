@@ -26,3 +26,48 @@ type PanelSync struct {
 	Updated    int       `json:"updated"`
 	FinishedAt time.Time `json:"finishedAt"`
 }
+
+// UserSummary — строка списка юзеров в админке; nil — данных ещё нет (не синхронизирован, не заходил).
+type UserSummary struct {
+	TelegramID         int64      `json:"telegramId"`
+	Username           string     `json:"username"`
+	Name               string     `json:"name"` // имя и фамилия из Telegram
+	CreatedAt          time.Time  `json:"createdAt"`
+	Confirmed          int        `json:"confirmed"`
+	ConfirmedSum       int        `json:"confirmedSum"`
+	ExpireAt           *time.Time `json:"expireAt"`
+	PanelStatus        *string    `json:"panelStatus"`
+	BlockedBotAt       *time.Time `json:"blockedBotAt"`
+	TariffMonths       *int       `json:"tariffMonths"` // последний подтверждённый платёж
+	LastSeenAt         *time.Time `json:"lastSeenAt"`
+	BroadcastsReceived int        `json:"broadcastsReceived"`
+}
+
+// UserTab — вкладка списка юзеров.
+type UserTab string
+
+const (
+	UserTabAll        UserTab = ""
+	UserTabActive     UserTab = "active"
+	UserTabTrial      UserTab = "trial"
+	UserTabBlockedBot UserTab = "blocked_bot"
+)
+
+// UserFilter — From/To: полуинтервал по дате регистрации (нулевое время = без границы); Now — для вкладки «Активные».
+type UserFilter struct {
+	Q                 string
+	Tab               UserTab
+	HasPayments       bool
+	HasUnpaidAdvances bool
+	From, To          time.Time
+	Now               time.Time
+	Limit, Offset     int
+}
+
+// UserPromo — применённый юзером промокод.
+type UserPromo struct {
+	Code        string    `json:"code"`
+	Kind        PromoKind `json:"kind"`
+	Value       int       `json:"value"`
+	ActivatedAt time.Time `json:"activatedAt"`
+}

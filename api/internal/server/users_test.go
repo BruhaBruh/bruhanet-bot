@@ -82,12 +82,102 @@ func TestUserCardErrors(t *testing.T) {
 	}
 }
 
+type usersPage struct {
+	Items []model.UserSummary `json:"items"`
+	Total int                 `json:"total"`
+	Page  int                 `json:"page"`
+	Pages int                 `json:"pages"`
+}
+
+func getUsers(t *testing.T, h http.Handler, c, query string) usersPage {
+	t.Helper()
+	w := do(h, http.MethodGet, "/api/users"+query, c, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("%s: %d %s", query, w.Code, w.Body)
+	}
+	var out usersPage
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func TestUsersSearch(t *testing.T) {
 	h, st, c := cardServer(t, &fakePanel{})
-	w := do(h, http.MethodGet, "/api/users?q=bo", c, "")
-	var out struct{ Items []model.UserSummary }
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || w.Code != 200 || len(out.Items) != 1 || st.lastQ != "bo" {
-		t.Fatalf("%d %s q=%q", w.Code, w.Body, st.lastQ)
+	got := getUsers(t, h, c, "?q=bo")
+	if len(got.Items) != 1 || got.Total != 1 || got.Page != 1 || got.Pages != 1 || st.lastUF.Q != "bo" || st.lastUF.Tab != model.UserTabAll {
+		t.Fatalf("%+v %+v", got, st.lastUF)
+	}
+}
+
+func TestUsersPagination(t *testing.T) {
+	h, st, c := cardServer(t, &fakePanel{})
+	st.users = make([]model.UserSummary, 51)
+	got := getUsers(t, h, c, "?page=2")
+	if len(got.Items) != 1 || got.Total != 51 || got.Page != 2 || got.Pages != 2 || st.lastUF.Offset != 50 || st.lastUF.Limit != 50 {
+		t.Fatalf("%d %+v %+v", len(got.Items), got, st.lastUF)
+	}
+	st.users = make([]model.UserSummary, 50)
+	if got = getUsers(t, h, c, ""); got.Pages != 1 {
+		t.Fatalf("exactly a page: %+v", got.Pages)
+	}
+	st.users = nil
+	if got = getUsers(t, h, c, ""); got.Pages != 1 {
+		t.Fatalf("empty: %+v", got)
+	}
+}
+
+func TestUsersFilters(t *testing.T) {
+	h, st, c := cardServer(t, &fakePanel{})
+	getUsers(t, h, c, "?tab=blocked_bot&hasPayments=1&hasUnpaidAdvances=true&from=2026-10-01&to=2026-10-31")
+	f := st.lastUF
+	wantFrom := time.Date(2026, 9, 30, 21, 0, 0, 0, time.UTC) // полночь МСК
+	wantTo := time.Date(2026, 10, 31, 21, 0, 0, 0, time.UTC)  // to включительно
+	if f.Tab != model.UserTabBlockedBot || !f.HasPayments || !f.HasUnpaidAdvances || !f.From.Equal(wantFrom) || !f.To.Equal(wantTo) || !f.Now.Equal(now) {
+		t.Fatalf("%+v", f)
+	}
+	getUsers(t, h, c, "?tab=active")
+	if f = st.lastUF; f.Tab != model.UserTabActive || f.HasPayments || !f.From.IsZero() || !f.To.IsZero() {
+		t.Fatalf("%+v", f)
+	}
+	for _, q := range []string{"?tab=nope", "?page=0", "?page=x", "?hasPayments=maybe", "?hasUnpaidAdvances=2", "?from=01.10.2026", "?to=x", "?from=2026-10-02&to=2026-10-01"} {
+		if w := do(h, http.MethodGet, "/api/users"+q, c, ""); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", q, w.Code)
+		}
+	}
+}
+
+func TestUsersTrialTabIsEmptyForNow(t *testing.T) {
+	h, _, c := cardServer(t, &fakePanel{})
+	if got := getUsers(t, h, c, "?tab=trial"); len(got.Items) != 0 || got.Items == nil || got.Total != 0 || got.Pages != 1 {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestUserCardPromosAndPanelID(t *testing.T) {
+	h, st, c := cardServer(t, &fakePanel{user: &api.UserItemInfo{ID: 1234, ExpireAt: now, Status: api.UserItemInfoStatusACTIVE}})
+	st.userPromos = []model.UserPromo{{Code: "AAA", Kind: model.PromoPercent, Value: 10, ActivatedAt: now}}
+	w := do(h, http.MethodGet, "/api/users/7", c, "")
+	var out struct {
+		Promos []model.UserPromo `json:"promos"`
+		Panel  struct {
+			ID *int `json:"id"`
+		} `json:"panel"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Promos) != 1 || out.Promos[0].Code != "AAA" || out.Panel.ID == nil || *out.Panel.ID != 1234 {
+		t.Fatalf("%s", w.Body)
+	}
+
+	h, _, c = cardServer(t, &fakePanel{err: remnawave.ErrUserNotFound})
+	w = do(h, http.MethodGet, "/api/users/7", c, "")
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Panel.ID != nil {
+		t.Fatalf("not found id: %s", w.Body)
 	}
 }
 

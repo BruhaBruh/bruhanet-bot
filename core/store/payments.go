@@ -16,6 +16,9 @@ import (
 const paymentCols = `id, telegram_id, username, months, price, status, prev_expire_at, advance_granted,
 	coalesce(admin_message_id, 0), created_at, submitted_at, resolved_at, promo_id, base_price`
 
+// unpaidAdvance — условие на строку payments: выданный и неоплаченный аванс, считается после последнего confirmed.
+const unpaidAdvance = `status IN ('declined', 'cancelled') AND advance_granted`
+
 func scanPayment(row pgx.Row) (model.Payment, error) {
 	var p model.Payment
 	err := row.Scan(&p.ID, &p.TelegramID, &p.Username, &p.Month, &p.Price, &p.Status, &p.PrevExpireAt,
@@ -114,7 +117,7 @@ func (s *Store) UserStats(ctx context.Context, telegramID, excludeID int64) (mod
 		SELECT
 			count(*) FILTER (WHERE status = 'confirmed'),
 			coalesce(sum(price) FILTER (WHERE status = 'confirmed'), 0),
-			count(*) FILTER (WHERE status IN ('declined', 'cancelled') AND advance_granted AND p.id > last.id),
+			count(*) FILTER (WHERE `+unpaidAdvance+` AND p.id > last.id),
 			max(coalesce(resolved_at, created_at)) FILTER (WHERE status = 'confirmed'),
 			min(coalesce(resolved_at, created_at)) FILTER (WHERE status = 'confirmed'),
 			count(*) > 0

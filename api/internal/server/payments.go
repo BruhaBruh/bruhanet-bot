@@ -3,7 +3,6 @@ package server
 import (
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/bruhabruh/bruhanet/core/model"
@@ -51,12 +50,10 @@ func (s *server) payments(w http.ResponseWriter, r *http.Request) {
 	}
 	f.From, f.To = from, to.AddDate(0, 0, 1)
 
-	page := 1
-	if v := q.Get("page"); v != "" {
-		if page, err = strconv.Atoi(v); err != nil || page < 1 || page > 1_000_000 {
-			writeBadRequest(w)
-			return
-		}
+	page, ok := pageParam(q.Get("page"))
+	if !ok {
+		writeBadRequest(w)
+		return
 	}
 	f.Offset = (page - 1) * pageSize
 

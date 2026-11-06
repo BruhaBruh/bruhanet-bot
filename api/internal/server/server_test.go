@@ -39,7 +39,7 @@ type fakeStore struct {
 	users    []model.UserSummary
 	payments []model.Payment // по возрастанию id
 	revenue  int
-	lastQ    string
+	lastUF   model.UserFilter
 	lastF    model.PaymentFilter
 	lastRev  [2]time.Time
 
@@ -49,6 +49,8 @@ type fakeStore struct {
 
 	broadcasts []fakeBroadcast // по порядку создания
 	directs    []model.DirectMessage
+
+	userPromos []model.UserPromo
 
 	promos []model.PromoWithUsage // по возрастанию id
 	acts   []model.PromoActivation
@@ -319,12 +321,14 @@ func TestLogout(t *testing.T) {
 	}
 }
 
-func (f *fakeStore) SearchUsers(_ context.Context, q string, limit int) ([]model.UserSummary, error) {
-	f.lastQ = q
-	if len(f.users) > limit {
-		return f.users[:limit], nil
-	}
-	return f.users, nil
+func (f *fakeStore) ListUsers(_ context.Context, fl model.UserFilter) ([]model.UserSummary, int, error) {
+	f.lastUF = fl
+	from := min(fl.Offset, len(f.users))
+	return f.users[from:min(from+fl.Limit, len(f.users))], len(f.users), nil
+}
+
+func (f *fakeStore) UserPromos(context.Context, int64) ([]model.UserPromo, error) {
+	return f.userPromos, nil
 }
 
 func (f *fakeStore) UserByID(_ context.Context, id int64) (model.UserSummary, error) {
