@@ -11,6 +11,7 @@ import {
   DataTable,
   Dialog,
   FormatBar,
+  Input,
   type DataTableColumn,
   SegmentedControl,
   Sheet,
@@ -409,5 +410,16 @@ describe('Toast', () => {
 
   it('без провайдера toast() ничего не ломает', () => {
     expect(() => toast('x')).not.toThrow()
+  })
+})
+
+describe('Input type=number', () => {
+  it('fits its content, other inputs stay full width', () => {
+    const { rerender } = render(<Input aria-label="n" type="number" value="1600" onChange={() => {}} />)
+    expect(screen.getByLabelText('n').style.width).toBe('4ch')
+    rerender(<Input aria-label="n" type="number" value="" onChange={() => {}} />)
+    expect(screen.getByLabelText('n').style.width).toBe('3ch')
+    rerender(<Input aria-label="n" value="1600" onChange={() => {}} />)
+    expect(screen.getByLabelText('n').style.width).toBe('')
   })
 })

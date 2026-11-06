@@ -52,9 +52,19 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 ) {
   const autoId = useId()
   const fieldId = id ?? autoId
+  // Число с единицей: поле по ширине содержимого, а не на всю колонку. ch, а не field-sizing: Firefox его не умеет.
+  const numeric = props.type === 'number'
+  const chars = Math.max(String(props.value ?? '').length || (props.placeholder?.length ?? 0), 3)
   return (
     <Field id={fieldId} label={label} hint={hint} error={error} className={className}>
-      <div className={cn(fieldBox, 'min-h-(--size-cell) items-center', error && 'border-destructive focus-within:border-destructive')}>
+      <div
+        className={cn(
+          fieldBox,
+          'min-h-(--size-cell) items-center',
+          numeric && 'w-fit max-w-40',
+          error && 'border-destructive focus-within:border-destructive',
+        )}
+      >
         {before && <span className={addon}>{before}</span>}
         <InputPrimitive
           ref={ref}
@@ -62,6 +72,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           aria-invalid={error ? true : undefined}
           aria-describedby={error || hint ? `${fieldId}-msg` : undefined}
           {...props}
+          className={numeric ? 'flex-initial' : undefined}
+          style={numeric ? { width: `${chars}ch` } : undefined}
         />
         {after && <span className={addon}>{after}</span>}
       </div>
