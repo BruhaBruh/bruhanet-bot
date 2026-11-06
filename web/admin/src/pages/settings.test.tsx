@@ -25,6 +25,7 @@ const s = {
   devicePrice: 0,
   trialDays: 3,
   trialDevices: 2,
+  referralDays: 7,
   vars: { promoLink: 'https://x.io' },
 }
 
@@ -249,6 +250,16 @@ describe('Settings', () => {
     fireEvent.click(btn('Сохранить изменения'))
     await flush()
     expect(puts()[0].body).toMatchObject({ trialDays: 0, trialDevices: 4 })
+  })
+
+  it('referral days are editable and saved; 0 is explained as off', async () => {
+    await open()
+    expect(field('Дней за приглашённого друга').value).toBe('7')
+    expect(screen.getByText(/0 — рефералка выключена/)).toBeTruthy()
+    edit(field('Дней за приглашённого друга'), '0')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()[0].body).toMatchObject({ referralDays: 0 })
   })
 
   it('usingDefaults: banner with problems, saving works without edits and hides the banner', async () => {

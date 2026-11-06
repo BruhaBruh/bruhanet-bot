@@ -110,6 +110,7 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	var messages []model.DirectMessage
 	var promos []model.UserPromo
 	var grants []model.Grant
+	var referral model.UserReferral
 	if err == nil {
 		stats, err = s.Store.UserStats(ctx, id, 0)
 	}
@@ -124,6 +125,9 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	}
 	if err == nil {
 		grants, err = s.Store.UserGrants(ctx, id, 20)
+	}
+	if err == nil {
+		referral, err = s.Store.UserReferral(ctx, id)
 	}
 	if err != nil {
 		stlog.L(ctx).Error("user card", slog.Any("error", err))
@@ -151,7 +155,7 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	devices := map[string]int{"base": set.DevicesBase, "extra": u.ExtraDevices, "price": set.DevicePrice}
-	writeJSON(w, http.StatusOK, map[string]any{"user": u, "devices": devices, "stats": stats, "payments": payments, "messages": messages, "promos": promos, "grants": grants, "panel": p})
+	writeJSON(w, http.StatusOK, map[string]any{"user": u, "devices": devices, "stats": stats, "payments": payments, "messages": messages, "promos": promos, "grants": grants, "referral": referral, "panel": p})
 }
 
 func ptr[T any](v T) *T { return &v }

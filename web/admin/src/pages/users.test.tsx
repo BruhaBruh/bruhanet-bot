@@ -44,6 +44,7 @@ const detail = (over = {}) => ({
   messages: [],
   promos: [],
   grants: [],
+  referral: { invited: 0, paid: 0, referredBy: null, referredByUsername: '' },
   devices: { base: 5, extra: 2, price: 60 },
   ...over,
 })
@@ -278,11 +279,27 @@ describe('UserCard', () => {
     expect(screen.getByText('Пробный период', { selector: 'dt' }).nextSibling?.textContent).toBe('—')
     expect(screen.getByText('Промокоды', { selector: 'dt' }).nextSibling?.textContent).toBe('—')
     expect(screen.getByText('Получил рассылок').nextSibling?.textContent).toBe('0')
-    expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('—')
+    expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('0 (оплатили 0)')
+    expect(screen.queryByText('Пригласил', { selector: 'dt' })).toBeNull()
     expect(screen.getByText('Устройства').nextSibling?.textContent).toBe('5 + 2 = 7')
     const row = within(screen.getByRole('table')).getByText('31').closest('tr')!
     expect(within(row).getByText('3 мес.')).toBeTruthy()
     expect(within(row).getByText('Оплачено')).toBeTruthy()
+  })
+
+  it('shows referral counts and a link to who invited the user', async () => {
+    stub({
+      '/api/users/7': () => json(200, detail({ referral: { invited: 5, paid: 2, referredBy: 9, referredByUsername: 'alice' } })),
+    })
+    await renderAt('/users/7')
+    expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('5 (оплатили 2)')
+    expect(screen.getByRole('link', { name: '@alice' }).getAttribute('href')).toBe('/users/9')
+  })
+
+  it('shows the id when the inviter has no username', async () => {
+    stub({ '/api/users/7': () => json(200, detail({ referral: { invited: 0, paid: 0, referredBy: 9, referredByUsername: '' } })) })
+    await renderAt('/users/7')
+    expect(screen.getByRole('link', { name: '9' }).getAttribute('href')).toBe('/users/9')
   })
 
   it('resolves a pending payment from the card and reloads it', async () => {

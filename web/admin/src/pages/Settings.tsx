@@ -21,6 +21,7 @@ type Form = {
   devicePrice: string
   trialDays: string
   trialDevices: string
+  referralDays: string
   vars: CustomVar[]
 }
 
@@ -41,6 +42,7 @@ const toForm = (s: S): Form => ({
   devicePrice: String(s.devicePrice),
   trialDays: String(s.trialDays),
   trialDevices: String(s.trialDevices),
+  referralDays: String(s.referralDays),
   vars: Object.entries(s.vars)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, value]) => ({ name, value })),
@@ -152,6 +154,7 @@ export default function Settings() {
       devicePrice: Number(form.devicePrice),
       trialDays: Number(form.trialDays),
       trialDevices: Number(form.trialDevices),
+      referralDays: Number(form.referralDays),
       vars: Object.fromEntries(form.vars.map((v) => [v.name.trim(), v.value])),
     }
     inFlight.current = true
@@ -275,6 +278,22 @@ export default function Settings() {
             value={form.trialDevices}
             onChange={(e) => patch({ trialDevices: e.target.value })}
             hint="Лимит устройств в панели на время пробного; после оплаты станет как в подписке"
+          />
+        </div>
+      </Card>
+
+      <Card title="Рефералка" aside="дни обоим после первой оплаты друга">
+        <div className="flex flex-wrap gap-3">
+          <Input
+            className="min-w-0 grow basis-60"
+            label="Дней за приглашённого друга"
+            type="number"
+            min={0}
+            max={365}
+            after="дн."
+            value={form.referralDays}
+            onChange={(e) => patch({ referralDays: e.target.value })}
+            hint="Получают оба после первой подтверждённой оплаты друга (цена больше 0 ₽). 0 — рефералка выключена: кнопки в боте нет, бонусы не начисляются"
           />
         </div>
       </Card>

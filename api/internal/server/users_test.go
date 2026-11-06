@@ -31,6 +31,7 @@ type card struct {
 		Status   *string    `json:"status"`
 		Error    *string    `json:"error"`
 	} `json:"panel"`
+	Referral model.UserReferral `json:"referral"`
 }
 
 func getCard(t *testing.T, h http.Handler, c string, wantCode int) card {
@@ -54,6 +55,16 @@ func TestUserCardPanelDown(t *testing.T) {
 	}
 	if got.User.TelegramID != 7 || len(got.Payments) != 1 || got.Stats.Confirmed != 1 {
 		t.Fatalf("card = %+v", got)
+	}
+}
+
+func TestUserCardReferral(t *testing.T) {
+	h, st, c := cardServer(t, &fakePanel{err: errors.New("boom")})
+	by := int64(9)
+	st.referral = model.UserReferral{Invited: 4, Paid: 1, ReferredBy: &by, ReferredByUsername: "alice"}
+	got := getCard(t, h, c, http.StatusOK)
+	if got.Referral.Invited != 4 || got.Referral.Paid != 1 || got.Referral.ReferredBy == nil || *got.Referral.ReferredBy != 9 || got.Referral.ReferredByUsername != "alice" {
+		t.Fatalf("referral = %+v", got.Referral)
 	}
 }
 

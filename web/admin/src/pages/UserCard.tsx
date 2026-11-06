@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { Avatar, Button, Card, DataTable, RowAction, Spinner, StatusTag, toast, type Tone } from '@/ui'
 import { ApiError, get } from '../api'
 import { snippet } from '../editor/serialize'
@@ -118,7 +118,7 @@ function UserCardInner({ id }: { id?: string }) {
     )
   }
 
-  const { user, stats, panel, messages, promos, grants, devices } = d
+  const { user, stats, panel, messages, promos, grants, devices, referral } = d
   // Средний чек — по подтверждённым: только у них есть сумма в stats.
   const average = stats.confirmed ? formatRub(Math.round(stats.confirmedSum / stats.confirmed)) : DASH
 
@@ -215,7 +215,17 @@ function UserCardInner({ id }: { id?: string }) {
           title="Активность"
           rows={[
             ['Последний визит', user.lastSeenAt ? formatShortDate(user.lastSeenAt) : DASH],
-            ['Пригласил друзей', DASH],
+            ['Пригласил друзей', `${formatCount(referral.invited)} (оплатили ${formatCount(referral.paid)})`],
+            ...(referral.referredBy == null
+              ? []
+              : [
+                  [
+                    'Пригласил',
+                    <Link key="by" className="focus-ring break-all text-accent-strong" to={`/users/${referral.referredBy}`}>
+                      {referral.referredByUsername ? `@${referral.referredByUsername}` : referral.referredBy}
+                    </Link>,
+                  ] as [string, ReactNode],
+                ]),
             ['Получил рассылок', formatCount(user.broadcastsReceived)],
           ]}
         />

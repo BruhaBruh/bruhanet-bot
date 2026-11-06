@@ -75,6 +75,14 @@ export interface UserDetail {
   messages: DirectMessage[]
   promos: UserPromo[]
   grants: UserGrant[]
+  referral: UserReferral
+}
+
+export interface UserReferral {
+  invited: number
+  paid: number
+  referredBy: number | null
+  referredByUsername: string
 }
 
 export interface TextVar {
@@ -117,6 +125,7 @@ export interface Settings {
   devicePrice: number
   trialDays: number
   trialDevices: number
+  referralDays: number
   vars: Record<string, string>
   usingDefaults?: boolean
   problems?: string[]

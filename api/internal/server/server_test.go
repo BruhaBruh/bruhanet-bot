@@ -41,6 +41,7 @@ type fakeStore struct {
 	sessions map[string]session
 
 	users     []model.UserSummary
+	referral  model.UserReferral
 	payments  []model.Payment // по возрастанию id
 	revenue   int
 	lastUF    model.UserFilter
@@ -482,7 +483,7 @@ func (f *fakeStore) GrantReferral(context.Context, int64, time.Time, func(int64,
 }
 
 func (f *fakeStore) UserReferral(context.Context, int64) (model.UserReferral, error) {
-	return model.UserReferral{}, nil
+	return f.referral, nil
 }
 
 func (f *fakeStore) SetUserPanel(_ context.Context, id int64, expireAt time.Time, _ string, _ time.Time) error {
