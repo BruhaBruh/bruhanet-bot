@@ -27,6 +27,7 @@ type Payments struct {
 	loginTokens    []LoginToken
 	promos         []model.Promo // индекс = ID-1
 	activations    []model.PromoActivation
+	extra          map[int64]int // users.extra_devices
 
 	// Отдельный мьютекс: панель зовут из apply под p.mu.
 	userMu  sync.Mutex
@@ -158,9 +159,15 @@ func (p *Payments) CreatePayment(
 	if np.PromoID != nil && p.blocked[np.TelegramID] {
 		return model.Payment{}, nil, promo.ErrBlocked
 	}
+	if np.Kind == "" {
+		np.Kind = model.KindTariff
+	}
 	var cancelled *model.Payment
 	if i := p.pendingIdx(np.TelegramID); i >= 0 {
 		old := &p.payments[i]
+		if np.Kind == model.KindDevices {
+			return model.Payment{}, nil, store.ErrPendingExists
+		}
 		if err := rollback(*old); err != nil {
 			return model.Payment{}, nil, err
 		}
@@ -168,7 +175,15 @@ func (p *Payments) CreatePayment(
 		old.Status, old.ResolvedAt = model.PaymentCancelled, &at
 		c := *old
 		cancelled = &c
-		np.PrevExpireAt = old.PrevExpireAt
+		if old.Kind == model.KindDevices && readPrev != nil {
+			prev, err := readPrev(ctx)
+			if err != nil {
+				return model.Payment{}, nil, err
+			}
+			np.PrevExpireAt = prev
+		} else if old.Kind != model.KindDevices {
+			np.PrevExpireAt = old.PrevExpireAt
+		}
 	} else if readPrev != nil {
 		prev, err := readPrev(ctx)
 		if err != nil {
@@ -256,7 +271,9 @@ func (p *Payments) UserStats(_ context.Context, telegramID, excludeID int64) (mo
 		if x.Status != model.PaymentConfirmed {
 			continue
 		}
-		last = max(last, x.ID)
+		if x.Kind != model.KindDevices {
+			last = max(last, x.ID)
+		}
 		st.Confirmed++
 		st.ConfirmedSum += x.Price
 		at := x.CreatedAt
@@ -315,6 +332,8 @@ func (p *Payments) ResolvePayment(
 		}
 		activate = !already
 	}
+	cur := p.extra[x.TelegramID]
+	x.UserExtra = cur
 	msgs, err := apply(*x)
 	if err != nil {
 		return model.Payment{}, err
@@ -324,6 +343,9 @@ func (p *Payments) ResolvePayment(
 		return model.Payment{}, errCommit
 	}
 	x.Status, x.ResolvedAt = status, &at
+	if status == model.PaymentConfirmed && x.ExtraAfter(cur) != cur {
+		p.setExtra(x.TelegramID, x.ExtraAfter(cur))
+	}
 	p.outbox = append(p.outbox, msgs...)
 	if activate {
 		id := x.ID
@@ -399,8 +421,28 @@ func (p *Payments) PromoUsage(_ context.Context, promoID, telegramID int64) (int
 
 func (p *Payments) hasConfirmed(telegramID int64) bool {
 	return slices.ContainsFunc(p.payments, func(x model.Payment) bool {
-		return x.TelegramID == telegramID && x.Status == model.PaymentConfirmed
+		return x.TelegramID == telegramID && x.Status == model.PaymentConfirmed && x.Kind != model.KindDevices
 	})
+}
+
+func (p *Payments) setExtra(id int64, n int) {
+	if p.extra == nil {
+		p.extra = map[int64]int{}
+	}
+	p.extra[id] = n
+}
+
+// SetExtraDevices задаёт купленные юзером устройства (users.extra_devices).
+func (p *Payments) SetExtraDevices(id int64, n int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.setExtra(id, n)
+}
+
+func (p *Payments) ExtraDevices(_ context.Context, id int64) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.extra[id], nil
 }
 
 func (p *Payments) HasConfirmed(_ context.Context, telegramID int64) (bool, error) {

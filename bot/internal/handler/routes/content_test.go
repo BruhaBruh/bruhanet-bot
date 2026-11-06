@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-telegram/bot/models"
 
@@ -162,6 +163,9 @@ func TestDeclaredButtons(t *testing.T) {
 			if !ok && strings.Contains(b.Text, " за ") {
 				btn, ok = texts.Lookup("button.tariff")
 			}
+			if !ok && strings.HasPrefix(b.Text, "+") {
+				btn, ok = texts.Lookup("button.devices_add")
+			}
 			if !ok || !slices.Contains(def.Buttons, btn.Key) {
 				t.Errorf("%s: кнопка %q не объявлена в %v", key, b.Text, def.Buttons)
 				continue
@@ -205,6 +209,24 @@ func TestDeclaredButtons(t *testing.T) {
 	e.process(t, tgtest.Callback(userID, "buy:6"))
 	e.process(t, tgtest.Photo(userID))
 	check("payment.photo_sent_advance", sent())
+
+	// устройства: меню, выбор, подтверждение, занято (есть открытая оплата), тариф с доп. устройствами
+	e.src.SetSettings(map[string][]byte{"devicePrice": []byte("60")})
+	e.rw.AddUser(userID, now.Add(10*24*time.Hour))
+	e.pay.SetExtraDevices(userID, 1)
+	e.process(t, tgtest.Message(userID, "/start"))
+	check("menu.greeting", sent())
+	e.process(t, tgtest.Callback(userID, "devices"))
+	check("devices.menu", edited())
+	e.process(t, tgtest.Callback(userID, "dev:2"))
+	check("devices.confirm", edited())
+	e.process(t, tgtest.Callback(userID, "devy:2"))
+	check("devices.busy", edited())
+	e.process(t, tgtest.Callback(userID, "price:6"))
+	check("payment.confirm_devices", edited())
+	e.rw.AddUser(userID, now.Add(-time.Hour))
+	e.process(t, tgtest.Callback(userID, "devices"))
+	check("devices.no_term", edited())
 
 	c := content.New(e.src, settings.Defaults(map[int]int{1: 150}, "+7", "Банк", "https://t.me/s"), 0, nil)
 	_, kb := routes.ReminderMessage(t.Context(), c, "day", now, "https://sub")

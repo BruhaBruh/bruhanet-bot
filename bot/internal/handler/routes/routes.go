@@ -59,6 +59,8 @@ type Payments interface {
 	HasConfirmed(ctx context.Context, telegramID int64) (bool, error)
 	// UserBlocked — ручная блокировка админом; для раннего отказа, окончательно решает транзакция выдачи.
 	UserBlocked(ctx context.Context, telegramID int64) (bool, error)
+	// ExtraDevices — купленные юзером устройства сверх базы.
+	ExtraDevices(ctx context.Context, telegramID int64) (int, error)
 	ActivateDaysPromo(ctx context.Context, promoID, telegramID int64, now time.Time, apply func(p model.Promo) error) error
 }
 
@@ -94,6 +96,10 @@ func Register(r *router.Router, d Deps) {
 	r.Callback(routePay, h.tariffs)
 	r.Callback(priceRoute.Name(), h.price)
 	r.Callback(buyRoute.Name(), h.buy)
+	r.Callback(buyNoDevRoute.Name(), h.buyNoDevices)
+	r.Callback(routeDevices, h.devices)
+	r.Callback(devPickRoute.Name(), h.devicesPick)
+	r.Callback(devYesRoute.Name(), h.devicesBuy)
 	r.Callback(havePromoRoute.Name(), h.havePromo)
 	r.Callback(buyPromoRoute.Name(), h.buyPromo)
 	r.Callback(routePromo, h.promoMenu)

@@ -90,7 +90,7 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		handle = " @" + html.EscapeString(p.Username)
 	}
 	limit := h.c.Settings(ctx).AdvanceLimit
-	msg := send(ctx, b, admin, nil, slices.Concat([]string{
+	head := []string{
 		"<b>Покупка подписки BruhaNet</b>",
 		"",
 		fmt.Sprintf(
@@ -101,7 +101,20 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 			p.Month,
 			pluralMonths(p.Month),
 		),
-	}, promoRows, []string{""}, formatStats(stats, limit))...)
+	}
+	if p.Kind == model.KindDevices {
+		head = []string{
+			"<b>Покупка устройств BruhaNet</b>",
+			"",
+			fmt.Sprintf(
+				"Пользователь <b>%s</b>%s (<b>%d</b>) докупает <b>%s</b> за <b>%s ₽</b>. Срок подписки не меняется",
+				html.EscapeString(displayName(u)), handle, p.TelegramID, devicesCount(p.ExtraDevices), groupThousands(p.Price),
+			),
+		}
+	} else if p.ExtraDevices > 0 {
+		head = append(head, fmt.Sprintf("🖥 доп. устройств в тарифе: %d", p.ExtraDevices))
+	}
+	msg := send(ctx, b, admin, nil, slices.Concat(head, promoRows, []string{""}, formatStats(stats, limit))...)
 	if msg == nil {
 		h.showError(ctx, b, u)
 		return
@@ -119,7 +132,8 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		return
 	}
 	observability.Payments.WithLabelValues("photo", strconv.Itoa(p.Month)).Inc()
-	if stats.UnpaidAdvances < limit {
+	// Аванс — день подписки на время проверки; за докупку устройств срока нет, аванса тоже.
+	if stats.UnpaidAdvances < limit && p.Kind != model.KindDevices {
 		h.grantAdvance(ctx, b, u, p)
 	} else {
 		send(ctx, b, u.Message.Chat.ID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))

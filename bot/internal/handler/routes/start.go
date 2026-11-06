@@ -79,6 +79,14 @@ func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegr
 			copyButton(ctx, c, "button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess),
 			support,
 		),
-		keyboard.Row(promoBtn),
+		keyboard.Row(promoRow(ctx, c, promoBtn)...),
 	)
+}
+
+// promoRow — «Промокод», а при включённой продаже устройств рядом «Устройства».
+func promoRow(ctx context.Context, c *content.Provider, promoBtn keyboard.Button) []keyboard.Button {
+	if !c.Settings(ctx).DevicesEnabled() {
+		return []keyboard.Button{promoBtn}
+	}
+	return []keyboard.Button{promoBtn, callbackButton(ctx, c, "button.devices", routeDevices, keyboard.StyleDefault)}
 }

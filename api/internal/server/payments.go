@@ -168,8 +168,13 @@ func (s *server) resolvePayment(approve bool) http.HandlerFunc {
 		// закрытая вкладка не должна рвать транзакцию после записи в панель
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), resolveTimeout)
 		defer cancel()
+		cur, _, err := s.current(ctx) // база устройств — как в боте
+		if err != nil {
+			internal(w, r, "resolve payment: settings", err)
+			return
+		}
 		p, err := payflow.Resolve(ctx, s.Store, panelWrite{s}, payflow.Decision{
-			ID: id, Approve: approve, At: s.Now(), Squad: s.Squad, AdminID: s.AdminID,
+			ID: id, Approve: approve, At: s.Now(), Squad: s.Squad, AdminID: s.AdminID, DevicesBase: cur.DevicesBase,
 		})
 		switch {
 		case err == nil:

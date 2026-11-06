@@ -73,7 +73,7 @@ func (h *handlers) paymentPromoText(ctx context.Context, b *bot.Bot, u *models.U
 	}
 	userID := tgupdate.UserID(u)
 	d, err := fsm.Data[promoData](ctx, fsm.For(h.fsm, userID))
-	base, ok := h.c.Settings(ctx).Prices[d.Month]
+	_, ok := h.c.Settings(ctx).Prices[d.Month]
 	if err != nil || !ok { // тариф убрали из настроек, пока юзер вводил код
 		h.leavePromo(ctx, userID)
 		h.tariffs(ctx, b, u)
@@ -88,6 +88,14 @@ func (h *handlers) paymentPromoText(ctx context.Context, b *bot.Bot, u *models.U
 		return
 	}
 	h.leavePromo(ctx, userID)
+	// скидка считается от итога вместе с доп. устройствами (base — итог до скидки)
+	q, err := h.quote(ctx, userID, d.Month, true)
+	if err != nil {
+		stlog.Error(ctx, "failed to load extra devices", "error", err)
+		h.showError(ctx, b, u)
+		return
+	}
+	base := q.Total
 	vars := tariffVars(d.Month, promo.Apply(base, p))
 	vars["base"] = strconv.Itoa(base)
 	vars["code"] = p.Code
@@ -113,7 +121,7 @@ func (h *handlers) menuPromoText(ctx context.Context, b *bot.Bot, u *models.Upda
 	if err == nil {
 		// ошибка панели откатывает активацию: код можно ввести снова
 		err = h.pay.ActivateDaysPromo(ctx, p.ID, from.ID, at, func(p model.Promo) error {
-			user, err := h.rw.CreateUser(ctx, from.ID, username, h.cfg.Remnawave.InternalSquadId)
+			user, err := h.ensureUser(ctx, from.ID, username, 0)
 			if err != nil {
 				return err
 			}
@@ -180,11 +188,18 @@ func (h *handlers) buyPromo(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}()
 
 	month, promoID, err := buyPromoRoute.Parse(u.CallbackQuery.Data)
-	base, ok := h.c.Settings(ctx).Prices[month]
+	_, ok := h.c.Settings(ctx).Prices[month]
 	if err != nil || !ok {
 		h.tariffs(ctx, b, u)
 		return
 	}
+	q, err := h.quote(ctx, userID, month, true)
+	if err != nil {
+		stlog.Error(ctx, "failed to load extra devices", "error", err)
+		h.showError(ctx, b, u)
+		return
+	}
+	base := q.Total
 	p, err := h.pay.PromoByID(ctx, promoID)
 	if err == nil {
 		err = h.checkPaymentPromo(ctx, p, userID)
@@ -194,7 +209,7 @@ func (h *handlers) buyPromo(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	price := promo.Apply(base, p)
-	payment, ok := h.createPayment(ctx, b, u, model.Payment{Month: month, Price: price, PromoID: &p.ID, BasePrice: &base})
+	payment, ok := h.createPayment(ctx, b, u, model.Payment{Month: month, Price: price, PromoID: &p.ID, BasePrice: &base, ExtraDevices: q.Extra})
 	if !ok {
 		return
 	}
@@ -219,6 +234,9 @@ func (h *handlers) payByPromo(ctx context.Context, b *bot.Bot, u *models.Update,
 	_, err := h.pay.ResolvePayment(ctx, pay.ID, model.PaymentConfirmed, at, func(x model.Payment) ([]model.OutboxMessage, error) {
 		expireAt := payflow.ExtendedExpire(x.PrevExpireAt, at, x.Month)
 		if _, err := h.rw.UpdateUser(ctx, x.TelegramID, x.Username, expireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
+			return nil, err
+		}
+		if err := payflow.ApplyDeviceLimit(ctx, h.rw, x, true, h.c.Settings(ctx).DevicesBase); err != nil {
 			return nil, err
 		}
 		return []model.OutboxMessage{{

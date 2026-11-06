@@ -37,6 +37,7 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 
 	p, err := payflow.Resolve(ctx, h.pay, h.rw, payflow.Decision{
 		ID: id, Approve: approve, At: h.now(), Squad: h.cfg.Remnawave.InternalSquadId,
+		DevicesBase: h.c.Settings(ctx).DevicesBase,
 	})
 	switch {
 	case errors.Is(err, store.ErrNotFound):

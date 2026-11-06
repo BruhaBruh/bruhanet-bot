@@ -16,6 +16,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/promo"
+	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
@@ -61,23 +62,53 @@ func (h *handlers) price(ctx context.Context, b *bot.Bot, u *models.Update) {
 		h.tariffs(ctx, b, u)
 		return
 	}
-	h.leavePromo(ctx, tgupdate.UserID(u)) // «Назад»/«Убрать промокод» из ожидания кода
-	show(ctx, b, u, keyboard.Inline(
-		keyboard.Row(
-			callbackButton(ctx, h.c, "button.yes", buyRoute.Data(month), keyboard.StyleSuccess),
-			callbackButton(ctx, h.c, "button.no", routePay, keyboard.StyleDanger),
-		),
-		keyboard.Row(callbackButton(ctx, h.c, "button.have_promo", havePromoRoute.Data(month), keyboard.StyleDefault)),
-	), h.c.Text(ctx, "payment.confirm", tariffVars(month, price)))
+	userID := tgupdate.UserID(u)
+	h.leavePromo(ctx, userID) // «Назад»/«Убрать промокод» из ожидания кода
+	q, err := h.quote(ctx, userID, month, true)
+	if err != nil {
+		stlog.Error(ctx, "failed to load extra devices", "error", err)
+		h.showError(ctx, b, u)
+		return
+	}
+	yesNo := keyboard.Row(
+		callbackButton(ctx, h.c, "button.yes", buyRoute.Data(month), keyboard.StyleSuccess),
+		callbackButton(ctx, h.c, "button.no", routePay, keyboard.StyleDanger),
+	)
+	promoBtn := keyboard.Row(callbackButton(ctx, h.c, "button.have_promo", havePromoRoute.Data(month), keyboard.StyleDefault))
+	if q.hasPaidExtra() {
+		show(ctx, b, u, keyboard.Inline(yesNo,
+			keyboard.Row(callbackButton(ctx, h.c, "button.drop_devices", buyNoDevRoute.Data(month), keyboard.StyleDefault)),
+			promoBtn,
+		), h.c.Text(ctx, "payment.confirm_devices", q.vars(h.c.Settings(ctx).DevicePrice)))
+		return
+	}
+	show(ctx, b, u, keyboard.Inline(yesNo, promoBtn), h.c.Text(ctx, "payment.confirm", tariffVars(month, price)))
 }
 
 func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
-	month, price, ok := h.tariff(ctx, buyRoute, u)
+	h.buyTariff(ctx, b, u, buyRoute, true)
+}
+
+// buyNoDevices — продление без доп. устройств: цена только тарифа, подтверждение сбросит устройства до базы.
+func (h *handlers) buyNoDevices(ctx context.Context, b *bot.Bot, u *models.Update) {
+	h.buyTariff(ctx, b, u, buyNoDevRoute, false)
+}
+
+// buyTariff создаёт платёж подписки. Цена и число доп. устройств фиксируются сейчас и сохраняются в платеже:
+// подтверждение применяет их, а не пересчитывает.
+func (h *handlers) buyTariff(ctx context.Context, b *bot.Bot, u *models.Update, route callback.Route[int], keepExtra bool) {
+	month, _, ok := h.tariff(ctx, route, u)
 	if !ok {
 		h.tariffs(ctx, b, u)
 		return
 	}
-	if _, ok := h.createPayment(ctx, b, u, model.Payment{Month: month, Price: price}); !ok {
+	q, err := h.quote(ctx, tgupdate.UserID(u), month, keepExtra)
+	if err != nil {
+		stlog.Error(ctx, "failed to load extra devices", "error", err)
+		h.showError(ctx, b, u)
+		return
+	}
+	if _, ok := h.createPayment(ctx, b, u, model.Payment{Month: month, Price: q.Total, ExtraDevices: q.Extra}); !ok {
 		return
 	}
 	if err := fsm.Put(ctx, fsm.For(h.fsm, tgupdate.UserID(u)), stateAwaitPhoto, nil); err != nil {
@@ -85,7 +116,7 @@ func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {
 		h.showError(ctx, b, u)
 		return
 	}
-	h.showRequisites(ctx, b, u, month, price)
+	h.showRequisites(ctx, b, u, month, q.Total)
 }
 
 // createPayment заводит юзера в панели и pending-платёж np (тариф и цена — от вызывающего);
@@ -104,7 +135,7 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 		return err
 	}, func(ctx context.Context) (time.Time, error) {
 		// Срок читается под замком юзера в хранилище (после параллельной выдачи дней); CreateUser заводит юзера, если его нет.
-		user, err := h.rw.CreateUser(ctx, from.ID, username, h.cfg.Remnawave.InternalSquadId)
+		user, err := h.ensureUser(ctx, from.ID, username, np.ExtraDevices)
 		if err != nil {
 			stlog.Error(ctx, "failed to create remnawave user", "error", err)
 			return time.Time{}, err
@@ -113,6 +144,10 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 	})
 	if errors.Is(err, promo.ErrBlocked) { // скидка заблокированному не выдаётся; для юзера — «кода нет»
 		h.rejectPromo(ctx, b, u, err, promo.PlacePayment, routePay)
+		return model.Payment{}, false
+	}
+	if errors.Is(err, store.ErrPendingExists) { // докупка устройств при открытой оплате
+		h.devicesBusy(ctx, b, u)
 		return model.Payment{}, false
 	}
 	if err != nil {

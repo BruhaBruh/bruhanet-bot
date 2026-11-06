@@ -75,7 +75,19 @@ var (
 	varMonths = Var{Name: "months", Description: "Срок тарифа с единицей: «3 месяца»", Sample: "3 месяца", Max: 16}
 	varPrice  = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500", Max: 8}
 	varCode   = Var{Name: "code", Description: "Промокод", Sample: "SUMMER25", Max: 32}
+
+	varDevicePrice = Var{Name: "devicePrice", Description: "Цена одного доп. устройства в месяц, ₽", Sample: "50", Max: 8}
+	varDevCount    = Var{Name: "count", Description: "Сколько устройств добавляется, с единицей: «2 устройства»", Sample: "2 устройства", Max: 16}
+	varDevTotal    = Var{Name: "price", Description: "Итоговая цена в рублях", Sample: "500", Max: 8}
 )
+
+// deviceVars — переменные экранов с лимитом устройств.
+var deviceVars = []Var{
+	{Name: "limit", Description: "Всего устройств в подписке", Sample: "7", Max: 4},
+	{Name: "base", Description: "Устройств в базе без доплаты", Sample: "5", Max: 4},
+	{Name: "extra", Description: "Докупленных устройств", Sample: "2", Max: 4},
+	varDevicePrice,
+}
 
 // maxComments — не больше комментариев к переводу (core/settings).
 const maxComments = 10
@@ -86,6 +98,7 @@ const (
 	reminderTail = "\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}"
 	tariffHead   = "<b>Выбор тарифа</b>\n\n"
 	promoHead    = "<b>Промокод</b>\n\n"
+	devicesHead  = "<b>Устройства</b>\n\n"
 	infoHead     = "<b>Информация о подписке</b>\n\n<b>Статус</b>\n"
 )
 
@@ -122,7 +135,7 @@ func (d Def) on(route, style, when string) Def {
 
 // mainButtons — главная клавиатура (routes.mainKeyboard): набор зависит от того, есть ли юзер в панели.
 var mainButtons = []string{
-	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.service_down",
+	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.service_down",
 }
 
 const reasonPromo = "В ответ на присланный промокод: "
@@ -171,6 +184,56 @@ var registry = []Def{
 	msg("payment.declined", groupPayment, "Платёж отклонён",
 		"<b>Администратор отклонил ваш платеж</b>\n\nВаша подписка была изменена на изначальную").
 		shown("Когда админ отклонил платёж, через очередь уведомлений", mainButtons...),
+
+	msg("payment.confirm_devices", groupPayment, "Подтверждение тарифа с доп. устройствами",
+		tariffHead+"Вы выбрали тариф на <b>{{.months}}</b>\n\nТариф: {{.tariff}} ₽\n"+
+			"Доп. устройства: {{.devices}} × {{.devicePrice}} ₽ × {{.monthsCount}} = {{.addon}} ₽\n\n"+
+			"Итого: <b>{{.price}} ₽</b>\n\nВерно?",
+		varMonths,
+		Var{Name: "tariff", Description: "Цена тарифа без устройств, ₽", Sample: "400", Max: 8},
+		Var{Name: "devices", Description: "Сколько доп. устройств уже есть у юзера", Sample: "2", Max: 4},
+		varDevicePrice,
+		Var{Name: "monthsCount", Description: "Срок тарифа в месяцах числом", Sample: "3", Max: 4},
+		Var{Name: "addon", Description: "Доплата за устройства за весь срок, ₽", Sample: "300", Max: 8},
+		varDevTotal).
+		shown("После выбора тарифа в списке, если у юзера есть доп. устройства (они входят в цену)",
+			"button.yes", "button.no", "button.drop_devices", "button.have_promo"),
+	msg("payment.devices_confirmed", groupPayment, "Устройства добавлены",
+		"<b>Администратор подтвердил ваш платеж</b>\n\nДобавлено устройств: <b>{{.devices}}</b>",
+		Var{Name: "devices", Description: "Сколько устройств добавлено", Sample: "2", Max: 4}).
+		shown("Когда админ подтвердил оплату устройств, через очередь уведомлений", mainButtons...),
+	msg("payment.devices_declined", groupPayment, "Оплата устройств отклонена",
+		"<b>Администратор отклонил ваш платеж</b>\n\nКоличество устройств не изменилось").
+		shown("Когда админ отклонил оплату устройств, через очередь уведомлений", mainButtons...),
+	msg("devices.menu", groupPayment, "Устройства",
+		devicesHead+"Сейчас в подписке: <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
+			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц\n\n"+
+			"Цена считается до конца текущей подписки, срок не меняется. Сколько добавить?",
+		deviceVars...).
+		shown("По кнопке «Устройства» в главном меню, пока подписка действует", "button.devices_add", "button.back"),
+	msg("devices.no_term", groupPayment, "Устройства: подписка закончилась",
+		devicesHead+"Сейчас в подписке: <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
+			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц\n\n"+
+			"Подписка закончилась: докупить устройства можно после продления. Уже купленные войдут в цену тарифа",
+		deviceVars...).
+		shown("По кнопке «Устройства», когда подписка закончилась", "button.renew", "button.back"),
+	msg("devices.confirm", groupPayment, "Подтверждение покупки устройств",
+		devicesHead+"Добавить <b>{{.count}}</b> до конца подписки за <b>{{.price}} ₽</b>?\nСрок подписки не изменится.\n\nВерно?",
+		varDevCount, varDevTotal).
+		shown("После выбора количества устройств", "button.yes", "button.no"),
+	msg("devices.requisites", groupPayment, "Реквизиты для оплаты устройств",
+		"<b>Оплата устройств: {{.count}}</b>\n\n<b>Для оплаты</b>\nПереведите <b>{{.price}} ₽</b>\n"+
+			"на номер <code>{{.phone}}</code> в <b>{{.bank}}</b>\nс одним из комментариев:\n{{.comments}}\nи отправьте в чат фото платежа",
+		varDevCount, varDevTotal,
+		Var{
+			Name: "comments", Description: "Список комментариев к переводу, по строке «- <code>…</code>» на комментарий", Raw: true,
+			Max:    maxComments * (64 + 4),
+			Sample: "- <code>На кофе</code>\n- <code>Перекус</code>\n- <code>Одолжил</code>\n- <code>Вернул долг</code>",
+		}).
+		shown("По «Да» на подтверждении покупки устройств, когда платёж создан; кнопок нет, бот ждёт фото"),
+	msg("devices.busy", groupPayment, "Устройства: есть незавершённая оплата",
+		devicesHead+"Сначала завершите текущую оплату: отправьте фото платежа или выберите «Нет» в тарифе. Потом можно докупить устройства").
+		shown("Когда юзер хочет докупить устройства, а у него уже есть открытая оплата", "button.back"),
 
 	msg("grant.days", groupPayment, "Админ добавил дни",
 		"<b>Подписка продлена</b>\n\nДобавлено дней: <b>{{.days}}</b>\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}",
@@ -234,12 +297,16 @@ var registry = []Def{
 	btn("button.renew", "Продлить", "Продлить").on(routePay, StyleDefault, "«Информация о подписке» и напоминания"),
 	btn("button.subscription", "Подписка (копировать ссылку)", "Подписка").on("copy:ссылка подписки", StyleSuccess, "Главное меню, «Информация о подписке» и напоминания"),
 	btn("button.support", "Поддержка", "Поддержка").on("url:supportUrl", StyleDanger, "Главное меню и сообщение об ошибке"),
-	btn("button.back", "Назад", "Назад").on("menu | price | pay", StyleDefault, "Экраны ввода промокода, списка тарифов, «Информации» и ошибки"),
-	btn("button.yes", "Да (подтвердить тариф)", "Да").on("buy | buyp", StyleSuccess, "Подтверждение тарифа, со скидкой и без"),
-	btn("button.no", "Нет (к выбору тарифа)", "Нет").on(routePay, StyleDanger, "Подтверждение тарифа, со скидкой и без"),
+	btn("button.back", "Назад", "Назад").on("menu | price | pay | devices", StyleDefault, "Экраны ввода промокода, списка тарифов, «Информации» и ошибки"),
+	btn("button.yes", "Да (подтвердить тариф)", "Да").on("buy | buyp | devy", StyleSuccess, "Подтверждение тарифа, со скидкой и без, и покупки устройств"),
+	btn("button.no", "Нет (к выбору тарифа)", "Нет").on("pay | devices", StyleDanger, "Подтверждение тарифа, со скидкой и без, и покупки устройств"),
 	btn("button.tariff", "Тариф в списке", "{{.months}} за {{.price}} ₽", varMonths, varPrice).on("price", StyleDefault, "Список тарифов, по кнопке на тариф"),
 	btn("button.service_down", "Сервис не работает", "Сервис не работает").on(routeMenu, StyleDefault, "Вместо главного меню, когда панель недоступна"),
 	btn("button.promo", "Промокод (в меню)", "Промокод").on("promo", StyleDefault, "Главное меню"),
+	btn("button.devices", "Устройства (в меню)", "Устройства").on("devices", StyleDefault, "Главное меню, если юзер есть в панели и продажа устройств включена"),
+	btn("button.devices_add", "Добавить устройства", "+{{.count}} — {{.price}} ₽", Var{Name: "count", Description: "Сколько устройств добавляется числом", Sample: "2", Max: 3}, varDevTotal).
+		on("dev", StyleDefault, "Экран «Устройства», по кнопке на количество"),
+	btn("button.drop_devices", "Без доп. устройств", "Без доп. устройств").on("buyd", StyleDefault, "Подтверждение тарифа, если у юзера есть доп. устройства"),
 	btn("button.have_promo", "Есть промокод (при оплате)", "Есть промокод").on("have_promo", StyleDefault, "Подтверждение тарифа"),
 	btn("button.remove_promo", "Убрать промокод", "Убрать промокод").on("price", StyleDefault, "Подтверждение тарифа со скидкой"),
 }
