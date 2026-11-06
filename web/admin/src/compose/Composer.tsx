@@ -8,7 +8,7 @@ import { previewHtml, renderPreview, varLabel, visibleText, worstLen } from '../
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { formatCount, plural } from '../format'
-import type { Audience, Broadcast, DirectMessage, TextVar } from '../types'
+import type { Audience, Broadcast, BroadcastButton, DirectMessage, TextVar } from '../types'
 import { AUDIENCES, audienceLabel, daysValid, DEFAULT_DAYS, MAX_DAYS, MIN_DAYS } from './audience'
 import { PhotoPicker } from './PhotoPicker'
 
@@ -17,6 +17,8 @@ export interface ComposerDraft {
   photo?: string
   audience?: Audience
   audienceDays?: number | null
+  silent?: boolean
+  buttons?: BroadcastButton[]
 }
 
 // broadcast — всем из панели; direct — одному юзеру (userId)
@@ -25,27 +27,42 @@ export type ComposerProps =
   | { mode: 'direct'; userId: number; onSent?(m: DirectMessage): void }
 
 type Counts = Partial<Record<Audience, number>>
-// Цвета стилей кнопок — как в макете, без бэкенда только образец.
-const BUTTON_STYLES = [
-  { label: 'Обычная', className: 'bg-keyboard-btn-bg shadow-[inset_0_0_0_1px_var(--separator)]' },
-  { label: 'Основная (синяя)', className: 'bg-accent-strong' },
-  { label: 'Успех (зелёная)', className: 'bg-success-strong' },
-  { label: 'Опасная (красная)', className: 'bg-destructive-strong' },
+// Стили кнопок бота; цвета — как у кнопок в превью.
+const BUTTON_STYLES: { value: BroadcastButton['style']; label: string; className: string }[] = [
+  { value: '', label: 'Обычная', className: 'bg-keyboard-btn-bg shadow-[inset_0_0_0_1px_var(--separator)]' },
+  { value: 'primary', label: 'Основная (синяя)', className: 'bg-accent-strong' },
+  { value: 'success', label: 'Успех (зелёная)', className: 'bg-success-strong' },
+  { value: 'danger', label: 'Опасная (красная)', className: 'bg-destructive-strong' },
 ]
+const MAX_BUTTONS = 3
+const MAX_BUTTON_TEXT = 64
+const HTTPS_URL = /^https:\/\/[^\s/?#]+\S*$/i
+
+// Первая проблема в кнопках; warn — просто не заполнено (не ругаем красным).
+function buttonsProblem(buttons: BroadcastButton[]): { text: string; warn: boolean } | undefined {
+  for (const [i, b] of buttons.entries()) {
+    const n = i + 1
+    if (b.text.trim() === '' || b.url.trim() === '') return { text: `Кнопка ${n}: заполните текст и ссылку или удалите кнопку`, warn: true }
+    if (b.text !== b.text.trim()) return { text: `Кнопка ${n}: уберите пробелы по краям текста`, warn: false }
+    if (b.text.includes('{{')) return { text: `Кнопка ${n}: в тексте кнопки нельзя использовать переменные`, warn: false }
+    if (!HTTPS_URL.test(b.url)) return { text: `Кнопка ${n}: ссылка должна начинаться с https://`, warn: false }
+  }
+}
 
 const note = 'footnote text-text-secondary'
 const separator = 'shadow-[inset_0_-0.5px_0_var(--separator)]'
 
 const NotWiredHint = () => <p className={cn(note, 'py-2')}>{NOT_WIRED}</p>
 
-function Toggle({ title, subtitle, last }: { title: string; subtitle: string; last?: boolean }) {
+function Toggle({ title, subtitle, last, checked, onChange, disabled }: { title: string; subtitle: string; last?: boolean; checked?: boolean; onChange?: (v: boolean) => void; disabled?: boolean }) {
+  const wired = !!onChange
   return (
-    <div className={cn('flex min-h-14 items-center gap-3', !last && separator)} title={NOT_WIRED}>
+    <div className={cn('flex min-h-14 items-center gap-3', !last && separator)} title={wired ? undefined : NOT_WIRED}>
       <div className="flex grow flex-col">
         <span>{title}</span>
         <span className={note}>{subtitle}</span>
       </div>
-      <Switch disabled aria-label={title} />
+      <Switch checked={checked} onChange={onChange} disabled={!wired || disabled} aria-label={title} />
     </div>
   )
 }
@@ -75,6 +92,8 @@ export function Composer(props: ComposerProps) {
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [audience, setAudience] = useState<Audience>(initial?.audience ?? 'all')
+  const [buttons, setButtons] = useState<BroadcastButton[]>(initial?.buttons ?? [])
+  const [silent, setSilent] = useState(initial?.silent ?? false)
   const [days, setDays] = useState(initial?.audienceDays ? String(initial.audienceDays) : DEFAULT_DAYS)
   // null — грузится, undefined — не удалось получить
   const [counts, setCounts] = useState<Counts | null | undefined>(null)
@@ -118,6 +137,17 @@ export function Composer(props: ComposerProps) {
     setAudience(next)
     setDays(nextDays)
   }
+  function changeButtons(next: BroadcastButton[]) {
+    draftChanged()
+    setButtons(next)
+  }
+  function changeButton(i: number, patch: Partial<BroadcastButton>) {
+    changeButtons(buttons.map((b, j) => (j === i ? { ...b, ...patch } : b)))
+  }
+  function changeSilent(next: boolean) {
+    draftChanged()
+    setSilent(next)
+  }
   function changePhoto(next?: string, url?: string) {
     draftChanged()
     setPhoto(next)
@@ -130,7 +160,8 @@ export function Composer(props: ComposerProps) {
   const over = len - limit
   const hasVars = /\{\{\s*\.[^{}\s]+\s*\}\}/.test(text)
   const blank = visibleText(text).trim() === ''
-  const valid = !uploading && over <= 0 && (!!photo || !blank) && (audience !== 'expiring' || daysOk)
+  const buttonsIssue = isBroadcast ? buttonsProblem(buttons) : undefined
+  const valid = !uploading && over <= 0 && (!!photo || !blank) && (audience !== 'expiring' || daysOk) && !buttonsIssue
   // Для кода после await: файл из уже открытого окна выбора может прийти и под busy.
   const validNow = useRef(valid)
   useEffect(() => {
@@ -141,7 +172,7 @@ export function Composer(props: ComposerProps) {
   const recipients = counts == null ? counts : (counts[audience] ?? null)
 
   const body = () => ({ text, ...(photo ? { photo } : {}) })
-  const broadcastBody = () => ({ ...body(), audience, audienceDays: audience === 'expiring' ? Number(days) : null })
+  const broadcastBody = () => ({ ...body(), audience, audienceDays: audience === 'expiring' ? Number(days) : null, silent, buttons })
 
   async function run(fn: () => Promise<void>) {
     if (inFlight.current) return
@@ -162,13 +193,15 @@ export function Composer(props: ComposerProps) {
 
   const sendTest = () =>
     run(async () => {
-      await post('/api/broadcasts/preview-send', body())
+      await post('/api/broadcasts/preview-send', isBroadcast ? { ...body(), silent, buttons } : body())
       toast(`Тестовое сообщение отправлено вам, @${OWNER_USERNAME}`, { icon: 'check' })
     })
 
   function reset() {
     changeText('')
     changePhoto()
+    changeButtons([])
+    changeSilent(false)
   }
 
   // Диалог называет число получателей на момент клика: на странице оно могло устареть.
@@ -245,6 +278,9 @@ export function Composer(props: ComposerProps) {
       <div className={cn('flex flex-col justify-end bg-chat-bg px-3 py-4', isBroadcast && 'min-h-90')}>
         <MessageBubble
           time="сейчас"
+          keyboard={buttons
+            .filter((b) => b.text.trim() !== '')
+            .map((b) => [{ text: b.text, url: b.url || undefined, style: b.style || 'default' }])}
           media={
             photo &&
             (photoUrl ? (
@@ -331,36 +367,72 @@ export function Composer(props: ComposerProps) {
         </Card>
 
         <Card title="Кнопки под сообщением" aside="до 3 кнопок · каждая на своей строке">
-          <div className="admin-label flex gap-2 px-0.5 text-text-secondary max-md:hidden">
-            <span className="flex-[1_1_--spacing(40)]">Текст</span>
-            <span className="flex-[1.6_1_--spacing(55)]">Ссылка</span>
-            <span className="w-35 flex-none">Стиль</span>
-            <span className="w-10 flex-none" />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input className="min-w-0 flex-[1_1_--spacing(40)]" disabled placeholder="Текст кнопки" aria-label="Текст кнопки" />
-            <Input className="min-w-0 flex-[1.6_1_--spacing(55)]" disabled placeholder="https://" aria-label="Ссылка" />
-            <div role="radiogroup" aria-label="Стиль кнопки" aria-disabled className="flex w-35 flex-none items-center gap-1.5 opacity-40">
-              {BUTTON_STYLES.map((s, i) => (
-                <span
-                  key={s.label}
-                  role="radio"
-                  aria-checked={i === 0}
-                  aria-disabled
-                  aria-label={s.label}
-                  title={s.label}
-                  className={cn('size-7 rounded-full', s.className)}
-                />
-              ))}
+          {buttons.length > 0 && (
+            <div className="admin-label flex gap-2 px-0.5 text-text-secondary max-md:hidden">
+              <span className="flex-[1_1_--spacing(40)]">Текст</span>
+              <span className="flex-[1.6_1_--spacing(55)]">Ссылка</span>
+              <span className="w-35 flex-none">Стиль</span>
+              <span className="w-10 flex-none" />
             </div>
-            <Button variant="gray" icon="trash" aria-label="Удалить кнопку" disabled />
-          </div>
+          )}
+          {buttons.map((b, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <Input
+                className="min-w-0 flex-[1_1_--spacing(40)]"
+                placeholder="Текст кнопки"
+                aria-label={`Текст кнопки ${i + 1}`}
+                maxLength={MAX_BUTTON_TEXT}
+                disabled={busy}
+                value={b.text}
+                onChange={(e) => changeButton(i, { text: e.target.value })}
+              />
+              <Input
+                className="min-w-0 flex-[1.6_1_--spacing(55)]"
+                placeholder="https://"
+                aria-label={`Ссылка кнопки ${i + 1}`}
+                inputMode="url"
+                disabled={busy}
+                value={b.url}
+                onChange={(e) => changeButton(i, { url: e.target.value })}
+              />
+              <div role="radiogroup" aria-label={`Стиль кнопки ${i + 1}`} className="flex w-35 flex-none items-center gap-1.5">
+                {BUTTON_STYLES.map((st) => (
+                  <button
+                    key={st.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={b.style === st.value}
+                    aria-label={st.label}
+                    title={st.label}
+                    disabled={busy}
+                    onClick={() => changeButton(i, { style: st.value })}
+                    className={cn(
+                      'focus-ring size-7 cursor-pointer rounded-full disabled:cursor-default disabled:opacity-40',
+                      st.className,
+                      b.style === st.value && 'outline-2 outline-offset-2 outline-accent',
+                    )}
+                  />
+                ))}
+              </div>
+              <Button variant="gray" icon="trash" aria-label={`Удалить кнопку ${i + 1}`} disabled={busy} onClick={() => changeButtons(buttons.filter((_, j) => j !== i))} />
+            </div>
+          ))}
+          {buttonsIssue && (
+            <p role="alert" className={buttonsIssue.warn ? note : cn(note, 'text-destructive-strong')}>
+              {buttonsIssue.text}
+            </p>
+          )}
           <div>
-            <Button variant="tinted" icon="plus" disabled title={NOT_WIRED}>
+            <Button
+              variant="tinted"
+              icon="plus"
+              disabled={busy || buttons.length >= MAX_BUTTONS}
+              onClick={() => changeButtons([...buttons, { text: '', url: '', style: '' }])}
+            >
               Добавить кнопку
             </Button>
           </div>
-          <p className={note}>{NOT_WIRED}</p>
+          <p className={note}>Только ссылки https://. Текст кнопки — простой текст до 64 символов, без переменных.</p>
         </Card>
 
         <Card title="Получатели" className="gap-2 px-5 pt-5 pb-2">
@@ -402,7 +474,7 @@ export function Composer(props: ComposerProps) {
 
         <Card className="gap-0 px-5 py-1">
           <Toggle title="Отправить позже" subtitle="по времени Екатеринбурга (UTC+5)" />
-          <Toggle title="Без звука" subtitle="сообщение придёт без уведомления" last />
+          <Toggle title="Без звука" subtitle="сообщение придёт без уведомления" last checked={silent} onChange={changeSilent} disabled={busy} />
           <NotWiredHint />
         </Card>
 
@@ -427,7 +499,7 @@ export function Composer(props: ComposerProps) {
       {confirming && (
         <Dialog
           title="Отправить рассылку?"
-          message={`Сообщение сразу получат ${formatCount(count)} ${plural(count, ['пользователь', 'пользователя', 'пользователей'])} из группы «${audienceLabel(audience, days)}». Отменить отправленное нельзя.`}
+          message={`Сообщение сразу получат ${formatCount(count)} ${plural(count, ['пользователь', 'пользователя', 'пользователей'])} из группы «${audienceLabel(audience, days)}». ${silent ? 'Придёт без звука. ' : ''}Отменить отправленное нельзя.`}
           actions={[
             { label: 'Отмена', style: 'cancel', onClick: () => setConfirming(false) },
             { label: 'Отправить', onClick: broadcast },

@@ -64,13 +64,23 @@ func (s *server) readMessage(w http.ResponseWriter, r *http.Request, in any, m *
 	return true
 }
 
+// previewBroadcast шлёт рассылку как есть (с кнопками и «без звука») админу.
 func (s *server) previewBroadcast(w http.ResponseWriter, r *http.Request) {
-	var in message
-	if !s.readMessage(w, r, &in, &in) {
+	var in struct {
+		message
+		Buttons []broadcast.Button `json:"buttons"`
+		Silent  bool               `json:"silent"`
+	}
+	if !s.readMessage(w, r, &in, &in.message) {
+		return
+	}
+	if err := broadcast.ValidateButtons(in.Buttons); err != nil {
+		writeInvalid(w, texts.Problem(err))
 		return
 	}
 	err := s.Store.Enqueue(r.Context(), model.OutboxMessage{
 		EventType: "text_test", ChatID: s.AdminID, Text: in.Text, Photo: in.Photo, ParseMode: "HTML", Template: texts.HasVars(in.Text),
+		Keyboard: broadcast.Keyboard(in.Buttons), Silent: in.Silent,
 	})
 	if err != nil {
 		internal(w, r, "enqueue broadcast preview", err)
@@ -153,9 +163,11 @@ func parseSchedule(v string, now time.Time) (*time.Time, error) {
 type broadcastIn struct {
 	IdempotencyKey uuid.UUID `json:"idempotencyKey"`
 	message
-	Audience     string `json:"audience"` // пусто — all
-	AudienceDays *int   `json:"audienceDays"`
-	ScheduledAt  string `json:"scheduledAt"` // МСК, пусто — сразу
+	Audience     string             `json:"audience"` // пусто — all
+	AudienceDays *int               `json:"audienceDays"`
+	Silent       bool               `json:"silent"`
+	Buttons      []broadcast.Button `json:"buttons"`
+	ScheduledAt  string             `json:"scheduledAt"` // МСК, пусто — сразу
 }
 
 func (s *server) readBroadcast(w http.ResponseWriter, r *http.Request, in *broadcastIn) (*time.Time, bool) {
@@ -166,6 +178,10 @@ func (s *server) readBroadcast(w http.ResponseWriter, r *http.Request, in *broad
 		in.Audience = broadcast.AudienceAll
 	}
 	if err := broadcast.ValidateAudience(in.Audience, in.AudienceDays); err != nil {
+		writeInvalid(w, texts.Problem(err))
+		return nil, false
+	}
+	if err := broadcast.ValidateButtons(in.Buttons); err != nil {
 		writeInvalid(w, texts.Problem(err))
 		return nil, false
 	}
@@ -188,7 +204,10 @@ func (s *server) createBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, created, err := s.Store.SendBroadcast(r.Context(),
-		model.BroadcastDraft{IdempotencyKey: in.IdempotencyKey, Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays, ScheduledAt: at},
+		model.BroadcastDraft{
+			IdempotencyKey: in.IdempotencyKey, Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
+			Silent: in.Silent, Buttons: in.Buttons, ScheduledAt: at,
+		},
 		s.AdminID, s.Now())
 	if err != nil {
 		broadcastError(w, r, "create broadcast", err)
@@ -237,7 +256,10 @@ func (s *server) updateBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, err := s.Store.UpdateScheduled(r.Context(), id,
-		model.BroadcastDraft{Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays, ScheduledAt: at})
+		model.BroadcastDraft{
+			Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
+			Silent: in.Silent, Buttons: in.Buttons, ScheduledAt: at,
+		})
 	if err != nil {
 		broadcastError(w, r, "update broadcast", err)
 		return

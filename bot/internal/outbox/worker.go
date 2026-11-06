@@ -173,7 +173,7 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 	case it.Photo != "":
 		p := &bot.SendPhotoParams{
 			ChatID: it.ChatID, Photo: &models.InputFileString{Data: it.Photo},
-			Caption: it.Text, ParseMode: models.ParseMode(it.ParseMode),
+			Caption: it.Text, ParseMode: models.ParseMode(it.ParseMode), DisableNotification: it.Silent,
 		}
 		if it.Keyboard != nil { // nil-указатель в интерфейсе ReplyMarkup не годится
 			p.ReplyMarkup = it.Keyboard
@@ -181,7 +181,7 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 		_, err := w.b.SendPhoto(ctx, p)
 		return err
 	default:
-		p := &bot.SendMessageParams{ChatID: it.ChatID, Text: it.Text, ParseMode: models.ParseMode(it.ParseMode)}
+		p := &bot.SendMessageParams{ChatID: it.ChatID, Text: it.Text, ParseMode: models.ParseMode(it.ParseMode), DisableNotification: it.Silent}
 		if it.Keyboard != nil {
 			p.ReplyMarkup = it.Keyboard
 		}

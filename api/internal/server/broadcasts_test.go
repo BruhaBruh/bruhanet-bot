@@ -446,3 +446,68 @@ func TestBroadcastAudienceInBody(t *testing.T) {
 		t.Fatalf("edit: %d %s", w.Code, w.Body)
 	}
 }
+
+func TestBroadcastButtonsAndSilent(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	btn := func(text, url, style string) map[string]any {
+		return map[string]any{"text": text, "url": url, "style": style}
+	}
+	code, b := postBC(t, h, c, map[string]any{
+		"idempotencyKey": uuid.New(), "text": "x", "silent": true,
+		"buttons": []any{btn("Сайт", "https://e.com/?a=1", "primary"), btn("Ещё", "https://e.org", "")},
+	})
+	if code != http.StatusCreated || !b.Silent || len(b.Buttons) != 2 || b.Buttons[0].URL != "https://e.com/?a=1" || b.Buttons[0].Style != "primary" {
+		t.Fatalf("%d %+v", code, b)
+	}
+	n := len(st.broadcasts)
+	long := strings.Repeat("я", 65)
+	for name, buttons := range map[string][]any{
+		"javascript": {btn("x", "javascript:alert(1)", "")},
+		"data":       {btn("x", "data:text/html;base64,PHNjcmlwdD4=", "")},
+		"http":       {btn("x", "http://e.com", "")},
+		"tg":         {btn("x", "tg://user?id=1", "")},
+		"vars":       {btn("{{.name}}", "https://e.com", "")},
+		"long text":  {btn(long, "https://e.com", "")},
+		"empty":      {btn("", "https://e.com", "")},
+		"style":      {btn("x", "https://e.com", "rainbow")},
+		"four":       {btn("1", "https://e.com", ""), btn("2", "https://e.com", ""), btn("3", "https://e.com", ""), btn("4", "https://e.com", "")},
+	} {
+		code, _ := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "x", "buttons": buttons})
+		if code != http.StatusBadRequest {
+			t.Errorf("%s: %d", name, code)
+		}
+	}
+	if len(st.broadcasts) != n {
+		t.Fatal("refused must not create")
+	}
+	// без кнопок — пустой массив в ответе, не null
+	if _, b := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "x"}); b.Buttons == nil || b.Silent {
+		t.Fatalf("defaults: %+v", b)
+	}
+	// правка запланированной принимает и проверяет кнопки
+	_, sched := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "x", "scheduledAt": "2026-11-03T10:00"})
+	put := func(buttons []any) int {
+		return send(h, http.MethodPut, "/api/broadcasts/"+sched.ID.String(), c,
+			jsonBody(t, map[string]any{"text": "x", "scheduledAt": "2026-11-03T10:00", "silent": true, "buttons": buttons})).Code
+	}
+	if put([]any{btn("a", "https://e.com", "")}) != http.StatusOK || put([]any{btn("a", "javascript:1", "")}) != http.StatusBadRequest {
+		t.Fatal("edit buttons")
+	}
+}
+
+// «Отправить себе» шлёт админу сообщение с теми же кнопками и «без звука».
+func TestBroadcastPreviewSendButtons(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	body := jsonBody(t, map[string]any{"text": "x", "silent": true, "buttons": []any{map[string]any{"text": "a", "url": "https://e.com", "style": "success"}}})
+	if w := send(h, http.MethodPost, "/api/broadcasts/preview-send", c, body); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	m := st.outbox[len(st.outbox)-1]
+	if !m.Silent || m.Keyboard == nil || m.Keyboard.InlineKeyboard[0][0].URL != "https://e.com" || m.Keyboard.InlineKeyboard[0][0].Style != "success" {
+		t.Fatalf("outbox = %+v", m)
+	}
+	bad := jsonBody(t, map[string]any{"text": "x", "buttons": []any{map[string]any{"text": "a", "url": "javascript:1"}}})
+	if w := send(h, http.MethodPost, "/api/broadcasts/preview-send", c, bad); w.Code != http.StatusBadRequest {
+		t.Fatalf("bad: %d", w.Code)
+	}
+}

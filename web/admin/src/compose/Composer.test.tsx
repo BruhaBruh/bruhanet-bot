@@ -30,7 +30,7 @@ vi.mock('./PhotoPicker', () => ({
   },
 }))
 
-type Body = { idempotencyKey?: string; text?: string; photo?: string; audience?: string; audienceDays?: number | null }
+type Body = { idempotencyKey?: string; text?: string; photo?: string; audience?: string; audienceDays?: number | null; silent?: boolean; buttons?: unknown[] }
 type Call = { url: string; method: string; body?: Body }
 let calls: Call[]
 let replies: Record<string, (() => Response | Promise<Response>)[]>
@@ -382,12 +382,101 @@ describe('Composer', () => {
     expect(screen.getByRole('status').textContent).toContain('Тестовое сообщение отправлено вам')
   })
 
-  it('controls without backend are disabled', async () => {
+  it('schedule is not wired yet and stays disabled', async () => {
     await setup()
-    for (const name of ['Отправить позже', 'Без звука']) {
-      expect(screen.getByRole('switch', { name }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('switch', { name: 'Отправить позже' }).hasAttribute('disabled')).toBe(true)
+  })
+
+  describe('buttons and silent', () => {
+    const addButton = async (text: string, url: string) => {
+      fireEvent.click(screen.getByRole('button', { name: 'Добавить кнопку' }))
+      await flush()
+      const i = screen.getAllByRole('textbox', { name: /^Текст кнопки/ }).length
+      fireEvent.change(screen.getByRole('textbox', { name: `Текст кнопки ${i}` }), { target: { value: text } })
+      fireEvent.change(screen.getByRole('textbox', { name: `Ссылка кнопки ${i}` }), { target: { value: url } })
+      await flush()
     }
-    expect((screen.getByRole('textbox', { name: 'Текст кнопки' }) as HTMLInputElement).disabled).toBe(true)
+
+    it('buttons go to the server and to the preview keyboard; silent too', async () => {
+      replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
+      replies['POST /api/broadcasts/preview-send'] = [json(204)]
+      const { r, setText, click } = await setup()
+      await setText('hi')
+      await addButton('Сайт', 'https://e.com/x')
+      fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Стиль кнопки 1' })).getByRole('radio', { name: 'Основная (синяя)' }))
+      fireEvent.click(screen.getByRole('switch', { name: 'Без звука' }))
+      await flush()
+      const aside = within(r.container).getByRole('complementary', { name: 'Превью сообщения' })
+      expect(within(aside).getByText('Сайт')).toBeTruthy()
+      await click(TEST)
+      expect(calls.find((c) => c.url === '/api/broadcasts/preview-send')?.body).toMatchObject({
+        silent: true,
+        buttons: [{ text: 'Сайт', url: 'https://e.com/x', style: 'primary' }],
+      })
+      await click(SEND)
+      expect(screen.getByRole('alertdialog').textContent).toContain('Придёт без звука.')
+      await click(CONFIRM)
+      expect(posts()[0].body).toMatchObject({ silent: true, buttons: [{ text: 'Сайт', url: 'https://e.com/x', style: 'primary' }] })
+    })
+
+    it('not https, variables and blank fields block sending; fixed — allowed', async () => {
+      const { setText, btn } = await setup()
+      await setText('hi')
+      await addButton('', '')
+      expect(disabled(btn(SEND))).toBe(true)
+      for (const [text, url, msg] of [
+        ['Сайт', 'http://e.com', 'ссылка должна начинаться с https://'],
+        ['Сайт', 'javascript:alert(1)', 'ссылка должна начинаться с https://'],
+        ['Сайт', 'data:text/html,x', 'ссылка должна начинаться с https://'],
+        ['Сайт', 'https://', 'ссылка должна начинаться с https://'],
+        ['Привет {{.name}}', 'https://e.com', 'нельзя использовать переменные'],
+        [' Сайт', 'https://e.com', 'уберите пробелы'],
+      ]) {
+        fireEvent.change(screen.getByRole('textbox', { name: 'Текст кнопки 1' }), { target: { value: text } })
+        fireEvent.change(screen.getByRole('textbox', { name: 'Ссылка кнопки 1' }), { target: { value: url } })
+        await flush()
+        expect(screen.getAllByRole('alert').map((a) => a.textContent).join(' '), url).toContain(msg)
+        expect(disabled(btn(SEND))).toBe(true)
+      }
+      fireEvent.change(screen.getByRole('textbox', { name: 'Текст кнопки 1' }), { target: { value: 'Сайт' } })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Ссылка кнопки 1' }), { target: { value: 'HTTPS://e.com' } })
+      await flush()
+      expect(disabled(btn(SEND))).toBe(false)
+    })
+
+    it('at most 3 buttons; delete frees a slot; text input is capped at 64', async () => {
+      await setup()
+      for (let i = 1; i <= 3; i++) await addButton(`b${i}`, 'https://e.com')
+      expect((screen.getByRole('button', { name: 'Добавить кнопку' }) as HTMLButtonElement).disabled).toBe(true)
+      expect((screen.getByRole('textbox', { name: 'Текст кнопки 1' }) as HTMLInputElement).maxLength).toBe(64)
+      fireEvent.click(screen.getByRole('button', { name: 'Удалить кнопку 2' }))
+      await flush()
+      expect((screen.getByRole('button', { name: 'Добавить кнопку' }) as HTMLButtonElement).disabled).toBe(false)
+      expect(screen.getAllByRole('textbox', { name: /^Текст кнопки/ })).toHaveLength(2)
+    })
+
+    it('changing buttons or silent renews the idempotency key', async () => {
+      replies['POST /api/broadcasts'] = [json(500, { error: 'internal' })]
+      const { setText, click } = await setup()
+      const send = async () => {
+        await click(SEND)
+        await click(CONFIRM)
+      }
+      await setText('hi')
+      await send()
+      fireEvent.click(screen.getByRole('switch', { name: 'Без звука' }))
+      await flush()
+      await send()
+      await addButton('a', 'https://e.com')
+      await send()
+      expect(new Set(posts().map((c) => c.body?.idempotencyKey)).size).toBe(3)
+    })
+
+    it('direct mode has neither buttons nor silent', async () => {
+      await setup({ mode: 'direct', userId: 7 })
+      expect(screen.queryByRole('button', { name: 'Добавить кнопку' })).toBeNull()
+      expect(screen.queryByRole('switch', { name: 'Без звука' })).toBeNull()
+    })
   })
 
   it('audience radios show counts and the choice goes to the server with days', async () => {
@@ -466,7 +555,7 @@ describe('Composer', () => {
     const { setText, click } = await setup()
     await setText('Привет, {{.name}}')
     await click(TEST)
-    expect(calls.find((c) => c.url === '/api/broadcasts/preview-send')?.body).toEqual({ text: 'Привет, {{.name}}' })
+    expect(calls.find((c) => c.url === '/api/broadcasts/preview-send')?.body).toEqual({ text: 'Привет, {{.name}}', silent: false, buttons: [] })
   })
 
   it('without globals (load failed) the composer still works', async () => {

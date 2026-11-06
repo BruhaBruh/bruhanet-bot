@@ -18,6 +18,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
+	"github.com/bruhabruh/bruhanet/core/broadcast"
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/settings"
@@ -334,6 +335,36 @@ func TestWorkerPhoto(t *testing.T) {
 	}
 	if q.direct[3] != model.DirectSent {
 		t.Fatalf("direct = %v", q.direct)
+	}
+}
+
+// Рассылка с кнопками и «без звука»: клавиатура и disable_notification уходят и в текст, и в фото; обычное сообщение — без них.
+func TestWorkerBroadcastButtonsAndSilent(t *testing.T) {
+	srv, q, w := setup(t)
+	kb := broadcast.Keyboard([]broadcast.Button{{Text: "Сайт", URL: "https://e.com", Style: "primary"}, {Text: "Ещё", URL: "https://e.org"}})
+	q.add(
+		model.OutboxMessage{EventType: "broadcast", ChatID: 7, Text: "t", ParseMode: "HTML", Keyboard: kb, Silent: true},
+		model.OutboxMessage{EventType: "broadcast", ChatID: 8, Text: "cap", ParseMode: "HTML", Photo: "f1", Keyboard: kb, Silent: true},
+		model.OutboxMessage{EventType: "broadcast", ChatID: 9, Text: "plain", ParseMode: "HTML"},
+	)
+	drain(t, w, q)
+	for _, c := range append(srv.Calls("sendMessage"), srv.Calls("sendPhoto")...) {
+		chat := c.Params.Get("chat_id")
+		markup := c.Params.Get("reply_markup")
+		silent := c.Params.Get("disable_notification")
+		if chat == "9" {
+			if markup != "" || silent == "true" {
+				t.Errorf("plain: markup=%q silent=%q", markup, silent)
+			}
+			continue
+		}
+		if silent != "true" || !strings.Contains(markup, `"url":"https://e.com"`) || !strings.Contains(markup, `"style":"primary"`) ||
+			!strings.Contains(markup, `"text":"Ещё"`) {
+			t.Errorf("chat %s: markup=%q silent=%q", chat, markup, silent)
+		}
+	}
+	if len(srv.Calls("sendPhoto")) != 1 || len(srv.Calls("sendMessage")) != 2 {
+		t.Fatalf("calls: msg=%d photo=%d", len(srv.Calls("sendMessage")), len(srv.Calls("sendPhoto")))
 	}
 }
 
