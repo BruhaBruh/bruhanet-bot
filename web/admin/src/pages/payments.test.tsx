@@ -300,7 +300,7 @@ describe('Payments', () => {
     })
 
     it('confirm without a receipt says so; decline stays plain', async () => {
-      const { posts } = stubReview(undefined, { ...pending, submittedAt: null, hasPhoto: false })
+      const { posts } = stubReview(undefined, payment(1, 'pending', { month: 1, hasPhoto: false, submittedAt: null, prevExpireAt: '2099-12-01T12:00:00Z' }))
       await renderPage()
       fireEvent.click(row().getByRole('button', { name: 'Подтвердить' }))
       const d = screen.getByRole('alertdialog').textContent
@@ -311,7 +311,7 @@ describe('Payments', () => {
     })
 
     it('decline without a receipt keeps the usual dialog', async () => {
-      stubReview(undefined, { ...pending, submittedAt: null, hasPhoto: false })
+      stubReview(undefined, payment(1, 'pending', { month: 1, hasPhoto: false, submittedAt: null, prevExpireAt: '2099-12-01T12:00:00Z' }))
       await renderPage()
       fireEvent.click(row().getByRole('button', { name: 'Отклонить' }))
       expect(screen.getByRole('alertdialog').textContent).toContain('Отклонить платёж?')
