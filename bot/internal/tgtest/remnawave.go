@@ -34,6 +34,7 @@ type Remnawave struct {
 	limits    []DeviceLimitWrite
 	err       error
 	updErr    error
+	limErr    error
 	failAfter int
 	failErr   error
 }
@@ -115,6 +116,13 @@ func (r *Remnawave) FailUpdateWith(err error) {
 	r.updErr = err
 }
 
+// FailLimitWith заставляет возвращать err только SetDeviceLimit; nil — снять.
+func (r *Remnawave) FailLimitWith(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.limErr = err
+}
+
 func (r *Remnawave) ExpireAt(telegramID int64) time.Time {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -143,6 +151,9 @@ func (r *Remnawave) SetDeviceLimit(_ context.Context, telegramID int64, limit in
 	}
 	if r.updErr != nil {
 		return nil, r.updErr
+	}
+	if r.limErr != nil {
+		return nil, r.limErr
 	}
 	u, ok := r.users[telegramID]
 	if !ok {

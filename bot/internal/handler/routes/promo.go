@@ -231,12 +231,17 @@ func (h *handlers) payByPromo(ctx context.Context, b *bot.Bot, u *models.Update,
 	vars["expireAt"] = formatTime(payflow.ExtendedExpire(pay.PrevExpireAt, at, pay.Month))
 	text := h.c.Text(ctx, "promo.paid_by_promo", vars)
 	kb := h.mainKeyboard(ctx, pay.TelegramID)
+	var written, old time.Time // срок, который мы пытались записать, и прежний
+	squad := h.cfg.Remnawave.InternalSquadId
 	_, err := h.pay.ResolvePayment(ctx, pay.ID, model.PaymentConfirmed, at, func(x model.Payment) ([]model.OutboxMessage, error) {
 		expireAt := payflow.ExtendedExpire(x.PrevExpireAt, at, x.Month)
-		if _, err := h.rw.UpdateUser(ctx, x.TelegramID, x.Username, expireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
+		// Лимит устройств (идемпотентный, абсолютный) — ДО срока: сбой после записи срока оставил бы продлённый срок
+		// при отменённом платеже, и повтор продлил бы ещё раз.
+		if err := payflow.ApplyDeviceLimit(ctx, h.rw, x, true, h.c.Settings(ctx).DevicesBase); err != nil {
 			return nil, err
 		}
-		if err := payflow.ApplyDeviceLimit(ctx, h.rw, x, true, h.c.Settings(ctx).DevicesBase); err != nil {
+		written, old = expireAt, x.PrevExpireAt // до вызова: ответ мог потеряться, а срок записаться
+		if _, err := h.rw.UpdateUser(ctx, x.TelegramID, x.Username, expireAt, squad); err != nil {
 			return nil, err
 		}
 		return []model.OutboxMessage{{
@@ -253,6 +258,11 @@ func (h *handlers) payByPromo(ctx context.Context, b *bot.Bot, u *models.Update,
 		h.start(ctx, b, u)
 		return
 	case err != nil:
+		if !written.IsZero() { // сбой после записи срока (коммит): вернуть, пока срок в панели наш
+			if rerr := payflow.RestoreTerm(ctx, h.rw, pay.TelegramID, pay.Username, written, old, squad); rerr != nil {
+				stlog.Error(ctx, "failed to restore panel term after promo payment failure", "error", rerr)
+			}
+		}
 		// платёж 0 ₽ без подтверждения не нужен: фото по нему не ждём (аванса не было — панель не откатываем)
 		if cerr := h.pay.CancelPayment(context.WithoutCancel(ctx), pay.ID); cerr != nil && !errors.Is(cerr, store.ErrNotPending) {
 			stlog.Error(ctx, "failed to cancel promo payment", "error", cerr)

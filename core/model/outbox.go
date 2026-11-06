@@ -42,6 +42,8 @@ type OutboxMessage struct {
 	Confirmed bool `json:"confirmed,omitempty"`
 	Months    int  `json:"months,omitempty"`
 	Price     int  `json:"price,omitempty"`
+	// PayKind — вид платежа для метрик (devices/gift); пусто — тариф.
+	PayKind string `json:"pay_kind,omitempty"`
 }
 
 type OutboxItem struct {

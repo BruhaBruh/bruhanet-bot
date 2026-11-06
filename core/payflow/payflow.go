@@ -87,6 +87,9 @@ func ApplyDeviceLimit(ctx context.Context, panel Panel, p model.Payment, approve
 
 // Resolve под блокировкой строки платежа записывает в панель абсолютную дату (подтверждение — ExtendedExpire,
 // отклонение — возврат PrevExpireAt) и кладёт уведомления в outbox. Текст и клавиатуру юзеру рендерит воркер при доставке.
+// Сбой после UpdateUser (ApplyDeviceLimit, коммит) безопасен без отката срока: запись абсолютная от PrevExpireAt,
+// повтор админа считает ту же дату, а не продлевает продлённое (в отличие от payByPromo, где повтор — новый платёж
+// с PrevExpireAt из панели; там срок возвращается RestoreTerm).
 // Платёж за устройства срок не трогает вовсе: подтверждение пишет только лимит устройств, отклонение — ничего.
 func Resolve(ctx context.Context, st Store, panel Panel, d Decision) (model.Payment, error) {
 	status, key := model.PaymentDeclined, "payment.declined"
@@ -141,7 +144,7 @@ func withAdminClosed(msgs []model.OutboxMessage, p model.Payment, d Decision) []
 	if d.AdminID != 0 {
 		msgs = append(msgs, model.OutboxMessage{
 			EventType: EventAdminClosed, ChatID: d.AdminID, MessageID: p.AdminMessageID,
-			Confirmed: d.Approve, Months: p.Month, Price: p.Price,
+			Confirmed: d.Approve, Months: p.Month, Price: p.Price, PayKind: string(p.Kind),
 		})
 	}
 	return msgs
@@ -224,18 +227,32 @@ func (g *termGrant) restore(ctx context.Context, panel GrantPanel, r GrantReques
 	if err == nil || g.newExpire.IsZero() {
 		return err
 	}
+	return errors.Join(err, RestoreTerm(ctx, panel, r.TelegramID, r.Username, g.newExpire, g.oldExpire, r.Squad))
+}
+
+// TermPanel — чтение и запись срока.
+type TermPanel interface {
+	GetUser(ctx context.Context, telegramID int64) (*api.UserItemInfo, error)
+	UpdateUser(ctx context.Context, telegramID int64, username string, expireAt time.Time, squadUUID uuid.UUID) (*api.UserItemInfo, error)
+}
+
+// RestoreTerm возвращает срок old, если в панели всё ещё written (иначе срок успели поменять — не затираем).
+// Нужна после сбоя транзакции, когда срок уже записан: иначе повтор прочтёт продлённый срок как прежний.
+// Ошибка — ErrNotRestored (расхождение, дочинит синхронизация).
+func RestoreTerm(ctx context.Context, panel TermPanel, telegramID int64, username string, written, old time.Time, squad uuid.UUID) error {
 	// ponytail: GetUser→UpdateUser не атомарен; окно — миллисекунды после редкого сбоя коммита.
 	cctx := context.WithoutCancel(ctx)
-	cur, gerr := panel.GetUser(cctx, r.TelegramID)
-	switch {
-	case gerr != nil:
-		err = errors.Join(err, ErrNotRestored, gerr)
-	case cur.ExpireAt.Equal(g.newExpire):
-		if _, uerr := panel.UpdateUser(cctx, r.TelegramID, r.Username, g.oldExpire, r.Squad); uerr != nil {
-			err = errors.Join(err, ErrNotRestored, uerr)
-		}
+	cur, err := panel.GetUser(cctx, telegramID)
+	if err != nil {
+		return errors.Join(ErrNotRestored, err)
 	}
-	return err
+	if !cur.ExpireAt.Equal(written) {
+		return nil
+	}
+	if _, err = panel.UpdateUser(cctx, telegramID, username, old, squad); err != nil {
+		return errors.Join(ErrNotRestored, err)
+	}
+	return nil
 }
 
 // Уведомления рефералки: другу (в подтверждении первой оплаты) и пригласившему (отдельной транзакцией позже).

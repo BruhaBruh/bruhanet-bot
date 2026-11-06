@@ -678,3 +678,48 @@ func TestBlockedUserPromosRefused(t *testing.T) {
 		}
 	})
 }
+
+// Сбой записи лимита устройств при бесплатном платеже первым делом после пробного: срок в панели не тронут
+// (лимит пишется ДО срока), платёж отменён, повтор даёт ровно один месяц.
+func TestPromoFreeDeviceLimitFailureKeepsTerm(t *testing.T) {
+	e := newEnv(t)
+	trialEnd := now.Add(3 * 24 * time.Hour)
+	e.rw.AddUser(userID, trialEnd)
+	e.pay.SetTrialUsed(userID, now.Add(-time.Hour)) // первое подтверждение тарифа после пробного пишет лимит
+	e.pay.AddPromo(model.Promo{Code: "FREE", Kind: model.PromoPercent, Value: 100})
+	e.rw.FailLimitWith(errors.New("limit write failed"))
+
+	enterPaymentPromo(t, e, "free")
+	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
+	if got := e.rw.ExpireAt(userID); !got.Equal(trialEnd) {
+		t.Fatalf("срок изменён: %v", got)
+	}
+	if all := e.pay.All(); len(all) != 1 || all[0].Status != model.PaymentCancelled || len(e.pay.Activations()) != 0 {
+		t.Fatalf("payments = %+v", all)
+	}
+
+	e.rw.FailLimitWith(nil)
+	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
+	if got, want := e.rw.ExpireAt(userID), trialEnd.Add(30*24*time.Hour); !got.Equal(want) {
+		t.Fatalf("после повтора: %v, want %v", got, want)
+	}
+}
+
+// Сбой коммита после записи срока: срок возвращается (пока он наш), повтор не продлевает продлённое.
+func TestPromoFreeCommitFailureRestoresTerm(t *testing.T) {
+	e := newEnv(t)
+	expire := now.Add(10 * 24 * time.Hour)
+	e.rw.AddUser(userID, expire)
+	e.pay.AddPromo(model.Promo{Code: "FREE", Kind: model.PromoPercent, Value: 100})
+	e.pay.FailResolveCommitOnce()
+
+	enterPaymentPromo(t, e, "free")
+	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
+	if got := e.rw.ExpireAt(userID); !got.Equal(expire) {
+		t.Fatalf("срок не возвращён: %v", got)
+	}
+	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
+	if got, want := e.rw.ExpireAt(userID), expire.Add(30*24*time.Hour); !got.Equal(want) {
+		t.Fatalf("после повтора: %v, want %v", got, want)
+	}
+}
