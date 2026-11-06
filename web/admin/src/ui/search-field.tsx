@@ -14,7 +14,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
   return (
     <div
       className={cn(
-        'body flex h-9 items-center gap-1.5 rounded-md bg-fill-tertiary px-2 text-text-secondary',
+        'body flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-fill-tertiary px-2 text-text-secondary',
         className,
       )}
     >
