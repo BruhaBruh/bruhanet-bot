@@ -72,8 +72,12 @@ func readJSONMax(w http.ResponseWriter, r *http.Request, v any, limit int64, all
 	return false
 }
 
-func internal(w http.ResponseWriter, r *http.Request, msg string, err error) {
+func internalLog(r *http.Request, msg string, err error) {
 	stlog.L(r.Context()).Error(msg, slog.Any("error", err))
+}
+
+func internal(w http.ResponseWriter, r *http.Request, msg string, err error) {
+	internalLog(r, msg, err)
 	writeError(w, http.StatusInternalServerError, "internal")
 }
 

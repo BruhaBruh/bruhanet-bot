@@ -40,12 +40,15 @@ type fakeStore struct {
 	tokens   map[string]time.Time // hash → expires_at; удалённый = использованный
 	sessions map[string]session
 
-	users    []model.UserSummary
-	payments []model.Payment // по возрастанию id
-	revenue  int
-	lastUF   model.UserFilter
-	lastF    model.PaymentFilter
-	lastRev  [2]time.Time
+	users     []model.UserSummary
+	payments  []model.Payment // по возрастанию id
+	revenue   int
+	lastUF    model.UserFilter
+	lastF     model.PaymentFilter
+	lastRev   [2]time.Time
+	revFn     func(from, to time.Time) (int, error) // если задан — вместо revenue
+	listErr   error                                 // ошибка ListPayments
+	growthErr error
 
 	overrides map[string]string
 	setRaw    map[string][]byte
@@ -448,11 +451,17 @@ func (f *fakeStore) UserStats(_ context.Context, id, _ int64) (model.UserStats, 
 
 func (f *fakeStore) ListPayments(_ context.Context, fl model.PaymentFilter) ([]model.Payment, int, error) {
 	f.lastF = fl
+	if f.listErr != nil {
+		return nil, 0, f.listErr
+	}
 	return f.payments, len(f.payments), nil
 }
 
 func (f *fakeStore) Revenue(_ context.Context, from, to time.Time) (int, error) {
 	f.lastRev = [2]time.Time{from, to}
+	if f.revFn != nil {
+		return f.revFn(from, to)
+	}
 	return f.revenue, nil
 }
 

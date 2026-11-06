@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mskDate } from '../format'
 import Overview from './Overview'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -22,26 +21,25 @@ const payment = (id: number, status: string, over = {}) => ({
 
 type Reply = () => Response
 interface Replies {
-  users?: Reply
-  pending?: Reply
+  overview?: Reply
   upcoming?: Reply
-  promos?: Reply
-  week?: Reply
-  prevWeek?: Reply
   recent?: Reply
 }
 
+const overview = (over: object = {}) =>
+  json(200, {
+    users: { total: 3214, new7: 12, prev7: 9 },
+    promos: { active: 2, activations7: 5 },
+    pending: 4,
+    revenue: { week: 84300, prevWeek: 75268 },
+    ...over,
+  })
+
 function stub(r: Replies = {}) {
-  const now = new Date()
-  const page = (revenue: number, items: unknown[] = []) => json(200, { items, total: items.length, revenue })
   const fetchMock = vi.fn(async (url: string) => {
-    if (url === '/api/users') return r.users ? r.users() : json(200, { items: [], total: 3214 })
-    if (url === '/api/payments?status=pending&from=2000-01-01') return r.pending ? r.pending() : json(200, { items: [], total: 4, revenue: 0 })
+    if (url === '/api/overview') return r.overview ? r.overview() : overview()
     if (url === '/api/broadcasts?status=scheduled') return r.upcoming ? r.upcoming() : json(200, { items: [], total: 0 })
-    if (url === '/api/promos?status=active') return r.promos ? r.promos() : json(200, { items: [{ id: 1 }, { id: 2 }] })
-    if (url === `/api/payments?from=${mskDate(now, -6)}&to=${mskDate(now)}`) return r.week ? r.week() : page(84300)
-    if (url === `/api/payments?from=${mskDate(now, -13)}&to=${mskDate(now, -7)}`) return r.prevWeek ? r.prevWeek() : page(75268)
-    if (url.startsWith('/api/payments?from=2000-')) return r.recent ? r.recent() : page(0)
+    if (url.startsWith('/api/payments?from=2000-')) return r.recent ? r.recent() : json(200, { items: [], total: 0, revenue: 0 })
     return json(500, {})
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -85,34 +83,47 @@ describe('Overview cards', () => {
   })
 
   it('hides the delta on a zero base', async () => {
-    stub({ prevWeek: () => json(200, { items: [], total: 0, revenue: 0 }) })
+    stub({ overview: () => overview({ revenue: { week: 84300, prevWeek: 0 } }) })
     await renderPage()
-    expect(card('Выручка за 7 дней').textContent).toContain('84 300 ₽')
+    expect(card('Выручка за 7 дней').textContent).toMatch(/84\s300\s₽/)
     expect(screen.queryByText(/%$/)).toBeNull()
     expect(screen.queryByText('к прошлой неделе')).toBeNull()
   })
 
-  it('hides the delta when the previous period failed', async () => {
-    stub({ prevWeek: () => json(500, {}) })
-    await renderPage()
-    expect(card('Выручка за 7 дней').textContent).toContain('84 300 ₽')
-    expect(screen.queryByText('к прошлой неделе')).toBeNull()
-  })
-
-  it('users have no backend delta: drawn as a dash', async () => {
+  it('users show the real +N for the last 7 days, promos the activations of the week', async () => {
     stub()
     await renderPage()
-    expect(within(card('Пользователи')).getByText('—')).toBeTruthy()
+    expect(within(card('Пользователи')).getByText('+12')).toBeTruthy()
     expect(within(card('Пользователи')).getByText('за 7 дней')).toBeTruthy()
+    expect(within(card('Активные промокоды')).getByText('5')).toBeTruthy()
+    expect(within(card('Активные промокоды')).getByText('применений за неделю')).toBeTruthy()
+    // данные есть — прочерков в карточках нет
+    expect(screen.queryAllByText('—')).toHaveLength(0)
   })
 
-  it('one failure leaves the other cards alone', async () => {
-    stub({ users: () => json(500, {}) })
+  it('zero new users is a neutral +0, not a dash', async () => {
+    stub({ overview: () => overview({ users: { total: 3, new7: 0, prev7: 0 }, promos: { active: 0, activations7: 0 } }) })
+    await renderPage()
+    expect(within(card('Пользователи')).getByText('+0')).toBeTruthy()
+    expect(within(card('Активные промокоды')).getByText('применений за неделю')).toBeTruthy()
+  })
+
+  it('a section the server could not count is a dash; the other cards stay', async () => {
+    stub({ overview: () => overview({ users: null }) })
     await renderPage()
     expect(within(card('Пользователи')).getByText('—')).toBeTruthy()
     expect(screen.queryByText('за 7 дней')).toBeNull()
-    expect(card('Выручка за 7 дней').textContent).toContain('84 300 ₽')
+    expect(card('Выручка за 7 дней').textContent).toMatch(/84\s300\s₽/)
     expect(card('Активные промокоды').textContent).toContain('2')
+  })
+
+  it('the whole aggregate failing leaves payments and broadcasts alone', async () => {
+    stub({ overview: () => json(500, {}), upcoming: () => json(200, { items: [{ id: 'a', status: 'scheduled', text: 'Акция', scheduledAt: '2026-11-07T15:30:00Z' }], total: 1 }) })
+    await renderPage()
+    for (const l of ['Пользователи', 'Выручка за 7 дней', 'Платежи на проверке', 'Активные промокоды']) {
+      expect(within(card(l)).getByText('—')).toBeTruthy()
+    }
+    expect(screen.getByRole('link', { name: /Акция/ })).toBeTruthy()
   })
 
   it('every section failing still renders the page', async () => {
@@ -207,24 +218,23 @@ describe('Overview side column', () => {
     expect(screen.getByText('Не удалось загрузить рассылки')).toBeTruthy()
   })
 
-  it('«Платежи на проверке» links to the pending tab and counts all dates', async () => {
-    const fetchMock = stub({ pending: () => json(200, { items: [], total: 7, revenue: 0 }) })
+  it('«Платежи на проверке» links to the pending tab', async () => {
+    stub({ overview: () => overview({ pending: 7 }) })
     await renderPage()
     const link = screen.getByRole('link', { name: /Платежи на проверке/ })
     expect(link.getAttribute('href')).toBe('/payments?tab=pending')
     expect(link.textContent).toContain('7')
     expect(link.textContent).toContain('ждут решения')
-    expect(fetchMock.mock.calls.some(([u]) => u === '/api/payments?status=pending&from=2000-01-01')).toBe(true)
   })
 
   it('an empty queue and a failed count', async () => {
-    stub({ pending: () => json(200, { items: [], total: 0, revenue: 0 }) })
+    stub({ overview: () => overview({ pending: 0 }) })
     await renderPage()
     expect(card('Платежи на проверке').textContent).toContain('очередь пуста')
   })
 
   it('a failed pending count shows a dash', async () => {
-    stub({ pending: () => json(500, {}) })
+    stub({ overview: () => overview({ pending: null }) })
     await renderPage()
     expect(within(card('Платежи на проверке')).getByText('—')).toBeTruthy()
   })

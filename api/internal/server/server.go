@@ -63,6 +63,8 @@ type Store interface {
 	ListPromos(ctx context.Context, f model.PromoFilter, now time.Time) ([]model.PromoWithUsage, error)
 	DisablePromo(ctx context.Context, id int64) error
 	EnablePromo(ctx context.Context, id int64) error
+	UserGrowth(ctx context.Context, prevFrom, weekFrom, to time.Time) (total, week, prev int, err error)
+	CountPromoActivations(ctx context.Context, from, to time.Time) (int, error)
 	PromoActivations(ctx context.Context, id int64) ([]model.PromoActivation, error)
 }
 
@@ -115,6 +117,7 @@ func New(d Deps) http.Handler {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /api/me", s.me)
 	apiMux.HandleFunc("POST /api/logout", s.logout)
+	apiMux.HandleFunc("GET /api/overview", s.overview)
 	apiMux.HandleFunc("GET /api/users", s.users)
 	apiMux.HandleFunc("GET /api/users/{id}", s.userCard)
 	apiMux.HandleFunc("GET /api/sync", s.lastSync)

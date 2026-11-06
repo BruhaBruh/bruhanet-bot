@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router'
 import { Button, Cell, DataTable, StatCard } from '@/ui'
 import { get } from '../api'
 import { formatSchedule, isoToMskLocal } from '../compose/schedule'
-import { formatCount, formatDelta, formatRub, mskDate } from '../format'
+import { formatCount, formatDelta, formatRub } from '../format'
 import { useSyncKey } from '../layout/page-title'
-import type { Broadcast, Payment, Promo } from '../types'
+import type { Broadcast, Payment } from '../types'
 import { titleOf } from './broadcast-format'
 import { paymentColumns, paymentMobileRow } from './payment-columns'
 
@@ -16,7 +16,6 @@ const panel = 'overflow-hidden rounded-lg bg-surface shadow-card'
 
 interface PaymentsPage {
   items: Payment[]
-  revenue: number
 }
 
 // undefined — грузится, null — не вышло: ошибка одной секции не трогает остальные.
@@ -36,28 +35,23 @@ function useGet<T>(path: string) {
   return data
 }
 
-function revenuePaths() {
-  const now = new Date()
-  return {
-    week: `/api/payments?from=${mskDate(now, -6)}&to=${mskDate(now)}`,
-    prevWeek: `/api/payments?from=${mskDate(now, -13)}&to=${mskDate(now, -7)}`,
-  }
+// Секция null — её не удалось посчитать: карточка рисует прочерк, остальные живут.
+interface OverviewData {
+  users: { total: number; new7: number; prev7: number } | null
+  promos: { active: number; activations7: number } | null
+  pending: number | null
+  revenue: { week: number; prevWeek: number } | null
 }
 
 export default function Overview() {
   const navigate = useNavigate()
-  const [paths] = useState(revenuePaths)
-  const users = useGet<{ total: number }>('/api/users')
-  const promos = useGet<{ items: Promo[] }>('/api/promos?status=active')
-  const week = useGet<PaymentsPage>(paths.week)
-  const prevWeek = useGet<PaymentsPage>(paths.prevWeek)
+  const ov = useGet<OverviewData>('/api/overview')
   // Без from сервер отдаёт только 30 дней, а «последние» могут быть и старше.
   const recent = useGet<PaymentsPage>('/api/payments?from=2000-01-01')
-  // на проверке — за всё время, как бейдж «Платежи» в меню
-  const pending = useGet<{ total: number }>('/api/payments?status=pending&from=2000-01-01')
   const upcoming = useGet<{ items: Broadcast[] }>('/api/broadcasts?status=scheduled')
 
-  const revenueDelta = week && prevWeek ? formatDelta(week.revenue, prevWeek.revenue) : undefined
+  const { users, promos, pending, revenue } = ov ?? {}
+  const revenueDelta = revenue ? formatDelta(revenue.week, revenue.prevWeek) : undefined
 
   return (
     <>
@@ -67,15 +61,15 @@ export default function Overview() {
           iconColor="blue"
           label="Пользователи"
           value={users ? formatCount(users.total) : DASH}
-          delta={users ? DASH : undefined}
-          deltaTone="neutral"
+          delta={users ? `+${formatCount(users.new7)}` : undefined}
+          deltaTone={users && users.new7 > 0 ? 'success' : 'neutral'}
           hint={users ? 'за 7 дней' : undefined}
         />
         <StatCard
           icon="card"
           iconColor="green"
           label="Выручка за 7 дней"
-          value={week ? formatRub(week.revenue) : DASH}
+          value={revenue ? formatRub(revenue.week) : DASH}
           delta={revenueDelta}
           hint={revenueDelta ? 'к прошлой неделе' : undefined}
         />
@@ -85,16 +79,16 @@ export default function Overview() {
             icon="card"
             iconColor="purple"
             label="Платежи на проверке"
-            value={pending ? formatCount(pending.total) : DASH}
-            hint={pending ? (pending.total > 0 ? 'ждут решения' : 'очередь пуста') : undefined}
+            value={pending != null ? formatCount(pending) : DASH}
+            hint={pending != null ? (pending > 0 ? 'ждут решения' : 'очередь пуста') : undefined}
           />
         </Link>
         <StatCard
           icon="ticket"
           iconColor="orange"
           label="Активные промокоды"
-          value={promos ? formatCount(promos.items.length) : DASH}
-          delta={promos ? DASH : undefined}
+          value={promos ? formatCount(promos.active) : DASH}
+          delta={promos ? formatCount(promos.activations7) : undefined}
           deltaTone="neutral"
           hint={promos ? 'применений за неделю' : undefined}
         />
