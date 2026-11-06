@@ -5,7 +5,9 @@ import (
 	"embed"
 	"errors"
 	"io/fs"
+	"sync"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -17,6 +19,9 @@ var migrations embed.FS
 
 type Store struct {
 	pool *pgxpool.Pool
+
+	claimMu    sync.Mutex
+	claimFails map[uuid.UUID]int // сбои запуска запланированных рассылок (ClaimDue), в памяти процесса
 }
 
 // Option настраивает пул до подключения.

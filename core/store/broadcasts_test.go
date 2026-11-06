@@ -621,3 +621,45 @@ func TestDirectMessages(t *testing.T) {
 		t.Fatalf("empty: %+v err=%v", ms, err)
 	}
 }
+
+// Рассылка, которая стабильно не стартует, не держит очередь: следующие уходят, а после maxClaimFails её отменяют.
+func TestClaimDueSkipsPoisoned(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	seedUser(t, s, 10, nil)
+	// самая ранняя: expiring без числа дней — ValidateAudience отказывает
+	poisonID := uuid.New()
+	if _, err := s.pool.Exec(ctx, `INSERT INTO broadcasts (id, idempotency_key, status, text, audience, scheduled_at, total)
+		VALUES ($1, $2, 'scheduled', 'x', 'expiring', $3, 0)`, poisonID, uuid.New(), bt0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	d := draft("нормальная")
+	d.ScheduledAt = after(time.Hour)
+	good, _, err := s.SendBroadcast(ctx, d, 1, bt0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := bt0.Add(2 * time.Hour)
+	for i := 1; i <= maxClaimFails; i++ {
+		n, err := s.ClaimDue(ctx, 1, now)
+		if err == nil {
+			t.Fatalf("pass %d: poisoned error must be reported", i)
+		}
+		wantN := 0
+		if i == 1 {
+			wantN = 1 // хорошая стартует в первом же проходе, несмотря на отравленную впереди
+		}
+		if n != wantN {
+			t.Fatalf("pass %d: n=%d want %d", i, n, wantN)
+		}
+	}
+	if g, _ := s.Broadcast(ctx, good.ID); g.Status != broadcast.StatusSending {
+		t.Fatalf("good status = %s", g.Status)
+	}
+	if p, _ := s.Broadcast(ctx, poisonID); p.Status != broadcast.StatusCancelled {
+		t.Fatalf("poisoned status = %s", p.Status)
+	}
+	if n, err := s.ClaimDue(ctx, 1, now); err != nil || n != 0 {
+		t.Fatalf("after cancel n=%d err=%v", n, err)
+	}
+}

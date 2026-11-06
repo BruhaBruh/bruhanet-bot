@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -246,32 +247,80 @@ func (s *Store) CancelBroadcast(ctx context.Context, id uuid.UUID) (model.Broadc
 	return b, err
 }
 
+// maxClaimFails — сколько раз подряд не удавшийся запуск рассылки терпим, прежде чем отменить её.
+const maxClaimFails = 3
+
 // ClaimDue запускает запланированные рассылки, время которых наступило (scheduled_at <= now). Каждая — в своей
 // транзакции: FOR UPDATE SKIP LOCKED + переход scheduled → sending и строки outbox в одном коммите, поэтому
 // перезапуск или второй воркер не стартуют одну рассылку дважды. Возвращает число запущенных.
+// Сбой запуска одной рассылки не держит очередь: она пропускается в этом проходе, остальные стартуют; после
+// maxClaimFails сбоев подряд (счётчик в памяти) рассылка отменяется (cancelled), иначе ей вечно бы пытались.
+// Ошибки отдаются вместе (errors.Join); отмена контекста прерывает проход без учёта сбоя.
 func (s *Store) ClaimDue(ctx context.Context, adminID int64, now time.Time) (int, error) {
 	n := 0
+	var errs []error
+	skip := []uuid.UUID{}
 	for {
-		claimed := false
+		var claimed uuid.UUID
 		err := s.tx(ctx, func(tx pgx.Tx) error {
-			claimed = false
+			claimed = uuid.Nil
 			b, err := scanBroadcast(tx.QueryRow(ctx, `SELECT `+broadcastCols+` FROM broadcasts
-				WHERE status = 'scheduled' AND scheduled_at <= $1 ORDER BY scheduled_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`, now))
+				WHERE status = 'scheduled' AND scheduled_at <= $1 AND id <> ALL($2) ORDER BY scheduled_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`,
+				now, skip))
 			if errors.Is(err, ErrNotFound) {
 				return nil
 			}
 			if err != nil {
 				return err
 			}
-			claimed = true
+			claimed = b.ID
 			_, err = startLocked(ctx, tx, b, adminID, now)
 			return err
 		})
-		if err != nil || !claimed {
-			return n, err
+		switch {
+		case err == nil && claimed == uuid.Nil:
+			return n, errors.Join(errs...)
+		case err == nil:
+			n++
+			s.claimDone(claimed)
+		case claimed == uuid.Nil || ctx.Err() != nil:
+			return n, errors.Join(append(errs, err)...)
+		default:
+			skip = append(skip, claimed)
+			errs = append(errs, err)
+			if s.claimFailed(claimed) >= maxClaimFails {
+				if cerr := s.cancelPoisoned(ctx, claimed); cerr != nil {
+					errs = append(errs, cerr)
+				} else {
+					errs = append(errs, fmt.Errorf("broadcast %s cancelled after %d failed starts", claimed, maxClaimFails))
+				}
+			}
 		}
-		n++
 	}
+}
+
+func (s *Store) claimDone(id uuid.UUID) {
+	s.claimMu.Lock()
+	delete(s.claimFails, id)
+	s.claimMu.Unlock()
+}
+
+func (s *Store) claimFailed(id uuid.UUID) int {
+	s.claimMu.Lock()
+	defer s.claimMu.Unlock()
+	if s.claimFails == nil {
+		s.claimFails = map[uuid.UUID]int{}
+	}
+	s.claimFails[id]++
+	return s.claimFails[id]
+}
+
+func (s *Store) cancelPoisoned(ctx context.Context, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `UPDATE broadcasts SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'scheduled'`, id)
+	if err == nil {
+		s.claimDone(id)
+	}
+	return err
 }
 
 // Broadcast — одна рассылка; нет — ErrNotFound.
