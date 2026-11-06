@@ -6,9 +6,9 @@ import { App } from '../App'
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
 
-function stubFetch(pending = 0) {
+function stubFetch(pending = 0, me?: object) {
   const fetchMock = vi.fn(async (url: string) =>
-    url.startsWith('/api/payments') ? json(200, { items: [], total: pending, revenue: 0 }) : url.startsWith('/api/users?') || url === '/api/logout' ? json(200, { items: [] }) : json(500, {}),
+    url === '/api/me' ? (me ? json(200, me) : json(500, {})) : url.startsWith('/api/payments') ? json(200, { items: [], total: pending, revenue: 0 }) : url.startsWith('/api/users?') || url === '/api/logout' ? json(200, { items: [] }) : json(500, {}),
   )
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
@@ -96,12 +96,39 @@ describe('AppShell', () => {
   it('header search opens users with the query', async () => {
     const fetchMock = stubFetch()
     await renderAt('/')
-    const field = screen.getByRole('searchbox', { name: 'Поиск по пользователям и платежам' })
+    const field = screen.getByRole('searchbox', { name: 'Поиск пользователей' })
     fireEvent.change(field, { target: { value: ' @ann ' } })
     fireEvent.submit(field.closest('form')!)
     await flush()
     expect(activeLabel()).toBe('Пользователи')
     expect(fetchMock.mock.calls.map(([u]) => u)).toContain('/api/users?q=%40ann')
+  })
+
+  it('takes the owner and the bot from /api/me, nothing is hard-coded', async () => {
+    const fetchMock = stubFetch(0, { telegramId: 1, username: 'owner_nick', name: 'Owner Name', bot: { username: 'shop_bot', name: 'Shop Bot' } })
+    await renderAt('/')
+    expect(fetchMock.mock.calls.filter(([u]) => u === '/api/me')).toHaveLength(1)
+    expect(within(document.querySelector('header')!).getByText('@owner_nick')).toBeTruthy()
+    expect(screen.getByText('Shop Bot')).toBeTruthy()
+    expect(screen.getByText('@shop_bot')).toBeTruthy()
+    // навигация не перечитывает /api/me
+    fireEvent.click(sidebar().getByRole('button', { name: /Платежи/ }))
+    await flush()
+    expect(fetchMock.mock.calls.filter(([u]) => u === '/api/me')).toHaveLength(1)
+  })
+
+  it('without /api/me data hides the owner and the bot instead of showing old names', async () => {
+    stubFetch()
+    await renderAt('/')
+    expect(within(document.querySelector('header')!).queryByText('Владелец')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/bruhabruh4|bruhanet_payment_bot|BruhaNet Payment|Bruha Bruh/)
+  })
+
+  it('an empty bot in /api/me (Telegram down) is the same as no data', async () => {
+    stubFetch(0, { telegramId: 1, username: '', name: '', bot: { username: '', name: '' } })
+    await renderAt('/')
+    expect(within(document.querySelector('header')!).queryByText('Владелец')).toBeNull()
+    expect(screen.queryByText(/^@/)).toBeNull()
   })
 
   it('toggles the theme from the header', async () => {

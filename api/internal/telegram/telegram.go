@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -98,4 +99,26 @@ func (c *Client) SendPhoto(ctx context.Context, chatID int64, r io.Reader, filen
 		return "", ErrNoPhoto
 	}
 	return best.FileID, nil
+}
+
+// Me — username и имя бота (getMe).
+func (c *Client) Me(ctx context.Context) (username, name string, err error) {
+	u, err := c.b.GetMe(ctx)
+	if err != nil {
+		return "", "", clean("telegram getMe", err)
+	}
+	return u.Username, u.FirstName, nil
+}
+
+// Chat — username и имя собеседника (getChat): имя и фамилия, у группы — название.
+func (c *Client) Chat(ctx context.Context, chatID int64) (username, name string, err error) {
+	ch, err := c.b.GetChat(ctx, &bot.GetChatParams{ChatID: chatID})
+	if err != nil {
+		return "", "", clean("telegram getChat", err)
+	}
+	name = strings.TrimSpace(ch.FirstName + " " + ch.LastName)
+	if name == "" {
+		name = ch.Title
+	}
+	return ch.Username, name, nil
 }

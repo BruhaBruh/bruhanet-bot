@@ -3,6 +3,7 @@ import type { Ref } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/ui'
 import type { TgEditorHandle, TgEditorProps } from '../editor/TgEditor'
+import { NO_ME, MeProvider, type Me } from '../me'
 import { Composer, type ComposerDraft } from './Composer'
 import type { PhotoPickerProps } from './PhotoPicker'
 
@@ -39,6 +40,7 @@ const json = (status: number, body?: unknown) => () =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
 beforeEach(() => {
+  me = NO_ME
   calls = []
   replies = {
     'GET /api/broadcasts/recipients?days=7': [json(200, { all: 3, active: 2, no_subscription: 1, expiring: 1 })],
@@ -60,6 +62,7 @@ const globals = [
   { name: 'promoLink', description: 'Своя', sample: 'https://x.io', raw: false, max: 256 },
 ]
 
+let me: Me
 const SEND = 'Отправить 3 получателям'
 const CONFIRM = 'Отправить'
 const TEST = 'Отправить мне'
@@ -77,7 +80,13 @@ async function setup(
     ) : (
       <Composer mode="direct" userId={props.userId} onSent={onSent} />
     ),
-    { wrapper: ToastProvider },
+    {
+      wrapper: ({ children }) => (
+        <MeProvider value={me}>
+          <ToastProvider>{children}</ToastProvider>
+        </MeProvider>
+      ),
+    },
   )
   await flush()
   const setText = async (t: string) => {
@@ -385,6 +394,21 @@ describe('Composer', () => {
     await flush()
     expect(calls.filter((c) => c.url === '/api/broadcasts/preview-send')).toHaveLength(1)
     expect(screen.getByRole('status').textContent).toContain('Тестовое сообщение отправлено вам')
+  })
+
+  it('the test-send toast names the admin from /api/me, and nobody when unknown', async () => {
+    replies['POST /api/broadcasts/preview-send'] = [json(204)]
+    me = { ...NO_ME, username: 'owner_nick' }
+    const first = await setup()
+    await first.setText('hi')
+    await first.click(TEST)
+    expect(screen.getByRole('status').textContent).toBe('Тестовое сообщение отправлено вам, @owner_nick')
+    first.r.unmount()
+    me = NO_ME
+    const second = await setup()
+    await second.setText('hi')
+    await second.click(TEST)
+    expect(screen.getByRole('status').textContent).toBe('Тестовое сообщение отправлено вам')
   })
 
   describe('send later (МСК)', () => {

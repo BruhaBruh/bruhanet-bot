@@ -103,6 +103,7 @@ func newApp(logger *slog.Logger, conf *config.Config) (app.App, error) {
 			Store:    st,
 			Panel:    panel,
 			Telegram: tg,
+			Identity: tg,
 			Defaults: defaults,
 			Squad:    conf.Remnawave.InternalSquadId,
 			AdminID:  conf.Telegram.AdminID,

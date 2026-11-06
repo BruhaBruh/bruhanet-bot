@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Avatar, Button, Card, Dialog, Icon, MessageBubble, Spinner, toast } from '@/ui'
-import { BOT_NAME } from '@/brand'
 import { ApiError, get, post } from '../api'
 import { audienceLabel } from '../compose/audience'
 import { formatSchedule, isoToMskLocal } from '../compose/schedule'
 import { previewHtml, renderPreview } from '../editor/serialize'
 import { formatCount, formatShortDate } from '../format'
+import { useMe } from '../me'
 import type { Broadcast, TextVar } from '../types'
 import { delivered, statusTag, titleOf } from './broadcast-format'
 
@@ -24,6 +24,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 // Экран рассылки: что и кому ушло, расписание, счётчики; действия по статусу.
 export default function BroadcastView() {
   const { id } = useParams()
+  const botName = useMe().bot.name || 'Бот'
   const navigate = useNavigate()
   const [data, setData] = useState<{ id?: string; broadcast?: Broadcast; failed?: boolean }>({})
   const [globals, setGlobals] = useState<TextVar[]>([])
@@ -176,9 +177,9 @@ export default function BroadcastView() {
           <h2 className="admin-label px-1 text-text-secondary">Сообщение с примером данных</h2>
           <div className="flex flex-col overflow-hidden rounded-lg shadow-card">
             <div className="flex items-center gap-2.5 bg-header-bg px-3.5 py-2.5 shadow-[inset_0_-0.5px_0_var(--separator)]">
-              <Avatar name={BOT_NAME} colorIndex={5} size={32} />
+              <Avatar name={botName} colorIndex={5} size={32} />
               <div className="flex flex-col">
-                <span className="font-semibold">{BOT_NAME}</span>
+                <span className="font-semibold">{botName}</span>
                 <span className="caption-1 text-text-secondary">бот</span>
               </div>
             </div>

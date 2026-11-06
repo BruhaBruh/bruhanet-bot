@@ -74,7 +74,8 @@ const renderAt = async (path: string) => {
   await flush()
 }
 
-const searchBox = () => screen.getByRole<HTMLInputElement>('searchbox', { name: 'Поиск пользователей' })
+// в шапке поле с тем же названием: берём то, что на экране
+const searchBox = () => within(document.querySelector('main')!).getByRole<HTMLInputElement>('searchbox', { name: 'Поиск пользователей' })
 const userCalls = (f: ReturnType<typeof stub>) => f.mock.calls.map(([u]) => u).filter((u) => u.startsWith('/api/users'))
 
 describe('Users', () => {

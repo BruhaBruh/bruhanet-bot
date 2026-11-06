@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { BOT_NAME, OWNER_USERNAME } from '@/brand'
 import { cn } from '@/lib/utils'
 import { Avatar, Button, Card, Dialog, Icon, Input, MessageBubble, Radio, RadioGroup, Switch, toast } from '@/ui'
 import { ApiError, get, post, put } from '../api'
@@ -7,6 +6,7 @@ import { previewHtml, renderPreview, varLabel, visibleText, worstLen } from '../
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { formatCount, plural } from '../format'
+import { useMe } from '../me'
 import type { Audience, Broadcast, BroadcastButton, DirectMessage, TextVar } from '../types'
 import { AUDIENCES, audienceLabel, daysValid, DEFAULT_DAYS, MAX_DAYS, MIN_DAYS } from './audience'
 import { PhotoPicker } from './PhotoPicker'
@@ -93,6 +93,8 @@ const fetchRecipients = (audience: Audience, days: string) =>
 
 export function Composer(props: ComposerProps) {
   const { mode } = props
+  const me = useMe()
+  const botName = me.bot.name || 'Бот' // пока имя неизвестно — нейтрально, не выдуманное
   const isBroadcast = mode === 'broadcast'
   const initial = props.mode === 'broadcast' ? props.initial : undefined
   const existing = props.mode === 'broadcast' ? props.broadcastId : undefined
@@ -275,7 +277,7 @@ export function Composer(props: ComposerProps) {
   const sendTest = () =>
     run(async () => {
       await post('/api/broadcasts/preview-send', isBroadcast ? { ...body(), silent, buttons } : body())
-      toast(`Тестовое сообщение отправлено вам, @${OWNER_USERNAME}`, { icon: 'check' })
+      toast(`Тестовое сообщение отправлено вам${me.username ? `, @${me.username}` : ''}`, { icon: 'check' })
     })
 
   function reset() {
@@ -367,9 +369,9 @@ export function Composer(props: ComposerProps) {
   const preview = (
     <div className="flex flex-col overflow-hidden rounded-lg shadow-card">
       <div className={cn('flex items-center gap-2.5 bg-header-bg px-3.5 py-2.5', separator)}>
-        <Avatar name={BOT_NAME} colorIndex={5} size={32} />
+        <Avatar name={botName} colorIndex={5} size={32} />
         <div className="flex flex-col">
-          <span className="font-semibold">{BOT_NAME}</span>
+          <span className="font-semibold">{botName}</span>
           <span className="caption-1 text-text-secondary">бот</span>
         </div>
       </div>

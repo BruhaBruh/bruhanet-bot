@@ -1,9 +1,9 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
-import { BOT_NAME, BOT_USERNAME } from '@/brand'
 import { cn } from '@/lib/utils'
 import { Avatar, Button, Sidebar, Spinner, TabBar, toast } from '@/ui'
 import { get, post } from '../api'
+import { MeProvider, useLoadMe, useMe } from '../me'
 import { Header } from './Header'
 import { nav, pageTitle, sectionOf, sections } from './nav'
 import type { ShellContext } from './page-title'
@@ -13,7 +13,17 @@ const COLLAPSED_KEY = 'bn_sidebar_collapsed'
 const PENDING_URL = '/api/payments?status=pending&from=2000-01-01'
 
 export function AppShell() {
+  const me = useLoadMe()
+  return (
+    <MeProvider value={me}>
+      <Shell />
+    </MeProvider>
+  )
+}
+
+function Shell() {
   const { pathname } = useLocation()
+  const { bot } = useMe()
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
   const [pending, setPending] = useState(0)
@@ -63,15 +73,17 @@ export function AppShell() {
           collapsed ? 'w-18' : 'w-(--size-sidebar)',
         )}
       >
-        <div className={cn('flex items-center gap-2.5 pt-5 pb-2', collapsed ? 'justify-center' : 'px-5')}>
-          <Avatar name={BOT_NAME} colorIndex={5} size={36} />
-          {!collapsed && (
-            <div className="flex min-w-0 flex-col">
-              <span className="admin-body truncate font-semibold">{BOT_NAME}</span>
-              <span className="admin-label truncate font-normal text-text-secondary">@{BOT_USERNAME}</span>
-            </div>
-          )}
-        </div>
+        {(bot.name || bot.username) && (
+          <div className={cn('flex items-center gap-2.5 pt-5 pb-2', collapsed ? 'justify-center' : 'px-5')}>
+            <Avatar name={bot.name || bot.username} colorIndex={5} size={36} />
+            {!collapsed && (
+              <div className="flex min-w-0 flex-col">
+                {bot.name && <span className="admin-body truncate font-semibold">{bot.name}</span>}
+                {bot.username && <span className="admin-label truncate font-normal text-text-secondary">@{bot.username}</span>}
+              </div>
+            )}
+          </div>
+        )}
         <Sidebar
           className="w-full grow shadow-none"
           items={nav.map(withBadge)}

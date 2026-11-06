@@ -85,6 +85,8 @@ type Deps struct {
 	Store    Store
 	Panel    Panel
 	Telegram PhotoSender
+	// Identity — getMe/getChat для /api/me и /auth/bot; nil — имена пустые.
+	Identity Identity
 	// Defaults — настройки по умолчанию из env (те же PAYMENT_*/SUPPORT_URL, что у бота).
 	Defaults settings.Settings
 	// PanelTimeout — потолок на один вызов панели; 0 → 5с.
@@ -104,7 +106,9 @@ var Requests = prometheus.NewCounterVec(prometheus.CounterOpts{
 
 type server struct {
 	Deps
-	secure bool
+	secure     bool
+	botCache   lazyWho
+	adminCache lazyWho
 }
 
 func New(d Deps) http.Handler {
@@ -151,6 +155,7 @@ func New(d Deps) http.Handler {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /auth", s.auth)
+	mux.HandleFunc("GET /auth/bot", s.authBot)
 	mux.Handle("/api/", jsonOnly(s.requireSession(apiMux)))
 	// единственное исключение из jsonOnly: загрузка фото — multipart; сессия обязательна, тип проверяет сам хендлер.
 	mux.Handle("POST /api/photos", s.requireSession(http.HandlerFunc(s.uploadPhoto)))

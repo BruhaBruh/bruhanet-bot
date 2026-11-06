@@ -3,11 +3,10 @@ import { useNavigate } from 'react-router'
 import { Avatar, Button, Icon, MessageBubble, Spinner, toast } from '@/ui'
 import { buttonVariants } from '@/ui/primitives/button'
 import { cn } from '@/lib/utils'
-import { BOT_NAME, BOT_USERNAME, OWNER_USERNAME } from '../brand'
+import { NO_BOT, parseBot, type BotInfo } from '../me'
 
 const POLL_MS = 3000
 const COPIED_MS = 2500
-const BOT_URL = `https://t.me/${BOT_USERNAME}`
 const linkClass = 'focus-ring text-link underline hover:text-accent-strong'
 const SAMPLE_KEYBOARD = [[{ text: 'Войти в админ-панель', url: '#' }]]
 
@@ -25,6 +24,8 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 export default function LoginRequired() {
   const navigate = useNavigate()
   const [copied, setCopied] = useState(false)
+  const [bot, setBot] = useState<BotInfo>(NO_BOT)
+  const botUrl = bot.username ? `https://t.me/${bot.username}` : ''
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Не через api.ts: его 401 — глобальный переход сюда же. Таймаут после ответа, чтобы запросы не копились.
@@ -48,6 +49,18 @@ export default function LoginRequired() {
   }, [navigate])
 
   useEffect(() => () => clearTimeout(copiedTimer.current), [])
+
+  // Публичный ответ без сессии: только ник и имя бота. Нет ответа — ссылки на бота не показываем.
+  useEffect(() => {
+    let stale = false
+    fetch('/auth/bot', { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((r) => !stale && setBot(parseBot(r)))
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [])
 
   async function copy() {
     try {
@@ -82,12 +95,17 @@ export default function LoginRequired() {
             <Step n={1}>
               <div className="flex flex-col gap-0.5 pt-1">
                 <span className="font-semibold">
-                  Откройте бота{' '}
-                  <a href={BOT_URL} target="_blank" rel="noreferrer" className={linkClass}>
-                    @{BOT_USERNAME}
-                  </a>
+                  Откройте бота
+                  {botUrl && (
+                    <>
+                      {' '}
+                      <a href={botUrl} target="_blank" rel="noreferrer" className={linkClass}>
+                        @{bot.username}
+                      </a>
+                    </>
+                  )}
                 </span>
-                <span className="footnote text-text-secondary">Кнопка ниже откроет чат с ботом в Telegram.</span>
+                {botUrl && <span className="footnote text-text-secondary">Кнопка ниже откроет чат с ботом в Telegram.</span>}
               </div>
             </Step>
             <Step n={2}>
@@ -112,14 +130,16 @@ export default function LoginRequired() {
           </ol>
 
           <div className="mt-auto flex flex-col gap-3">
-            <a
-              href={`${BOT_URL}?start=login`}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(buttonVariants({ variant: 'filled', size: 'lg', block: true }), 'no-underline')}
-            >
-              Открыть бота в Telegram
-            </a>
+            {botUrl && (
+              <a
+                href={`${botUrl}?start=login`}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(buttonVariants({ variant: 'filled', size: 'lg', block: true }), 'no-underline')}
+              >
+                Открыть бота в Telegram
+              </a>
+            )}
             <div role="status" className="footnote flex items-center justify-center gap-2 text-text-secondary">
               <Spinner size={16} />
               <span>Ждём подтверждения из Telegram…</span>
@@ -132,9 +152,9 @@ export default function LoginRequired() {
           className="flex min-w-0 grow basis-80 flex-col overflow-hidden rounded-lg bg-chat-bg"
         >
           <div className="flex items-center gap-2.5 bg-header-bg px-4 py-2.5 shadow-[inset_0_-0.5px_0_var(--separator)]">
-            <Avatar name={BOT_NAME} colorIndex={5} size={36} />
+            <Avatar name={bot.name || 'Бот'} colorIndex={5} size={36} />
             <div className="flex flex-col">
-              <span className="font-semibold">{BOT_NAME}</span>
+              <span className="font-semibold">{bot.name || 'Бот'}</span>
               <span className="admin-label font-normal text-text-secondary">бот</span>
             </div>
           </div>
@@ -143,18 +163,14 @@ export default function LoginRequired() {
               /login
             </MessageBubble>
             <MessageBubble time="14:30" keyboard={SAMPLE_KEYBOARD}>
-              Привет, @{OWNER_USERNAME}! Вы администратор {BOT_NAME}. Нажмите кнопку ниже, чтобы войти в админ-панель.
+              Привет! Вы администратор{bot.name ? ` ${bot.name}` : ''}. Нажмите кнопку ниже, чтобы войти в админ-панель.
             </MessageBubble>
           </div>
           <p className="footnote px-4 pb-4 text-center text-text opacity-80">Так выглядит ответ бота</p>
         </aside>
 
         <p className="footnote grow basis-full text-center text-section-header">
-          Бот не отвечает или пишет «нет доступа»? Напишите владельцу{' '}
-          <a href={`https://t.me/${OWNER_USERNAME}`} target="_blank" rel="noreferrer" className={linkClass}>
-            @{OWNER_USERNAME}
-          </a>
-          , чтобы он добавил ваш аккаунт в администраторы.
+          Бот не отвечает или пишет «нет доступа»? Обратитесь к владельцу бота, чтобы он добавил ваш аккаунт в администраторы.
         </p>
       </div>
     </div>

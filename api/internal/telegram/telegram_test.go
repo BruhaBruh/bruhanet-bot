@@ -106,3 +106,33 @@ func TestOpenFile(t *testing.T) {
 		t.Fatalf("token in error: %v", err)
 	}
 }
+
+func TestMeAndChat(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getMe"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"id":9,"is_bot":true,"first_name":"BruhaNet Payment","username":"bruhanet_payment_bot"}}`))
+		case strings.HasSuffix(r.URL.Path, "/getChat"):
+			_ = r.ParseMultipartForm(1 << 20)
+			if r.FormValue("chat_id") != "42" {
+				_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"id":42,"type":"private","username":"ann","first_name":"Anna","last_name":"K"}}`))
+		}
+	}))
+	defer srv.Close()
+	tg, err := telegram.New("secret-token", bot.WithServerURL(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, n, err := tg.Me(context.Background()); err != nil || u != "bruhanet_payment_bot" || n != "BruhaNet Payment" {
+		t.Fatalf("Me = %q %q %v", u, n, err)
+	}
+	if u, n, err := tg.Chat(context.Background(), 42); err != nil || u != "ann" || n != "Anna K" {
+		t.Fatalf("Chat = %q %q %v", u, n, err)
+	}
+	if _, _, err := tg.Chat(context.Background(), 7); err == nil || strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("err = %v", err)
+	}
+}

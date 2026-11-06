@@ -83,11 +83,6 @@ func (s *server) requireSession(next http.Handler) http.Handler {
 	})
 }
 
-// me — сессия уже проверена requireSession, а она пускает только AdminID.
-func (s *server) me(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]int64{"telegramId": s.AdminID})
-}
-
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(cookieName)
 	if err == nil {

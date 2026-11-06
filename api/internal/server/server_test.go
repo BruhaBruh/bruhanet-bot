@@ -313,7 +313,7 @@ func TestAPIRequiresSession(t *testing.T) {
 
 	valid := st.addSession(t, adminID, now.Add(time.Hour))
 	w := do(h, http.MethodGet, "/api/me", valid, "")
-	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `{"telegramId":1}` ||
+	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `{"bot":{"username":"","name":""},"name":"","telegramId":1,"username":""}` ||
 		!strings.HasPrefix(w.Header().Get("Content-Type"), "application/json") {
 		t.Fatalf("valid: %d %s %s", w.Code, w.Header().Get("Content-Type"), w.Body)
 	}
