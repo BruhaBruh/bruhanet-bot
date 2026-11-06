@@ -5,11 +5,11 @@ import { cn } from '@/lib/utils'
 import { Button, Card, Input, MessageBubble, SearchField, Spinner, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
-import { previewHtml, renderPlain, renderPreview, visibleLen } from '../editor/serialize'
+import { VarChips } from '../editor/VarChips'
+import { previewHtml, renderPlain, renderPreview, varLabel, visibleLen } from '../editor/serialize'
 import { formatCount } from '../format'
-import type { TextItem } from '../types'
+import type { TextItem, TextVar } from '../types'
 
-const varLabel = (name: string) => `{{.${name}}}`
 const path = (c: TextItem) => `/api/texts/${encodeURIComponent(c.key)}`
 
 const MESSAGE_LIMIT = 4096
@@ -33,6 +33,7 @@ type Action = 'save' | 'test' | 'reset'
 export default function Texts() {
   const [params, setParams] = useSearchParams()
   const [items, setItems] = useState<TextItem[]>()
+  const [globals, setGlobals] = useState<TextVar[]>([])
   const [loadError, setLoadError] = useState(false)
   const [q, setQ] = useState('')
   // черновики по ключу: переключение между текстами не теряет правки, но и не переносит их
@@ -44,8 +45,11 @@ export default function Texts() {
   const plain = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    get<{ items: TextItem[] }>('/api/texts').then(
-      (r) => setItems(r.items),
+    get<{ items: TextItem[]; globals: TextVar[] }>('/api/texts').then(
+      (r) => {
+        setItems(r.items)
+        setGlobals(r.globals)
+      },
       () => setLoadError(true),
     )
   }, [])
@@ -79,11 +83,12 @@ export default function Texts() {
     groups.set(i.group, [...(groups.get(i.group) ?? []), i])
   }
 
-  const vars = cur?.vars ?? []
+  const own = cur?.vars ?? []
+  const vars = [...globals, ...own]
   const samples = Object.fromEntries(vars.map((v) => [v.name, v.sample]))
   const raw = vars.filter((v) => v.raw).map((v) => v.name)
   const used = vars.filter((v) => draft.includes(varLabel(v.name)))
-  const shownVars = used.length ? used : vars.slice(0, 3)
+  const shownVars = used.length ? used : own.slice(0, 3)
 
   function insertVar(name: string) {
     const text = varLabel(name)
@@ -213,25 +218,8 @@ export default function Texts() {
               />
             )}
 
-            {vars.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <span className="admin-label text-text-secondary">Переменные — нажмите, чтобы вставить</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {vars.map((v) => (
-                    <button
-                      key={v.name}
-                      type="button"
-                      title={`${v.description} — например, ${v.sample}`}
-                      disabled={!!busy}
-                      className="mono focus-ring inline-flex h-7 max-w-full cursor-pointer items-center rounded-full bg-accent-tint px-2.5 font-semibold text-accent-strong disabled:cursor-default disabled:opacity-40"
-                      onClick={() => insertVar(v.name)}
-                    >
-                      <span className="truncate">{varLabel(v.name)}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <VarChips title="Общие — нажмите, чтобы вставить" vars={globals} disabled={!!busy} onInsert={insertVar} />
+            <VarChips title="Этого сообщения" vars={own} disabled={!!busy} onInsert={insertVar} />
           </Card>
 
           <Card title="Кнопки" aside={NOT_WIRED} className="gap-2.5">

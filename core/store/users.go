@@ -111,6 +111,17 @@ func (s *Store) LastPanelSync(ctx context.Context) (model.PanelSync, error) {
 	return r, err
 }
 
+// UserContact — имя, username и срок юзера одной строкой; юзера ещё нет — пустые значения без ошибки.
+func (s *Store) UserContact(ctx context.Context, id int64) (model.UserContact, error) {
+	var c model.UserContact
+	err := s.pool.QueryRow(ctx, `SELECT COALESCE(first_name, ''), COALESCE(username, ''), expire_at
+		FROM users WHERE telegram_id = $1`, id).Scan(&c.FirstName, &c.Username, &c.ExpireAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.UserContact{}, nil
+	}
+	return c, err
+}
+
 // MarkBotBlocked отмечает, что юзер заблокировал бота; время первой блокировки сохраняется. Нет юзера — ничего.
 func (s *Store) MarkBotBlocked(ctx context.Context, id int64) error {
 	_, err := s.pool.Exec(ctx, `UPDATE users SET blocked_bot_at = coalesce(blocked_bot_at, now()) WHERE telegram_id = $1`, id)

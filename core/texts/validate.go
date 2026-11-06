@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"regexp"
 	"slices"
@@ -32,20 +33,37 @@ var allowedSchemes = []string{"http", "https", "tg", "mailto"}
 // ampersand находит каждое & — либо в составе допустимой в Telegram сущности, либо голое.
 var ampersand = regexp.MustCompile(`&(?:lt|gt|amp|quot|#[0-9]+|#[xX][0-9a-fA-F]+);|&`)
 
-// Validate проверяет текст def после рендера с примерами переменных.
-func Validate(def Def, body string) error {
+// malformedVar — похоже на переменную, но не разбирается: {{name}}, {{.a b}}, {{.name}. Голые «{{» — обычный текст.
+var malformedVar = regexp.MustCompile(`\{\{[^{}]*\}\}|\{\{\s*\.`)
+
+func checkVars(def Def, body string, custom map[string]string) error {
+	if m := malformedVar.FindString(placeholder.ReplaceAllString(body, "")); m != "" {
+		return fmt.Errorf("неправильная переменная %s: нужно {{.имя}}, целиком и без форматирования внутри", m)
+	}
+	known := Samples(def, custom)
+	for _, m := range placeholder.FindAllStringSubmatch(body, -1) {
+		if _, ok := known[m[1]]; !ok {
+			return fmt.Errorf("неизвестная переменная %s", m[1])
+		}
+	}
+	return nil
+}
+
+// Validate проверяет текст def после рендера с примерами переменных; custom — свои переменные (имя → значение).
+func Validate(def Def, body string, custom map[string]string) error {
 	sentinel := ErrInvalidMarkup
 	if def.Kind != KindMessage {
 		sentinel = ErrBadButton
 	}
-	for _, m := range placeholder.FindAllStringSubmatch(body, -1) {
-		if !slices.ContainsFunc(def.Vars, func(v Var) bool { return v.Name == m[1] }) {
-			return errors.Join(sentinel, fmt.Errorf("неизвестная переменная %s", m[1]))
-		}
+	if err := checkVars(def, body, custom); err != nil {
+		return errors.Join(sentinel, err)
 	}
-	rendered := RenderDef(def, body, Samples(def))
+	if def.Kind != KindMessage && strings.ContainsAny(body, "<>") {
+		return errors.Join(ErrBadButton, errors.New("в этом тексте нельзя использовать теги"))
+	}
+	rendered := RenderDef(def, body, Samples(def, custom))
 	if def.Kind != KindMessage {
-		return validatePlain(rendered)
+		return validatePlain(body, rendered)
 	}
 	text, err := checkMarkup(rendered)
 	if err != nil {
@@ -58,7 +76,7 @@ func Validate(def Def, body string) error {
 		return errors.Join(ErrTooLong, fmt.Errorf("текст длиннее %d символов (%d)", maxMessageLen, n))
 	}
 	// худший случай: все переменные максимальной длины
-	worst, err := checkMarkup(RenderDef(def, body, maxSamples(def)))
+	worst, err := checkMarkup(RenderDef(def, body, maxSamples(def, custom)))
 	if err != nil {
 		return errors.Join(ErrInvalidMarkup, err)
 	}
@@ -68,13 +86,28 @@ func Validate(def Def, body string) error {
 	return nil
 }
 
-func validatePlain(s string) error {
+// ValidateStored — проверка уже сохранённого текста при загрузке: переменная, которой больше нет
+// (своя удалена, настройки откатились на env), не отменяет правку — она отрендерится пустой.
+func ValidateStored(def Def, body string, custom map[string]string) error {
+	known := Samples(def, custom)
+	all := maps.Clone(custom)
+	if all == nil {
+		all = map[string]string{}
+	}
+	for _, m := range placeholder.FindAllStringSubmatch(body, -1) {
+		if _, ok := known[m[1]]; !ok {
+			all[m[1]] = "x"
+		}
+	}
+	return Validate(def, body, all)
+}
+
+// validatePlain: длина — по телу без переменных и по рендеру с примерами; рендер уже обрезан до лимита.
+func validatePlain(body, rendered string) error {
 	switch {
-	case strings.TrimSpace(s) == "":
+	case strings.TrimSpace(rendered) == "":
 		return errors.Join(ErrBadButton, errors.New("текст не может быть пустым"))
-	case strings.ContainsAny(s, "<>"):
-		return errors.Join(ErrBadButton, errors.New("в этом тексте нельзя использовать теги"))
-	case utf16Len(s) > maxButtonLen:
+	case utf16Len(placeholder.ReplaceAllString(body, "")) > maxButtonLen:
 		return errors.Join(ErrBadButton, fmt.Errorf("текст длиннее %d символов", maxButtonLen))
 	}
 	return nil

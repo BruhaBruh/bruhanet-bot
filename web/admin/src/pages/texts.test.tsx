@@ -55,13 +55,11 @@ beforeEach(() => {
       text('b', 'Текст B', 'тело B'),
       text('c', 'Текст C', 'своё', { default: 'станд', overridden: true }),
       text('v', 'С переменной', 'Привет, {{.name}}! <i>x</i>', {
-        vars: [
-          { name: 'name', description: 'Имя', sample: 'Иван', raw: false },
-          { name: 'html', description: 'Разметка', sample: '<b>жир</b>', raw: true },
-        ],
+        vars: [{ name: 'html', description: 'Разметка', sample: '<b>жир</b>', raw: true, max: 100 }],
       }),
       text('btn', 'Кнопка', 'Оплатить', { kind: 'button', group: 'Кнопки' }),
     ],
+    globals: [{ name: 'name', description: 'Имя', sample: 'Иван', raw: false, max: 64 }],
   })
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -197,6 +195,22 @@ describe('Texts', () => {
     expect(list().queryByText('Текст A')).toBeNull()
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'нет такого' } })
     expect(list().getByText('Ничего не найдено')).toBeTruthy()
+  })
+
+  it('chips: global and own variables in two groups, global on every text', async () => {
+    await open('/texts?key=v')
+    const group = (title: RegExp) => screen.getByText(title).parentElement!
+    expect(within(group(/^Общие/)).getByRole('button', { name: '{{.name}}' })).toBeTruthy()
+    expect(within(group(/^Этого сообщения/)).getByRole('button', { name: '{{.html}}' })).toBeTruthy()
+  })
+
+  it('text without own variables has only global chips, preview fills them', async () => {
+    await open('/texts?key=a')
+    expect(screen.queryByText(/^Этого сообщения/)).toBeNull()
+    fireEvent.click(btn('{{.name}}'))
+    expect(kids.inserted).toEqual(['{{.name}}'])
+    act(() => kids.editor.onChange('Привет, {{.name}}'))
+    expect(preview().textContent).toContain('Привет, Иван')
   })
 
   it('buttons card is drawn disabled', async () => {

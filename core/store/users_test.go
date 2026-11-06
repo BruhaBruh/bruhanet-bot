@@ -14,6 +14,28 @@ import (
 	"github.com/bruhabruh/bruhanet/core/panelsync"
 )
 
+func TestUserContact(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	if c, err := s.UserContact(ctx, 1); err != nil || c != (model.UserContact{}) {
+		t.Fatalf("нет юзера: %+v %v", c, err)
+	}
+	at := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	if err := s.TouchUser(ctx, model.UserSeen{TelegramID: 1, Username: "ann", FirstName: "Анна", At: at}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.UserContact(ctx, 1)
+	if err != nil || c.FirstName != "Анна" || c.Username != "ann" || c.ExpireAt != nil {
+		t.Fatalf("%+v %v", c, err)
+	}
+	if err := s.SetUserPanel(ctx, 1, at, "ACTIVE", at); err != nil {
+		t.Fatal(err)
+	}
+	if c, err = s.UserContact(ctx, 1); err != nil || c.ExpireAt == nil || !c.ExpireAt.Equal(at) {
+		t.Fatalf("%+v %v", c, err)
+	}
+}
+
 func TestTouchUser(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()

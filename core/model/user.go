@@ -11,6 +11,13 @@ type UserSeen struct {
 	At         time.Time
 }
 
+// UserContact — данные юзера для переменных текстов; нет юзера или значения — пустые.
+type UserContact struct {
+	FirstName string
+	Username  string
+	ExpireAt  *time.Time
+}
+
 // PanelUser — юзер панели Remnawave с Telegram ID.
 type PanelUser struct {
 	TelegramID int64

@@ -40,7 +40,7 @@ type fakeEnq struct {
 	errs  map[int64]error
 }
 
-func render(_ context.Context, kind reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
+func render(_ context.Context, _ int64, kind reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
 	return fmt.Sprintf("%s|%d|%s", kind, exp.Unix(), sub), nil
 }
 

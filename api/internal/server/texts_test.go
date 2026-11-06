@@ -25,6 +25,7 @@ func TestTextsList(t *testing.T) {
 	h, st := newServer(t, "http://localhost:5173")
 	c := st.addSession(t, adminID, now.Add(time.Hour))
 	st.overrides = map[string]string{"menu.greeting": "Привет, <b>{{.name}}</b>"}
+	st.setRaw = map[string][]byte{"vars": []byte(`{"promoLink":"https://x.io"}`)}
 
 	w := send(h, http.MethodGet, "/api/texts", c, "")
 	if w.Code != http.StatusOK {
@@ -35,6 +36,10 @@ func TestTextsList(t *testing.T) {
 			Key, Group, Title, Kind, Default, Body string
 			Overridden                             bool
 			Vars                                   []struct{ Name, Description, Sample string }
+		}
+		Globals []struct {
+			Name, Description, Sample string
+			Max                       int
 		}
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
@@ -51,8 +56,23 @@ func TestTextsList(t *testing.T) {
 	}
 	g := out.Items[0]
 	if g.Key != "menu.greeting" || !g.Overridden || g.Body != "Привет, <b>{{.name}}</b>" || g.Kind != "message" ||
-		len(g.Vars) != 1 || g.Vars[0].Name != "name" || g.Vars[0].Sample == "" {
+		len(g.Vars) != 0 {
 		t.Fatalf("greeting = %+v", g)
+	}
+	names := map[string]string{}
+	for _, v := range out.Globals {
+		if v.Description == "" || v.Sample == "" || v.Max == 0 {
+			t.Fatalf("global = %+v", v)
+		}
+		names[v.Name] = v.Sample
+	}
+	for _, n := range []string{"name", "username", "telegramId", "expireAt", "phone", "bank", "supportUrl"} {
+		if names[n] == "" {
+			t.Fatalf("no global %s in %v", n, names)
+		}
+	}
+	if names["promoLink"] != "https://x.io" {
+		t.Fatalf("custom global = %v", names)
 	}
 	if o := out.Items[1]; o.Overridden || o.Body != o.Default {
 		t.Fatalf("second = %+v", o)
@@ -67,6 +87,28 @@ func TestTextsList(t *testing.T) {
 }
 
 // Review Focus 1: битая разметка → 400 с человеческим message, без служебного префикса сентинела.
+func TestPutTextGlobals(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.setRaw = map[string][]byte{"vars": []byte(`{"my":"a"}`)}
+	for key, body := range map[string]string{
+		"payment.tariffs":    "{{.name}} {{.my}} {{.expireAt}}",
+		"button.pay":         "Оплатить, {{.name}}",
+		"menu.status_active": "{{.my}}",
+	} {
+		b, _ := json.Marshal(map[string]string{"body": body})
+		if w := send(h, http.MethodPut, "/api/texts/"+key, c, string(b)); w.Code != http.StatusNoContent {
+			t.Errorf("%s: %d %s", key, w.Code, w.Body)
+		}
+	}
+	if w := send(h, http.MethodPut, "/api/texts/payment.tariffs", c, `{"body":"{{.nope}}"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := send(h, http.MethodPut, "/api/texts/payment.tariffs", c, `{"body":"{{name}}"}`); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "неправильная переменная") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
 func TestPutTextInvalid(t *testing.T) {
 	h, st := newServer(t, "http://localhost:5173")
 	c := st.addSession(t, adminID, now.Add(time.Hour))

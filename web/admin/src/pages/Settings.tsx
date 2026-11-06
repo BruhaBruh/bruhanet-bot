@@ -6,6 +6,7 @@ import { formatRub } from '../format'
 import type { Settings as S } from '../types'
 
 type Tariff = { months: string; price: string }
+type CustomVar = { name: string; value: string }
 type Form = {
   tariffs: Tariff[]
   phone: string
@@ -17,6 +18,7 @@ type Form = {
   advanceHours: string
   reminderWeekDays: string
   reminderDayHours: string
+  vars: CustomVar[]
 }
 
 const toForm = (s: S): Form => ({
@@ -32,6 +34,9 @@ const toForm = (s: S): Form => ({
   advanceHours: String(s.advanceHours),
   reminderWeekDays: String(s.reminderWeekDays),
   reminderDayHours: String(s.reminderDayHours),
+  vars: Object.entries(s.vars)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => ({ name, value })),
 })
 
 function perMonth(t: Tariff, first: Tariff, i: number): string {
@@ -50,6 +55,12 @@ function tariffsError(tariffs: Tariff[]): string {
   if (dup !== undefined) return `Тариф на ${dup || '(пусто)'} мес. указан дважды`
   const bad = tariffs.some((t) => !/^\d+$/.test(t.months.trim()) || +t.months < 1 || +t.months > 120 || !/^\d+$/.test(t.price.trim()) || +t.price < 1)
   return bad ? 'Срок тарифа — целое число от 1 до 120 месяцев, цена — целое число больше 0' : ''
+}
+
+// Одинаковые имена схлопнулись бы в один ключ объекта; остальное проверяет сервер.
+function varsError(vars: CustomVar[]): string {
+  const dup = vars.map((v) => v.name.trim()).find((n, i, a) => a.indexOf(n) !== i)
+  return dup === undefined ? '' : `Переменная ${dup || '(без имени)'} указана дважды`
 }
 
 const removeButton = 'w-10 flex-none px-0'
@@ -100,7 +111,7 @@ export default function Settings() {
   async function save() {
     if (inFlight.current || !form) return
     setProblems([])
-    const invalid = tariffsError(form.tariffs)
+    const invalid = tariffsError(form.tariffs) || varsError(form.vars)
     setError(invalid)
     if (invalid) return
     const body: S = {
@@ -114,6 +125,7 @@ export default function Settings() {
       advanceHours: Number(form.advanceHours),
       reminderWeekDays: Number(form.reminderWeekDays),
       reminderDayHours: Number(form.reminderDayHours),
+      vars: Object.fromEntries(form.vars.map((v) => [v.name.trim(), v.value])),
     }
     inFlight.current = true
     setBusy(true)
@@ -245,6 +257,35 @@ export default function Settings() {
           <Input className="min-w-0 grow basis-60" label="Длина аванса" type="number" min={1} max={720} after="ч." value={form.advanceHours} onChange={(e) => patch({ advanceHours: e.target.value })} hint="Доступ на время проверки платежа" />
           <Input className="min-w-0 grow basis-60" label="Лимит авансов" type="number" min={0} max={100} after="шт." value={form.advanceLimit} onChange={(e) => patch({ advanceLimit: e.target.value })} hint="Неоплаченных подряд; 0 — без авансов" />
         </div>
+      </Card>
+
+      <Card title="Переменные" aside="доступны во всех текстах и рассылках как {{.имя}}" className="gap-2.5">
+        {form.vars.map((v, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2 md:flex-nowrap">
+            <Input
+              className="min-w-0 grow basis-45 [&_input]:font-mono"
+              placeholder="promoLink"
+              aria-label="Имя переменной"
+              value={v.name}
+              onChange={(e) => patch({ vars: form.vars.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
+            />
+            <Input
+              className="min-w-0 grow-3 basis-60"
+              placeholder="Значение"
+              aria-label="Значение переменной"
+              maxLength={256}
+              value={v.value}
+              onChange={(e) => patch({ vars: form.vars.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
+            />
+            <Button variant="gray" icon="trash" className={removeButton} aria-label="Удалить переменную" onClick={() => patch({ vars: form.vars.filter((_, j) => j !== i) })} />
+          </div>
+        ))}
+        <div>
+          <Button variant="tinted" icon="plus" onClick={() => patch({ vars: [...form.vars, { name: '', value: '' }] })}>
+            Добавить переменную
+          </Button>
+        </div>
+        <span className="footnote text-text-secondary">Имя — латиница, цифры и _, первая буква. Значение — простой текст без разметки, до 256 символов. Переменную из сохранённого текста удалить нельзя.</span>
       </Card>
 
       {error && (

@@ -23,6 +23,15 @@ type textVar struct {
 	Description string `json:"description"`
 	Sample      string `json:"sample"`
 	Raw         bool   `json:"raw"`
+	Max         int    `json:"max"`
+}
+
+func toTextVars(vars []texts.Var) []textVar {
+	out := make([]textVar, 0, len(vars))
+	for _, v := range vars {
+		out = append(out, textVar{Name: v.Name, Description: v.Description, Sample: v.Sample, Raw: v.Raw, Max: v.Max})
+	}
+	return out
 }
 
 type textItem struct {
@@ -70,19 +79,21 @@ func (s *server) texts(w http.ResponseWriter, r *http.Request) {
 		internal(w, r, "list texts", err)
 		return
 	}
+	cur, _, err := s.current(r.Context())
+	if err != nil {
+		internal(w, r, "list texts", err)
+		return
+	}
 	reg := texts.Registry()
 	items := make([]textItem, 0, len(reg))
 	for _, d := range reg {
-		it := textItem{Key: d.Key, Group: d.Group, Title: d.Title, Kind: string(d.Kind), Default: d.Default, Body: d.Default, Vars: []textVar{}}
+		it := textItem{Key: d.Key, Group: d.Group, Title: d.Title, Kind: string(d.Kind), Default: d.Default, Body: d.Default, Vars: toTextVars(d.Vars)}
 		if b, ok := over[d.Key]; ok {
 			it.Body, it.Overridden = b, true
 		}
-		for _, v := range d.Vars {
-			it.Vars = append(it.Vars, textVar{Name: v.Name, Description: v.Description, Sample: v.Sample, Raw: v.Raw})
-		}
 		items = append(items, it)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "globals": toTextVars(texts.Globals(cur.Vars))})
 }
 
 func (s *server) putText(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +112,12 @@ func (s *server) putText(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w)
 		return
 	}
-	if err := texts.Validate(def, *in.Body); err != nil {
+	cur, _, err := s.current(r.Context())
+	if err != nil {
+		internal(w, r, "settings", err)
+		return
+	}
+	if err := texts.Validate(def, *in.Body, cur.Vars); err != nil {
 		writeInvalid(w, texts.Problem(err))
 		return
 	}
@@ -157,11 +173,16 @@ func (s *server) testText(w http.ResponseWriter, r *http.Request) {
 			body = b
 		}
 	}
-	if err := texts.Validate(def, body); err != nil {
+	cur, _, err := s.current(r.Context())
+	if err != nil {
+		internal(w, r, "settings", err)
+		return
+	}
+	if err := texts.Validate(def, body, cur.Vars); err != nil {
 		writeInvalid(w, texts.Problem(err))
 		return
 	}
-	out := texts.RenderDef(def, body, texts.Samples(def))
+	out := texts.RenderDef(def, body, texts.Samples(def, cur.Vars))
 	switch def.Kind {
 	case texts.KindButton:
 		out = "Кнопка: " + html.EscapeString(out)
@@ -169,7 +190,7 @@ func (s *server) testText(w http.ResponseWriter, r *http.Request) {
 		out = "Текст: " + html.EscapeString(out)
 	case texts.KindMessage:
 	}
-	err := s.Store.Enqueue(r.Context(), model.OutboxMessage{EventType: "text_test", ChatID: s.AdminID, Text: out, ParseMode: "HTML"})
+	err = s.Store.Enqueue(r.Context(), model.OutboxMessage{EventType: "text_test", ChatID: s.AdminID, Text: out, ParseMode: "HTML"})
 	if err != nil {
 		internal(w, r, "enqueue text test", err)
 		return

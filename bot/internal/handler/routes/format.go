@@ -4,29 +4,13 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 )
 
-var monthNames = [...]string{
-	"", "января", "февраля", "марта", "апреля", "мая", "июня",
-	"июля", "августа", "сентября", "октября", "ноября", "декабря",
-}
+var moscow = content.Moscow()
 
-var moscow = loadMoscow()
-
-func loadMoscow() *time.Location {
-	loc, err := time.LoadLocation("Europe/Moscow")
-	if err != nil {
-		return time.FixedZone("MSK", 3*60*60)
-	}
-	return loc
-}
-
-func formatTime(t time.Time) string {
-	t = t.In(moscow)
-	zone, _ := t.Zone()
-	return fmt.Sprintf("%d %s %d г. в %02d:%02d, %s",
-		t.Day(), monthNames[t.Month()], t.Year(), t.Hour(), t.Minute(), zone)
-}
+func formatTime(t time.Time) string { return content.FormatTime(t) }
 
 func formatBytes(n int) string {
 	if n < 1024 {

@@ -27,30 +27,36 @@ type message struct {
 	Photo string `json:"photo"`
 }
 
-// validateMessage — те же правила, что у текстов-сообщений (без переменных); с фото лимит подписи 1024,
-// фото без текста допустимо.
-func validateMessage(text string, hasPhoto bool) error {
+// validateMessage — те же правила, что у текстов-сообщений, переменные только общие; с фото лимит подписи 1024
+// по худшему случаю, фото без текста допустимо.
+func validateMessage(text string, hasPhoto bool, custom map[string]string) error {
 	if hasPhoto && strings.TrimSpace(text) == "" {
 		return nil
 	}
-	if err := texts.Validate(texts.Def{Kind: texts.KindMessage}, text); err != nil {
+	def := texts.Def{Kind: texts.KindMessage}
+	if err := texts.Validate(def, text, custom); err != nil {
 		return err
 	}
-	if n := texts.VisibleLen(text); hasPhoto && n > maxCaptionLen {
-		return errors.Join(texts.ErrTooLong, fmt.Errorf("подпись к фото длиннее %d символов (%d)", maxCaptionLen, n))
+	if n := texts.WorstLen(def, text, custom); hasPhoto && n > maxCaptionLen {
+		return errors.Join(texts.ErrTooLong, fmt.Errorf("подпись к фото может оказаться длиннее %d символов (%d)", maxCaptionLen, n))
 	}
 	return nil
 }
 
 // readMessage читает и проверяет message; при ошибке сам отвечает 400.
-func readMessage(w http.ResponseWriter, r *http.Request, in any, m *message) bool {
+func (s *server) readMessage(w http.ResponseWriter, r *http.Request, in any, m *message) bool {
 	if !readJSONMax(w, r, in, maxTextBody, false) {
 		return false
 	}
 	if strings.TrimSpace(m.Text) == "" {
 		m.Text = ""
 	}
-	if err := validateMessage(m.Text, m.Photo != ""); err != nil {
+	cur, _, err := s.current(r.Context())
+	if err != nil {
+		internal(w, r, "settings", err)
+		return false
+	}
+	if err := validateMessage(m.Text, m.Photo != "", cur.Vars); err != nil {
 		writeInvalid(w, texts.Problem(err))
 		return false
 	}
@@ -72,7 +78,7 @@ func (s *server) recipientIDs(w http.ResponseWriter, r *http.Request) ([]int64, 
 
 func (s *server) previewBroadcast(w http.ResponseWriter, r *http.Request) {
 	var in message
-	if !readMessage(w, r, &in, &in) {
+	if !s.readMessage(w, r, &in, &in) {
 		return
 	}
 	err := s.Store.Enqueue(r.Context(), model.OutboxMessage{
@@ -96,7 +102,7 @@ func (s *server) createBroadcast(w http.ResponseWriter, r *http.Request) {
 		IdempotencyKey uuid.UUID `json:"idempotencyKey"`
 		message
 	}
-	if !readMessage(w, r, &in, &in.message) {
+	if !s.readMessage(w, r, &in, &in.message) {
 		return
 	}
 	if in.IdempotencyKey == uuid.Nil {

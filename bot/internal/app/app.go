@@ -125,8 +125,8 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		return nil, errors.Join(errors.New("failed to register outbox gauge"), err)
 	}
 
-	rem := reminder.New(rwObs, st, func(ctx context.Context, k reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
-		return routes.ReminderMessage(ctx, cnt, string(k), exp, sub)
+	rem := reminder.New(rwObs, st, func(ctx context.Context, id int64, k reminder.Kind, exp time.Time, sub string) (string, *models.InlineKeyboardMarkup) {
+		return routes.ReminderMessage(content.ForUser(ctx, id), cnt, string(k), exp, sub)
 	}, rdb, func(ctx context.Context) (time.Duration, time.Duration) {
 		s := cnt.Settings(ctx)
 		return time.Duration(s.ReminderWeekDays) * 24 * time.Hour, time.Duration(s.ReminderDayHours) * time.Hour

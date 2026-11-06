@@ -21,7 +21,7 @@ func (h *handlers) start(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	h.leavePromo(ctx, tgupdate.UserID(u))
-	show(ctx, b, u, h.mainKeyboard(ctx, tgupdate.UserID(u)), h.c.Text(ctx, "menu.greeting", map[string]string{"name": displayName(u)}))
+	show(ctx, b, u, h.mainKeyboard(ctx, tgupdate.UserID(u)), h.c.Text(ctx, "menu.greeting", nil))
 }
 
 // isPrivate: недоступное сообщение колбэка считаем приватным, ответ всё равно уйдёт по ChatID.

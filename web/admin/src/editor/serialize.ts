@@ -139,9 +139,11 @@ export function fromTelegramHtml(html: string): JSONContent {
 const escGo = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&#34;')
 
+export const varLabel = (name: string) => `{{.${name}}}`
+
 const placeholder = /\{\{\s*\.([^{}\s]+)\s*\}\}/g
 
-// Как texts.RenderRaw: значения экранируются, raw — вставляются как HTML, неизвестное — путь.
+// Как texts.RenderRaw: значения экранируются, raw — вставляются как HTML; неизвестное (бот отрендерит пустым) видно по имени.
 export function renderPreview(tpl: string, samples: Record<string, string>, raw: string[] = []): string {
   return tpl.replace(placeholder, (_, path: string) => {
     if (raw.includes(path) && path in samples) return samples[path]

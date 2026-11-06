@@ -16,7 +16,7 @@ func TestRenderEscapes(t *testing.T) {
 
 func TestRenderUnknown(t *testing.T) {
 	got := Render("{{.foo.bar}} и {{ .x }}", nil)
-	if want := "foo.bar и x"; got != want {
+	if want := " и "; got != want { // неизвестная переменная не ломает текст
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -30,7 +30,7 @@ func TestRenderRaw(t *testing.T) {
 
 func TestRenderPlain(t *testing.T) {
 	got := RenderPlain("{{.months}} & {{.x}}", map[string]string{"months": "3 <м>"})
-	if want := "3 <м> & x"; got != want {
+	if want := "3 <м> & "; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -118,7 +118,7 @@ func TestValidate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Validate(tt.def, tt.body)
+			err := Validate(tt.def, tt.body, nil)
 			if tt.want == nil {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -149,7 +149,7 @@ func TestRegistryDefaultsValid(t *testing.T) {
 		if d.Title == "" || (d.Kind != KindMessage && d.Kind != KindButton && d.Kind != KindPlain) {
 			t.Errorf("%s: empty title or bad kind", d.Key)
 		}
-		if err := Validate(d, d.Default); err != nil {
+		if err := Validate(d, d.Default, nil); err != nil {
 			t.Errorf("%s: default invalid: %v", d.Key, err)
 		}
 		used := map[string]bool{}
@@ -165,6 +165,12 @@ func TestRegistryDefaultsValid(t *testing.T) {
 			}
 			if v.Sample == "" || v.Description == "" {
 				t.Errorf("%s: var %s without sample or description", d.Key, v.Name)
+			}
+			delete(used, v.Name)
+		}
+		for _, v := range Globals(nil) {
+			if slices.ContainsFunc(d.Vars, func(x Var) bool { return x.Name == v.Name }) {
+				t.Errorf("%s: var %s collides with a global", d.Key, v.Name)
 			}
 			delete(used, v.Name)
 		}
@@ -206,9 +212,128 @@ func TestRegistryCoversCode(t *testing.T) {
 		if !ok {
 			t.Fatalf("no %s", key)
 		}
-		if got := RenderDef(d, d.Default, Samples(d)); got != want {
+		if got := RenderDef(d, d.Default, Samples(d, nil)); got != want {
 			t.Errorf("%s:\ngot  %q\nwant %q", key, got, want)
 		}
+	}
+}
+
+func TestGlobalsValidEverywhere(t *testing.T) {
+	custom := map[string]string{"promoLink": "https://x.io/a"}
+	for _, d := range Registry() {
+		for _, name := range []string{"name", "username", "telegramId", "expireAt", "phone", "bank", "supportUrl", "promoLink"} {
+			if err := Validate(d, "a {{."+name+"}}", custom); err != nil {
+				t.Errorf("%s with %s: %v", d.Key, name, err)
+			}
+		}
+	}
+	for _, v := range Globals(nil) {
+		if v.Sample == "" || v.Description == "" || v.Max < utf16Len(v.Sample) {
+			t.Errorf("global %s: %+v", v.Name, v)
+		}
+		if !Reserved(v.Name) {
+			t.Errorf("%s not reserved", v.Name)
+		}
+	}
+	if !Reserved("months") || Reserved("promoLink") {
+		t.Fatal("Reserved: registry var must be reserved, custom name must not")
+	}
+}
+
+// Значение с < не ломает HTML: экранируется и общая, и своя переменная.
+func TestGlobalValueEscaped(t *testing.T) {
+	d, _ := Lookup("menu.greeting")
+	got := RenderDef(d, "{{.name}} {{.my}}", map[string]string{"name": "<b>a&", "my": "1<2"})
+	if want := "&lt;b&gt;a&amp; 1&lt;2"; got != want {
+		t.Fatalf("got %q", got)
+	}
+	if _, err := checkMarkup(got); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWorstCaseCountsGlobals(t *testing.T) {
+	d := Def{Kind: KindMessage}
+	// name 64 + 4032 = 4096 — помещается, на символ больше — нет
+	if err := Validate(d, strings.Repeat("b", 4032)+"{{.name}}", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := Validate(d, strings.Repeat("b", 4033)+"{{.name}}", nil); !errors.Is(err, ErrTooLong) {
+		t.Fatalf("err = %v", err)
+	}
+	custom := map[string]string{"my": "a"}
+	if err := Validate(d, strings.Repeat("b", 4096-MaxCustomVar+1)+"{{.my}}", custom); !errors.Is(err, ErrTooLong) {
+		t.Fatalf("custom: err = %v", err)
+	}
+	if n := WorstLen(d, "ab{{.name}}", nil); n != 66 {
+		t.Fatalf("WorstLen = %d", n)
+	}
+}
+
+// Ссылка из переменной в href: и пример, и худший случай проходят проверку схемы.
+func TestSupportURLInHref(t *testing.T) {
+	if err := Validate(Def{Kind: KindMessage}, `<a href="{{.supportUrl}}">помощь</a>`, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMalformedVar(t *testing.T) {
+	d := Def{Kind: KindMessage}
+	for _, body := range []string{"{{name}}", "{{.na me}}", "{{.name}", "{{.name", "{{ .name } }"} {
+		if err := Validate(d, body, nil); !errors.Is(err, ErrInvalidMarkup) || !strings.Contains(err.Error(), "неправильная переменная") {
+			t.Errorf("%q: %v", body, err)
+		}
+	}
+	if err := Validate(d, "{{.na<b>me</b>}}", nil); !errors.Is(err, ErrInvalidMarkup) { // разметка внутри переменной
+		t.Errorf("markup inside var: %v", err)
+	}
+	for _, body := range []string{"a {{ b", "{ {.x}}", "{{.name}} }}"} { // обычный текст
+		if err := Validate(d, body, nil); err != nil {
+			t.Errorf("%q: %v", body, err)
+		}
+	}
+	if err := Validate(Def{Kind: KindButton}, "{{name}}", nil); !errors.Is(err, ErrBadButton) {
+		t.Fatalf("button: %v", err)
+	}
+}
+
+func TestValidateStoredKeepsUnknownVar(t *testing.T) {
+	d, _ := Lookup("menu.greeting")
+	if err := Validate(d, "a {{.gone}}", nil); err == nil {
+		t.Fatal("Validate must refuse unknown var")
+	}
+	if err := ValidateStored(d, "a {{.gone}}", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := RenderDef(d, "a {{.gone}}", nil); got != "a " {
+		t.Fatalf("render = %q", got)
+	}
+	if err := ValidateStored(d, "<b>a", nil); !errors.Is(err, ErrInvalidMarkup) {
+		t.Fatalf("broken markup: %v", err)
+	}
+}
+
+func TestButtonVarsClipped(t *testing.T) {
+	d, _ := Lookup("button.pay")
+	if err := Validate(d, "Оплатить, {{.name}}", nil); err != nil {
+		t.Fatal(err)
+	}
+	got := RenderDef(d, "Оплатить, {{.name}}", map[string]string{"name": strings.Repeat("😀", 64)})
+	if n := utf16Len(got); n > maxButtonLen || !strings.HasPrefix(got, "Оплатить, 😀") {
+		t.Fatalf("len %d: %q", n, got)
+	}
+	// значение с < в кнопке — просто текст, правку подписи не отменяет
+	if err := Validate(d, "{{.my}}", map[string]string{"my": "a<b"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBlankAndUses(t *testing.T) {
+	if !Blank("") || !Blank(" <b> </b>\n") || Blank("<b>a</b>") || Blank("a<b") {
+		t.Fatal("Blank")
+	}
+	if !Uses("x {{ .name }}", "name") || Uses("{{.names}}", "name") || !HasVars("{{.a}}") || HasVars("{{ a") {
+		t.Fatal("Uses/HasVars")
 	}
 }
 
@@ -238,7 +363,7 @@ func TestRegistryDeepClone(t *testing.T) {
 
 func TestProblem(t *testing.T) {
 	def, _ := Lookup("menu.greeting")
-	err := Validate(def, "<b>x")
+	err := Validate(def, "<b>x", nil)
 	if err == nil {
 		t.Fatal("want error")
 	}

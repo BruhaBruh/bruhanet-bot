@@ -2,7 +2,10 @@
 // рендер {{.path}} в Telegram HTML и проверка правок.
 package texts
 
-import "slices"
+import (
+	"maps"
+	"slices"
+)
 
 type Kind string
 
@@ -37,11 +40,25 @@ const (
 	groupButton   = "Кнопки"
 )
 
+// MaxCustomVar — наибольшая длина значения своей переменной (core/settings), UTF-16.
+const MaxCustomVar = 256
+
+// globals — общие переменные: есть в каждом тексте любого вида. Значения подставляет вызывающий
+// (бот — content.Provider, на примерах — Samples). С переменными текстов имена не пересекаются (тест реестра).
+var globals = []Var{
+	{Name: "name", Description: "Имя пользователя в Telegram", Sample: "Иван", Max: 64},
+	{Name: "username", Description: "Username в Telegram без @; нет — «—»", Sample: "ivan", Max: 32},
+	{Name: "telegramId", Description: "Telegram ID пользователя", Sample: "123456789", Max: 20},
+	{Name: "expireAt", Description: "Дата окончания подписки (МСК); нет — «—»", Sample: "2 ноября 2026 г. в 15:04, MSK", Max: 40},
+	{Name: "phone", Description: "Номер для перевода из настроек", Sample: "+79990000000", Max: 64},
+	{Name: "bank", Description: "Банк для перевода из настроек", Sample: "Т-Банк", Max: 64},
+	{Name: "supportUrl", Description: "Ссылка на поддержку из настроек", Sample: "https://t.me/support", Max: 256},
+}
+
 var (
-	varMonths   = Var{Name: "months", Description: "Срок тарифа с единицей: «3 месяца»", Sample: "3 месяца", Max: 16}
-	varPrice    = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500", Max: 8}
-	varCode     = Var{Name: "code", Description: "Промокод", Sample: "SUMMER25", Max: 32}
-	varExpireAt = Var{Name: "expireAt", Description: "Дата окончания подписки (МСК)", Sample: "2 ноября 2026 г. в 15:04, MSK", Max: 40}
+	varMonths = Var{Name: "months", Description: "Срок тарифа с единицей: «3 месяца»", Sample: "3 месяца", Max: 16}
+	varPrice  = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500", Max: 8}
+	varCode   = Var{Name: "code", Description: "Промокод", Sample: "SUMMER25", Max: 32}
 )
 
 // maxComments — не больше комментариев к переводу (core/settings).
@@ -69,14 +86,12 @@ func btn(key, title, def string, vars ...Var) Def {
 }
 
 var registry = []Def{
-	msg("menu.greeting", groupMenu, "Приветствие", "Здравствуйте, <b>{{.name}}</b>",
-		Var{Name: "name", Description: "Имя пользователя в Telegram", Sample: "Иван", Max: 64}),
+	msg("menu.greeting", groupMenu, "Приветствие", "Здравствуйте, <b>{{.name}}</b>"),
 	msg("menu.info", groupMenu, "Информация о подписке",
 		infoHead+"{{.status}}\n\n<b>Трафик</b>\n{{.traffic}}\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}\n\n<b>Ваш Telegram ID</b>\n{{.telegramId}}",
 		Var{Name: "status", Description: "Статус подписки (тексты «Статус: …»)", Sample: "Активна", Max: 64},
 		Var{Name: "traffic", Description: "Использованный трафик из лимита", Sample: "1.50 ГБ из ∞", Max: 32},
-		varExpireAt,
-		Var{Name: "telegramId", Description: "Telegram ID пользователя", Sample: "123456789", Max: 20}),
+	),
 	msg("menu.info_not_bought", groupMenu, "Информация: подписка не куплена", infoHead+"Не куплена"),
 	plain("menu.status_active", "Статус: активна", "Активна"),
 	plain("menu.status_disabled", "Статус: отключена", "Отключена"),
@@ -92,8 +107,6 @@ var registry = []Def{
 		"<b>Оплата тарифа на {{.months}} за {{.price}} ₽</b>\n\n<b>Для оплаты</b>\nПереведите <b>{{.price}} ₽</b>\n"+
 			"на номер <code>{{.phone}}</code> в <b>{{.bank}}</b>\nс одним из комментариев:\n{{.comments}}\nи отправьте в чат фото платежа",
 		varMonths, varPrice,
-		Var{Name: "phone", Description: "Номер для перевода (PAYMENT_PHONE)", Sample: "+79990000000", Max: 64},
-		Var{Name: "bank", Description: "Банк для перевода (PAYMENT_BANK)", Sample: "Т-Банк", Max: 64},
 		Var{
 			Name: "comments", Description: "Список комментариев к переводу, по строке «- <code>…</code>» на комментарий", Raw: true,
 			Max:    maxComments * (64 + 4), // до 10 комментариев по 64 символа + «- » и перенос строки
@@ -128,16 +141,15 @@ var registry = []Def{
 		varPrice, varCode),
 	msg("promo.days_granted", groupPromo, "Дни по промокоду начислены",
 		"<b>Промокод активирован</b>\n\nДобавлено дней: <b>{{.days}}</b>\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}",
-		Var{Name: "days", Description: "Сколько дней дал промокод", Sample: "7", Max: 4},
-		varExpireAt),
+		Var{Name: "days", Description: "Сколько дней дал промокод", Sample: "7", Max: 4}),
 	msg("promo.paid_by_promo", groupPromo, "Тариф оплачен промокодом (цена 0)",
 		"<b>Подписка оплачена промокодом</b>\n\nТариф на <b>{{.months}}</b> активирован\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}",
-		varMonths, varExpireAt),
+		varMonths),
 
 	msg("reminder.week", groupReminder, "Подписка скоро закончится (первый порог)",
-		reminderHead+"Ваша подписка скоро закончится"+reminderTail, varExpireAt),
+		reminderHead+"Ваша подписка скоро закончится"+reminderTail),
 	msg("reminder.day", groupReminder, "Подписка заканчивается (второй порог)",
-		reminderHead+"Ваша подписка закончится в течение суток"+reminderTail, varExpireAt),
+		reminderHead+"Ваша подписка закончится в течение суток"+reminderTail),
 
 	msg("error.generic", groupError, "Ошибка", "К сожалению, произошла ошибка, обратитесь в поддержку"),
 
@@ -155,6 +167,22 @@ var registry = []Def{
 	btn("button.promo", "Промокод (в меню)", "Промокод"),
 	btn("button.have_promo", "Есть промокод (при оплате)", "Есть промокод"),
 	btn("button.remove_promo", "Убрать промокод", "Убрать промокод"),
+}
+
+// Globals — общие переменные (системные, затем свои по имени) с описанием и примером.
+func Globals(custom map[string]string) []Var {
+	out := slices.Clone(globals)
+	for _, name := range slices.Sorted(maps.Keys(custom)) {
+		out = append(out, Var{Name: name, Description: "Своя переменная из настроек", Sample: custom[name], Max: MaxCustomVar})
+	}
+	return out
+}
+
+// Reserved — имя занято общей переменной или переменной какого-либо текста: своей так назвать нельзя.
+func Reserved(name string) bool {
+	has := func(v Var) bool { return v.Name == name }
+	return slices.ContainsFunc(globals, has) ||
+		slices.ContainsFunc(registry, func(d Def) bool { return slices.ContainsFunc(d.Vars, has) })
 }
 
 // Registry — все тексты по группам: Меню, Оплата, Промокоды, Напоминания, Ошибки, Кнопки.

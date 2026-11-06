@@ -83,6 +83,48 @@ func TestValidateBotKeys(t *testing.T) {
 	}
 }
 
+func TestVars(t *testing.T) {
+	got, err := Merge(def(), map[string][]byte{"vars": []byte(`{"promoLink":"https://x.io"}`)})
+	if err != nil || got.Vars["promoLink"] != "https://x.io" {
+		t.Fatalf("%+v %v", got.Vars, err)
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	tv := got.TextVars()
+	if tv["promoLink"] != "https://x.io" || tv["phone"] != "+7 900" || tv["bank"] != "Bank" || tv["supportUrl"] != "https://t.me/sup" {
+		t.Fatalf("TextVars = %v", tv)
+	}
+	tv["promoLink"] = "mutated"
+	if got.Vars["promoLink"] == "mutated" {
+		t.Fatal("TextVars shares the map")
+	}
+	for name, vars := range map[string]map[string]string{
+		"bad name":         {"1a": "x"},
+		"cyrillic":         {"имя": "x"},
+		"dash":             {"a-b": "x"},
+		"system collision": {"name": "x"},
+		"registry var":     {"months": "x"},
+		"empty value":      {"a": " "},
+		"long value":       {"a": strings.Repeat("я", 257)},
+	} {
+		s := def()
+		s.Vars = vars
+		if err := s.Validate(); !errors.Is(err, ErrInvalidSetting) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	s := def()
+	s.Vars = map[string]string{"a_1": strings.Repeat("я", 256)}
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	s.SupportURL = "https://x.io/" + strings.Repeat("a", 256)
+	if err := s.Validate(); !errors.Is(err, ErrInvalidSetting) {
+		t.Fatalf("long url: %v", err)
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	d := def()
 	if !slices.Equal(d.Comments, []string{"На кофе", "Перекус", "Одолжил", "Вернул долг"}) {

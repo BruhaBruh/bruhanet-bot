@@ -89,3 +89,34 @@ func TestReviewMessageEscapesUsername(t *testing.T) {
 		t.Fatalf("admin message = %v", admin)
 	}
 }
+
+const nameBody = "Привет, {{.name}} ({{.telegramId}})"
+
+// {{.name}} в экране по callback: данные автора апдейта, значение экранировано.
+func TestGlobalVarInCallbackScreen(t *testing.T) {
+	e := newEnv(t)
+	e.src.SetTexts(map[string]string{"payment.tariffs": nameBody})
+	e.process(t, tgtest.Callback(userID, "pay"))
+	if got, want := e.last(t, "editMessageText").Params.Get("text"), "Привет, Test (42)"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// {{.name}} в уведомлении через outbox: адресат — юзер платежа, а не нажавший кнопку админ.
+func TestGlobalVarInOutboxMessage(t *testing.T) {
+	e := newEnv(t)
+	e.src.SetTexts(map[string]string{"payment.confirmed": nameBody + " до {{.expireAt}}"})
+	e.src.SetContact(userID, model.UserContact{FirstName: "<Юзер>"})
+	e.process(t, tgtest.Callback(userID, "buy:6"))
+	e.process(t, tgtest.Photo(userID))
+	e.process(t, confirmPress(e.pending(t, userID).ID))
+	out := e.pay.Outbox()
+	if len(out) != 1 {
+		t.Fatalf("outbox = %+v", out)
+	}
+	// срок — тот, что только что записан в панель, а не прежний из users
+	want := "Привет, &lt;Юзер&gt; (42) до " + "9 июля 2026 г. в 15:00, MSK"
+	if out[0].Text != want || out[0].ChatID != userID {
+		t.Fatalf("got %q, want %q", out[0].Text, want)
+	}
+}

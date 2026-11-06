@@ -22,6 +22,7 @@ const s = {
   advanceHours: 24,
   reminderWeekDays: 7,
   reminderDayHours: 24,
+  vars: { promoLink: 'https://x.io' },
 }
 
 beforeEach(() => {
@@ -76,6 +77,32 @@ describe('Settings', () => {
     fireEvent.click(btn('Сохранить изменения'))
     await flush()
     expect(puts()[0].body).toMatchObject({ reminderTime: '09:30', advanceLimit: 0, advanceHours: 48, reminderWeekDays: 10, reminderDayHours: 12 })
+  })
+
+  it('custom variables: edit, add, remove, duplicate refused', async () => {
+    await open()
+    expect(field('Имя переменной').value).toBe('promoLink')
+    edit(field('Значение переменной'), 'https://y.io')
+    fireEvent.click(btn('Добавить переменную'))
+    edit(screen.getAllByLabelText('Имя переменной')[1], 'promoLink')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toEqual([])
+    expect(screen.getByRole('alert').textContent).toContain('указана дважды')
+    edit(screen.getAllByLabelText('Имя переменной')[1], 'note')
+    edit(screen.getAllByLabelText('Значение переменной')[1], 'текст')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect((puts()[0].body as typeof s).vars).toEqual({ promoLink: 'https://y.io', note: 'текст' })
+  })
+
+  it('refused removal shows the keys from the server', async () => {
+    replies['PUT /api/settings'] = json(400, { error: 'invalid', message: 'переменная promoLink используется в текстах: payment.tariffs', problems: ['переменная promoLink используется в текстах: payment.tariffs'] })
+    await open()
+    fireEvent.click(btn('Удалить переменную'))
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(screen.getByRole('alert').textContent).toContain('payment.tariffs')
   })
 
   it('edited comments go into the PUT', async () => {

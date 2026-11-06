@@ -3,6 +3,7 @@ package server_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestSettingsPutThenGet(t *testing.T) {
 	if w := send(h, http.MethodPut, "/api/settings", c, goodSettings); w.Code != http.StatusNoContent {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if len(st.setRaw) != 10 {
+	if len(st.setRaw) != 11 {
 		t.Fatalf("saved keys = %v", st.setRaw)
 	}
 	w := send(h, http.MethodGet, "/api/settings", c, "")
@@ -58,6 +59,55 @@ func TestSettingsPutThenGet(t *testing.T) {
 	if out.Prices["3"] != 500 || len(out.Prices) != 2 || out.Phone != "+7 111" || out.Bank != "Сбер" ||
 		strings.Join(out.Comments, "|") != "Кофе|Чай" || out.SupportURL != "https://t.me/new" {
 		t.Fatalf("got %s", w.Body)
+	}
+}
+
+func TestSettingsVarsCRUD(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	put := func(vars string) *httptest.ResponseRecorder {
+		body := strings.TrimSuffix(goodSettings, "}") + `,"vars":` + vars + `}`
+		return send(h, http.MethodPut, "/api/settings", c, body)
+	}
+	if w := put(`{"promoLink":"https://x.io"}`); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	w := send(h, http.MethodGet, "/api/settings", c, "")
+	if !strings.Contains(w.Body.String(), `"vars":{"promoLink":"https://x.io"}`) {
+		t.Fatalf("get = %s", w.Body)
+	}
+
+	// имя системной и невалидное имя
+	for _, vars := range []string{`{"name":"x"}`, `{"months":"x"}`, `{"1a":"x"}`, `{"a":""}`} {
+		if w := put(vars); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d %s", vars, w.Code, w.Body)
+		}
+	}
+
+	// текст с переменной сохраняется; удалить её теперь нельзя, ключи названы
+	if w := send(h, http.MethodPut, "/api/texts/payment.tariffs", c, `{"body":"Цена {{.promoLink}}"}`); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	w = put(`{}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "promoLink") || !strings.Contains(w.Body.String(), "payment.tariffs") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if !strings.Contains(string(st.setRaw["vars"]), "promoLink") {
+		t.Fatalf("vars = %s", st.setRaw["vars"])
+	}
+	// значение менять можно, текст убран — удалять тоже
+	if w := put(`{"promoLink":"https://y.io"}`); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := send(h, http.MethodDelete, "/api/texts/payment.tariffs", c, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := put(`{}`); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	// без поля vars — пустой объект, а не null: null Merge считает битым
+	if w := send(h, http.MethodPut, "/api/settings", c, goodSettings); w.Code != http.StatusNoContent || string(st.setRaw["vars"]) != "{}" {
+		t.Fatalf("%d %s %s", w.Code, w.Body, st.setRaw["vars"])
 	}
 }
 

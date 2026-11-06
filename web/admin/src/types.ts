@@ -65,6 +65,7 @@ export interface TextVar {
   description: string
   sample: string
   raw: boolean
+  max: number
 }
 
 export interface TextItem {
@@ -89,6 +90,7 @@ export interface Settings {
   advanceHours: number
   reminderWeekDays: number
   reminderDayHours: number
+  vars: Record<string, string>
   usingDefaults?: boolean
   problems?: string[]
 }

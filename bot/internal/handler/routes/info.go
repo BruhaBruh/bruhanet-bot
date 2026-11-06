@@ -3,7 +3,6 @@ package routes
 import (
 	"context"
 	"errors"
-	"strconv"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/go-telegram/bot"
@@ -45,10 +44,9 @@ func (h *handlers) info(ctx context.Context, b *bot.Bot, u *models.Update) {
 		),
 		back,
 	), h.c.Text(ctx, "menu.info", map[string]string{
-		"status":     h.c.Text(ctx, statusKey(user.Status), nil),
-		"traffic":    traffic,
-		"expireAt":   formatTime(user.ExpireAt),
-		"telegramId": strconv.FormatInt(telegramID, 10),
+		"status":   h.c.Text(ctx, statusKey(user.Status), nil),
+		"traffic":  traffic,
+		"expireAt": formatTime(user.ExpireAt),
 	}))
 }
 

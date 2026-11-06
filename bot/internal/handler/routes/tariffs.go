@@ -120,8 +120,6 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 func (h *handlers) showRequisites(ctx context.Context, b *bot.Bot, u *models.Update, month, price int) {
 	set := h.c.Settings(ctx)
 	vars := tariffVars(month, price)
-	vars["phone"] = set.Phone
-	vars["bank"] = set.Bank
 	vars["comments"] = commentsHTML(set.Comments)
 	show(ctx, b, u, nil, h.c.Text(ctx, "payment.requisites", vars))
 }

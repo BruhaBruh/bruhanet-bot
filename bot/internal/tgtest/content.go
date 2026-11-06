@@ -3,6 +3,8 @@ package tgtest
 import (
 	"context"
 	"sync"
+
+	"github.com/bruhabruh/bruhanet/core/model"
 )
 
 // Source — фейковый content.Source: правки текстов и настроек «из админки».
@@ -10,6 +12,22 @@ type Source struct {
 	mu       sync.Mutex
 	texts    map[string]string
 	settings map[string][]byte
+	contacts map[int64]model.UserContact
+}
+
+func (s *Source) SetContact(id int64, c model.UserContact) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.contacts == nil {
+		s.contacts = map[int64]model.UserContact{}
+	}
+	s.contacts[id] = c
+}
+
+func (s *Source) UserContact(_ context.Context, id int64) (model.UserContact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.contacts[id], nil
 }
 
 func (s *Source) SetTexts(texts map[string]string) {

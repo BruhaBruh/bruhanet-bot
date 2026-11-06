@@ -12,14 +12,24 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
 var ErrInvalidSetting = errors.New("некорректная настройка")
 
-const fallbackReminderTime = "12:00"
+const (
+	fallbackReminderTime = "12:00"
+	maxSupportURL        = 256 // texts: Max общей переменной supportUrl
+	maxVars              = 50
+)
 
-var clockTime = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
+var (
+	clockTime = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
+	varName   = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+)
 
 type Settings struct {
 	Prices     map[int]int `json:"prices"` // месяцы → ₽
@@ -33,6 +43,8 @@ type Settings struct {
 	AdvanceHours     int    `json:"advanceHours"`     // длина аванса
 	ReminderWeekDays int    `json:"reminderWeekDays"` // порог «скоро закончится»
 	ReminderDayHours int    `json:"reminderDayHours"` // порог «в течение суток»
+
+	Vars map[string]string `json:"vars"` // свои переменные текстов: имя → значение
 }
 
 func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
@@ -48,7 +60,17 @@ func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
 		AdvanceHours:     24,
 		ReminderWeekDays: 7,
 		ReminderDayHours: 24,
+
+		Vars: map[string]string{},
 	}
+}
+
+// TextVars — общие переменные текстов, которые берутся из настроек (новая карта: снимок провайдера не трогается).
+func (s Settings) TextVars() map[string]string {
+	out := make(map[string]string, len(s.Vars)+3)
+	maps.Copy(out, s.Vars)
+	out["supportUrl"], out["phone"], out["bank"] = s.SupportURL, s.Phone, s.Bank
+	return out
 }
 
 // WithCron берёт время напоминаний по умолчанию из NOTIFICATION_CRON.
@@ -151,6 +173,14 @@ func Merge(def Settings, raw map[string][]byte) (Settings, error) {
 	apply("advanceHours", num(&def.AdvanceHours))
 	apply("reminderWeekDays", num(&def.ReminderWeekDays))
 	apply("reminderDayHours", num(&def.ReminderDayHours))
+	apply("vars", func(b []byte) error {
+		var v map[string]string
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		def.Vars = v
+		return nil
+	})
 	return def, problemsErr(p)
 }
 
@@ -184,6 +214,8 @@ func (s Settings) Validate() error {
 	}
 	if u, err := url.Parse(s.SupportURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		p = append(p, "ссылка поддержки должна начинаться с http:// или https://")
+	} else if utf8.RuneCountInString(s.SupportURL) > maxSupportURL {
+		p = append(p, fmt.Sprintf("ссылка поддержки должна быть не длиннее %d символов", maxSupportURL))
 	}
 	if !clockTime.MatchString(s.ReminderTime) {
 		p = append(p, "время напоминаний должно быть в формате ЧЧ:ММ")
@@ -199,6 +231,20 @@ func (s Settings) Validate() error {
 	}
 	if s.ReminderDayHours < 1 || s.ReminderDayHours >= s.ReminderWeekDays*24 {
 		p = append(p, "второе напоминание должно быть позже первого и не меньше чем за 1 час")
+	}
+	if len(s.Vars) > maxVars {
+		p = append(p, fmt.Sprintf("своих переменных должно быть не больше %d", maxVars))
+	}
+	for _, name := range slices.Sorted(maps.Keys(s.Vars)) {
+		switch {
+		case !varName.MatchString(name):
+			p = append(p, fmt.Sprintf("имя переменной «%s»: латиница, цифры и _, первая — буква", name))
+		case texts.Reserved(name):
+			p = append(p, fmt.Sprintf("имя переменной «%s» занято системной", name))
+		}
+		if v := s.Vars[name]; strings.TrimSpace(v) == "" || len(utf16.Encode([]rune(v))) > texts.MaxCustomVar {
+			p = append(p, fmt.Sprintf("значение переменной «%s» должно быть от 1 до %d символов", name, texts.MaxCustomVar))
+		}
 	}
 	return problemsErr(p)
 }

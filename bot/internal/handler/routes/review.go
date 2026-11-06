@@ -9,6 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/core/model"
@@ -46,14 +47,23 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 	at := h.now()
 	// клавиатура (HTTP в панель) — вне транзакции ResolvePayment; юзер в панели к review уже есть
 	var kb *models.InlineKeyboardMarkup
+	// автор апдейта — админ, а тексты и подписи адресованы юзеру платежа
+	userCtx := ctx
+	vars := map[string]string{}
 	cur, err := h.pay.PaymentByID(ctx, id)
 	if err == nil {
-		kb = h.mainKeyboard(ctx, cur.TelegramID)
+		userCtx = content.ForUser(ctx, cur.TelegramID)
+		kb = h.mainKeyboard(userCtx, cur.TelegramID)
+		expireAt := cur.PrevExpireAt
+		if approve {
+			expireAt = extendedExpire(cur.PrevExpireAt, at, cur.Month)
+		}
+		vars["expireAt"] = formatTime(expireAt) // в БД срок ещё до решения
 	}
 	// текст — до транзакции: рендер может сходить в БД за текстами
-	text := h.c.Text(ctx, "payment.declined", nil)
+	text := h.c.Text(userCtx, "payment.declined", vars)
 	if approve {
-		text = h.c.Text(ctx, "payment.confirmed", nil)
+		text = h.c.Text(userCtx, "payment.confirmed", vars)
 	}
 	var p model.Payment
 	if err == nil {

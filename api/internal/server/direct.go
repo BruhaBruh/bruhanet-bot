@@ -16,7 +16,7 @@ func (s *server) directMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in message
-	if !readMessage(w, r, &in, &in) {
+	if !s.readMessage(w, r, &in, &in) {
 		return
 	}
 	switch _, err := s.Store.UserByID(r.Context(), id); {

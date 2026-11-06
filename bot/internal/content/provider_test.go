@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/content"
+	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
@@ -24,6 +25,10 @@ type fakeSource struct {
 	// block != nil — TextOverrides сигналит в started и висит до закрытия block или отмены ctx
 	block   chan struct{}
 	started chan struct{}
+
+	contacts     map[int64]model.UserContact
+	contactErr   error
+	contactCalls int
 }
 
 func (f *fakeSource) TextOverrides(ctx context.Context) (map[string]string, error) {
@@ -48,6 +53,13 @@ func (f *fakeSource) SettingsRaw(context.Context) (map[string][]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.raw, f.err
+}
+
+func (f *fakeSource) UserContact(_ context.Context, id int64) (model.UserContact, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.contactCalls++
+	return f.contacts[id], f.contactErr
 }
 
 func (f *fakeSource) set(fn func(f *fakeSource)) {
@@ -231,4 +243,119 @@ func TestInvalidOverrideWarnsOnce(t *testing.T) {
 	if n := strings.Count(buf.String(), "invalid text override"); n != 2 {
 		t.Fatalf("warn после правки %d раз, want 2", n)
 	}
+}
+
+func TestGlobalsFromSettings(t *testing.T) {
+	src := &fakeSource{
+		texts: map[string]string{"error.generic": "{{.phone}} {{.bank}} {{.supportUrl}} {{.my}}"},
+		raw:   map[string][]byte{"vars": []byte(`{"my":"1<2"}`)},
+	}
+	p, _, ctx, _ := setup(src)
+	if got, want := p.Text(ctx, "error.generic", nil), "+7 800 Т-Банк https://t.me/support 1&lt;2"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestUserGlobals(t *testing.T) {
+	exp := time.Date(2026, 11, 2, 12, 4, 0, 0, time.UTC)
+	src := &fakeSource{
+		texts:    map[string]string{"error.generic": "{{.name}}|{{.username}}|{{.telegramId}}|{{.expireAt}}"},
+		contacts: map[int64]model.UserContact{7: {FirstName: "<Ann>", Username: "ann", ExpireAt: &exp}, 8: {Username: "8"}},
+	}
+	p, _, ctx, _ := setup(src)
+	for name, tc := range map[string]struct {
+		ctx  context.Context
+		want string
+	}{
+		"no user":     {ctx, "друг|—|—|—"},
+		"from update": {content.WithUser(ctx, 7, "Upd", ""), "Upd|—|7|2 ноября 2026 г. в 15:04, MSK"},
+		"by id":       {content.ForUser(ctx, 7), "&lt;Ann&gt;|ann|7|2 ноября 2026 г. в 15:04, MSK"},
+		"id as nick":  {content.ForUser(ctx, 8), "друг|—|8|—"},
+		"not in db":   {content.ForUser(ctx, 9), "друг|—|9|—"},
+	} {
+		if got := p.Text(tc.ctx, "error.generic", nil); got != tc.want {
+			t.Errorf("%s: got %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
+// БД — только когда текст просит то, чего нет в контексте.
+func TestUserContactLoadedOnlyWhenAsked(t *testing.T) {
+	src := &fakeSource{texts: map[string]string{"error.generic": "{{.name}}", "payment.tariffs": "{{.expireAt}}"}}
+	p, _, ctx, _ := setup(src)
+	p.Text(ctx, "payment.confirmed", nil)
+	p.Text(content.ForUser(ctx, 7), "payment.confirmed", nil) // нет переменных
+	p.Text(content.WithUser(ctx, 7, "A", ""), "error.generic", nil)
+	p.Text(content.WithUser(ctx, 7, "A", ""), "payment.tariffs", map[string]string{"expireAt": "x"})
+	if src.contactCalls != 0 {
+		t.Fatalf("calls = %d", src.contactCalls)
+	}
+	p.Text(content.WithUser(ctx, 7, "A", ""), "payment.tariffs", nil)
+	if src.contactCalls != 1 {
+		t.Fatalf("calls = %d", src.contactCalls)
+	}
+}
+
+func TestUserContactErrorDoesNotBreakText(t *testing.T) {
+	src := &fakeSource{texts: map[string]string{"error.generic": "<b>{{.name}}</b> {{.expireAt}}"}, contactErr: errors.New("db down")}
+	p, _, ctx, _ := setup(src)
+	if got := p.Text(content.ForUser(ctx, 7), "error.generic", nil); got != "<b>друг</b> —" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// Удалённая своя переменная не отменяет правку и не ломает рендер; ничего не осталось — текст по умолчанию.
+func TestUnknownVarRendersEmpty(t *testing.T) {
+	src := &fakeSource{texts: map[string]string{"error.generic": "<b>{{.gone}}</b>", "payment.tariffs": "Выбор {{.gone}}", "button.pay": "{{.gone}}"}}
+	p, _, ctx, _ := setup(src)
+	if got := p.Text(ctx, "payment.tariffs", nil); got != "Выбор " {
+		t.Fatalf("got %q", got)
+	}
+	if got := p.Text(ctx, "error.generic", nil); got != "К сожалению, произошла ошибка, обратитесь в поддержку" {
+		t.Fatalf("blank message: %q", got)
+	}
+	if got := p.Button(ctx, "button.pay"); got != "Оплатить" {
+		t.Fatalf("blank button: %q", got)
+	}
+}
+
+// Гонка снимка: тело и значения своих переменных приходят из одного поколения, данные не портятся (go test -race).
+func TestSnapshotConsistentUnderRefresh(t *testing.T) {
+	src := &fakeSource{}
+	gen := func(n string) {
+		src.set(func(f *fakeSource) {
+			f.texts = map[string]string{"error.generic": n + "={{.v" + n + "}}"}
+			f.raw = map[string][]byte{"vars": []byte(`{"v` + n + `":"` + n + `"}`)}
+		})
+	}
+	gen("a")
+	p := content.New(src, defaults, 0, nil) // ttl 0: каждый вызов обновляет
+	ctx := t.Context()
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+				gen(map[bool]string{true: "a", false: "b"}[i%2 == 0])
+			}
+		}
+	})
+	for range 4 {
+		wg.Go(func() {
+			for range 200 {
+				got := p.Text(ctx, "error.generic", nil)
+				// поколения могут разойтись только в «пусто», чужого значения быть не может
+				if got == "a=b" || got == "b=a" {
+					t.Errorf("got %q", got)
+				}
+				_ = p.Settings(ctx).TextVars()
+			}
+		})
+	}
+	time.Sleep(20 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }

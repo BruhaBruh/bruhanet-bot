@@ -56,6 +56,7 @@ func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option)
 			middleware.Recovery,
 			middleware.RequestID,
 			middleware.TelegramID,
+			middleware.TextUser,
 			// снаружи Observe: запись в БД не попадает в длительность апдейта
 			middleware.LastSeen(deps.Payments.TouchUser, middleware.LastSeenEvery, now),
 			middleware.Observe,
