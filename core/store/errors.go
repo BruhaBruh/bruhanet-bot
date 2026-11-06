@@ -17,3 +17,6 @@ var (
 	ErrPendingExists   = errors.New("user already has a pending payment")
 	ErrBlocked         = errors.New("user is blocked by admin: no free grants")
 )
+
+// ErrAlreadyRewarded — пригласивший уже получил дни за этого друга (повтор безвреден).
+var ErrAlreadyRewarded = errors.New("referrer is already rewarded")

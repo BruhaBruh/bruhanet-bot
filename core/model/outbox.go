@@ -8,7 +8,7 @@ import (
 
 // OutboxMessage — исходящее сообщение Telegram; payload-колонка хранит всё, кроме EventType.
 type OutboxMessage struct {
-	EventType string `json:"-"` // payment_result | payment_admin_closed | grant_days | reminder | broadcast | broadcast_summary | direct | text_test
+	EventType string `json:"-"` // payment_result | payment_admin_closed | grant_days | trial_started | referral_friend | referral_referrer | reminder | broadcast | broadcast_summary | direct | text_test
 
 	ChatID    int64                        `json:"chat_id"`
 	Text      string                       `json:"text,omitempty"`

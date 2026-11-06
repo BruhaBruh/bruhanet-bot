@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const botKeys = `"reminderTimes":["18:00","09:30"],"advanceLimit":2,"advanceHours":48,"reminderWeekDays":5,"reminderDayHours":12,"devicesBase":4,"devicePrice":50,"trialDays":5,"trialDevices":3`
+const botKeys = `"reminderTimes":["18:00","09:30"],"advanceLimit":2,"advanceHours":48,"reminderWeekDays":5,"reminderDayHours":12,"devicesBase":4,"devicePrice":50,"trialDays":5,"trialDevices":3,"referralDays":9`
 
 const goodSettings = `{"prices":{"1":200,"3":500},"phone":"+7 111","bank":"Сбер","comments":[" Кофе ","Чай"],"supportUrl":"https://t.me/new",` + botKeys + `}`
 
@@ -33,7 +33,7 @@ func TestSettingsPutThenGet(t *testing.T) {
 	if w := send(h, http.MethodPut, "/api/settings", c, goodSettings); w.Code != http.StatusNoContent {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if len(st.setRaw) != 15 {
+	if len(st.setRaw) != 16 {
 		t.Fatalf("saved keys = %v", st.setRaw)
 	}
 	w := send(h, http.MethodGet, "/api/settings", c, "")
@@ -53,12 +53,16 @@ func TestSettingsPutThenGet(t *testing.T) {
 		DevicePrice      int
 		TrialDays        int
 		TrialDevices     int
+		ReferralDays     int
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
 	if out.TrialDays != 5 || out.TrialDevices != 3 {
 		t.Fatalf("trial: %s", w.Body)
+	}
+	if out.ReferralDays != 9 {
+		t.Fatalf("referral: %s", w.Body)
 	}
 	if out.DevicesBase != 4 || out.DevicePrice != 50 {
 		t.Fatalf("devices: %s", w.Body)

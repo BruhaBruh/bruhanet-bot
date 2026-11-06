@@ -51,11 +51,16 @@ type Settings struct {
 	TrialDays    int `json:"trialDays"`    // дней пробного периода; 0 — пробный выключен, 0..30
 	TrialDevices int `json:"trialDevices"` // устройств на пробном периоде, 1..100
 
+	ReferralDays int `json:"referralDays"` // дней обоим за первую оплату друга; 0 — рефералка выключена, 0..365
+
 	Vars map[string]string `json:"vars"` // свои переменные текстов: имя → значение
 }
 
 // DevicesEnabled — продажа доп. устройств включена.
 func (s Settings) DevicesEnabled() bool { return s.DevicePrice > 0 }
+
+// ReferralEnabled — рефералка включена.
+func (s Settings) ReferralEnabled() bool { return s.ReferralDays > 0 }
 
 // TrialEnabled — пробный период включён.
 func (s Settings) TrialEnabled() bool { return s.TrialDays > 0 }
@@ -79,6 +84,8 @@ func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
 
 		TrialDays:    3,
 		TrialDevices: 2,
+
+		ReferralDays: 7,
 
 		Vars: map[string]string{},
 	}
@@ -223,6 +230,7 @@ func Merge(def Settings, raw map[string][]byte) (Settings, error) {
 	apply("devicePrice", num(&def.DevicePrice))
 	apply("trialDays", num(&def.TrialDays))
 	apply("trialDevices", num(&def.TrialDevices))
+	apply("referralDays", num(&def.ReferralDays))
 	apply("vars", func(b []byte) error {
 		var v map[string]string
 		if err := json.Unmarshal(b, &v); err != nil {
@@ -291,6 +299,9 @@ func (s Settings) Validate() error {
 	}
 	if s.TrialDevices < 1 || s.TrialDevices > 100 {
 		p = append(p, "устройств на пробном периоде должно быть от 1 до 100")
+	}
+	if s.ReferralDays < 0 || s.ReferralDays > 365 {
+		p = append(p, "дней за приглашённого друга должно быть от 0 до 365")
 	}
 	if len(s.Vars) > maxVars {
 		p = append(p, fmt.Sprintf("своих переменных должно быть не больше %d", maxVars))

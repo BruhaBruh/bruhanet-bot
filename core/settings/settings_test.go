@@ -105,6 +105,8 @@ func TestValidateBotKeys(t *testing.T) {
 		"trial big":      func(s *Settings) { s.TrialDays = 31 },
 		"trial dev zero": func(s *Settings) { s.TrialDevices = 0 },
 		"trial dev big":  func(s *Settings) { s.TrialDevices = 101 },
+		"referral neg":   func(s *Settings) { s.ReferralDays = -1 },
+		"referral big":   func(s *Settings) { s.ReferralDays = 366 },
 	} {
 		s := def()
 		mutate(&s)
@@ -117,6 +119,13 @@ func TestValidateBotKeys(t *testing.T) {
 	s.TrialDays = 0    // 0 = пробный выключен
 	if err := s.Validate(); err != nil || s.TrialEnabled() {
 		t.Fatal(err)
+	}
+	s.ReferralDays = 0 // 0 = рефералка выключена
+	if err := s.Validate(); err != nil || s.ReferralEnabled() {
+		t.Fatal(err)
+	}
+	if d := def(); d.ReferralDays != 7 || !d.ReferralEnabled() {
+		t.Fatalf("referral default %+v", d)
 	}
 	if d := def(); d.TrialDays != 3 || d.TrialDevices != 2 || !d.TrialEnabled() {
 		t.Fatalf("trial defaults %+v", d)

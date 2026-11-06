@@ -453,7 +453,7 @@ func (f *fakeStore) PaymentByID(_ context.Context, id int64) (model.Payment, err
 }
 
 // ResolvePayment — как core/store: ошибка apply ничего не меняет, повтор — ErrNotPending.
-func (f *fakeStore) ResolvePayment(_ context.Context, id int64, status model.PaymentStatus, at time.Time,
+func (f *fakeStore) ResolvePaymentRef(_ context.Context, id int64, status model.PaymentStatus, at time.Time, _ int,
 	apply func(model.Payment) ([]model.OutboxMessage, error),
 ) (model.Payment, error) {
 	f.mu.Lock()
@@ -475,6 +475,14 @@ func (f *fakeStore) ResolvePayment(_ context.Context, id int64, status model.Pay
 		return *p, nil
 	}
 	return model.Payment{}, store.ErrNotFound
+}
+
+func (f *fakeStore) GrantReferral(context.Context, int64, time.Time, func(int64, string, int) ([]model.OutboxMessage, error)) error {
+	return store.ErrNotFound
+}
+
+func (f *fakeStore) UserReferral(context.Context, int64) (model.UserReferral, error) {
+	return model.UserReferral{}, nil
 }
 
 func (f *fakeStore) SetUserPanel(_ context.Context, id int64, expireAt time.Time, _ string, _ time.Time) error {

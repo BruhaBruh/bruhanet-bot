@@ -175,9 +175,11 @@ func (s *server) resolvePayment(approve bool) http.HandlerFunc {
 		}
 		p, err := payflow.Resolve(ctx, s.Store, panelWrite{s}, payflow.Decision{
 			ID: id, Approve: approve, At: s.Now(), Squad: s.Squad, AdminID: s.AdminID, DevicesBase: cur.DevicesBase,
+			ReferralDays: cur.ReferralDays,
 		})
 		switch {
 		case err == nil:
+			s.payReferrer(ctx, p)
 			writeJSON(w, http.StatusOK, p)
 		case errors.Is(err, store.ErrNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found", "message": "Платёж устарел"})
@@ -189,5 +191,20 @@ func (s *server) resolvePayment(approve bool) http.HandlerFunc {
 		default:
 			internal(w, r, "resolve payment", err)
 		}
+	}
+}
+
+// payReferrer — после подтверждения первой оплаты друга выдаёт дни пригласившему отдельной транзакцией. Платёж уже
+// закоммичен: сбой не откатывает его, награда остаётся в referral_rewards, её дочинит сверка в боте.
+func (s *server) payReferrer(ctx context.Context, p model.Payment) {
+	if !p.ReferralPending {
+		return
+	}
+	switch _, err := payflow.PayReferrer(ctx, s.Store, panelWrite{s}, p.TelegramID, s.Now(), s.Squad); {
+	case err == nil, errors.Is(err, store.ErrAlreadyRewarded):
+	case errors.Is(err, store.ErrBlocked):
+		stlog.Info(ctx, "referrer bonus skipped: referrer is blocked", "reason", "blocked")
+	default:
+		stlog.Error(ctx, "failed to pay referrer", "error", err)
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/middleware"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
+	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/pkg/callback"
@@ -37,7 +38,7 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 
 	p, err := payflow.Resolve(ctx, h.pay, h.rw, payflow.Decision{
 		ID: id, Approve: approve, At: h.now(), Squad: h.cfg.Remnawave.InternalSquadId,
-		DevicesBase: h.c.Settings(ctx).DevicesBase,
+		DevicesBase: h.c.Settings(ctx).DevicesBase, ReferralDays: h.c.Settings(ctx).ReferralDays,
 	})
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -55,6 +56,7 @@ func (h *handlers) review(ctx context.Context, b *bot.Bot, u *models.Update, rou
 	}
 
 	removeKeyboard(ctx, b, msg.Chat.ID, msg.ID)
+	h.payReferrer(ctx, p)
 	months := strconv.Itoa(p.Month)
 	if approve {
 		observability.Payments.WithLabelValues("confirmed", months).Inc()
@@ -83,5 +85,20 @@ func react(ctx context.Context, b *bot.Bot, chatID int64, messageID int, emoji s
 	})
 	if err != nil {
 		stlog.Warn(ctx, "failed to set message reaction", "error", err)
+	}
+}
+
+// payReferrer — после подтверждения первой оплаты друга выдаёт дни пригласившему отдельной транзакцией. Платёж уже
+// закоммичен: сбой не откатывает его, награда остаётся в referral_rewards, её дочинит сверка (internal/referral).
+func (h *handlers) payReferrer(ctx context.Context, p model.Payment) {
+	if !p.ReferralPending {
+		return
+	}
+	switch _, err := payflow.PayReferrer(ctx, h.pay, h.rw, p.TelegramID, h.now(), h.cfg.Remnawave.InternalSquadId); {
+	case err == nil, errors.Is(err, store.ErrAlreadyRewarded):
+	case errors.Is(err, store.ErrBlocked):
+		stlog.Info(ctx, "referrer bonus skipped: referrer is blocked", "reason", "blocked")
+	default:
+		stlog.Error(ctx, "failed to pay referrer", "error", err)
 	}
 }

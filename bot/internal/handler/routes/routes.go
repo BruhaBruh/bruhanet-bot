@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"iter"
+	"sync"
 	"time"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
@@ -48,7 +49,14 @@ type Payments interface {
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
 		apply func(model.Payment) ([]model.OutboxMessage, error)) (model.Payment, error)
+	// ResolvePaymentRef — ResolvePayment с рефералкой (payflow.Store); payByPromo зовёт ResolvePayment без неё.
+	ResolvePaymentRef(ctx context.Context, id int64, status model.PaymentStatus, at time.Time, referralDays int,
+		apply func(model.Payment) ([]model.OutboxMessage, error)) (model.Payment, error)
 	CancelPayment(ctx context.Context, id int64) error
+	// Рефералка: пригласивший пишется один раз при первом создании юзера; дни пригласившему — payflow.ReferralStore.
+	RecordReferral(ctx context.Context, u model.UserSeen, referrerID int64) (bool, error)
+	GrantReferral(ctx context.Context, referredID int64, now time.Time,
+		apply func(referrerID int64, username string, days int) ([]model.OutboxMessage, error)) error
 	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
 	TouchUser(ctx context.Context, u model.UserSeen) error
 	SetUserPanel(ctx context.Context, id int64, expireAt time.Time, status string, at time.Time) error
@@ -86,6 +94,10 @@ type handlers struct {
 	fsm fsm.Storage
 	c   *content.Provider
 	now func() time.Time
+
+	// me — username бота из getMe (botUsername).
+	meMu sync.Mutex
+	me   string
 }
 
 // Register — единственное место регистрации роутов бота.
@@ -98,6 +110,7 @@ func Register(r *router.Router, d Deps) {
 	r.Callback(routeMenu, h.start)
 	r.Callback(routeInfo, h.info)
 	r.Callback(routePay, h.tariffs)
+	r.Callback(routeReferral, h.referral)
 	r.Callback(routeTrial, h.trial)
 	r.Callback(routeTrialYes, h.trialYes)
 	r.Callback(priceRoute.Name(), h.price)

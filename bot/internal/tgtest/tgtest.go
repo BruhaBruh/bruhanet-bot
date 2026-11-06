@@ -164,6 +164,8 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	switch method {
+	case "getMe":
+		_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Bot","username":"bruhanet_test_bot"}}`)
 	case "answerCallbackQuery", "deleteMessage", "setMessageReaction":
 		_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
 	default:

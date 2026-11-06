@@ -21,7 +21,7 @@ type fakeStore struct {
 	out    []model.OutboxMessage
 }
 
-func (f *fakeStore) ResolvePayment(_ context.Context, _ int64, status model.PaymentStatus, _ time.Time,
+func (f *fakeStore) ResolvePaymentRef(_ context.Context, _ int64, status model.PaymentStatus, _ time.Time, _ int,
 	apply func(model.Payment) ([]model.OutboxMessage, error),
 ) (model.Payment, error) {
 	msgs, err := apply(f.p)

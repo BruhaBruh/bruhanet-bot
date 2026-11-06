@@ -24,6 +24,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/routes"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
+	"github.com/bruhabruh/bruhanet/bot/internal/referral"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
 	"github.com/bruhabruh/bruhanet/core/panelsync"
 	"github.com/bruhabruh/bruhanet/core/settings"
@@ -38,6 +39,8 @@ import (
 const (
 	contentTTL    = 10 * time.Second
 	panelSyncCron = "*/15 * * * *"
+	// referralCron — сверка наград рефералки, не выданных сразу.
+	referralCron = "*/5 * * * *"
 )
 
 func New(logger *slog.Logger, config *config.Config) (app.App, error) {
@@ -149,6 +152,13 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	if err = remJob.reschedule(cnt.Settings(context.Background()).SortedReminderTimes()); err != nil {
 		cancelRun()
 		return nil, errors.Join(errors.New("failed to schedule reminders"), err)
+	}
+
+	// Сверка рефералки: награды, которые не удалось выдать сразу; SkipIfStillRunning не даёт проходам наложиться.
+	refRec := referral.New(st, routes.WriteThrough(rwObs, st), config.Remnawave.InternalSquadId, nil)
+	if _, err = c.AddFunc(referralCron, func() { refRec.Run(stlog.Wrap(runCtx, logger, "component", "referral")) }); err != nil {
+		cancelRun()
+		return nil, errors.Join(errors.New("failed to schedule referral reconcile"), err)
 	}
 
 	if _, err = c.AddFunc(panelSyncCron, func() { syncPanel(stlog.Wrap(runCtx, logger, "component", "panel_sync"), rwObs, st) }); err != nil {

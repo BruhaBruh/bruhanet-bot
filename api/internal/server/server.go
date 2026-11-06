@@ -34,8 +34,12 @@ type Store interface {
 	UserStats(ctx context.Context, telegramID, excludeID int64) (model.UserStats, error)
 	PaymentsByUser(ctx context.Context, id int64) ([]model.Payment, error)
 	PaymentByID(ctx context.Context, id int64) (model.Payment, error)
-	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
+	ResolvePaymentRef(ctx context.Context, id int64, status model.PaymentStatus, at time.Time, referralDays int,
 		apply func(model.Payment) ([]model.OutboxMessage, error)) (model.Payment, error)
+	// Рефералка: дни пригласившему (payflow.ReferralStore) и строки карточки юзера.
+	GrantReferral(ctx context.Context, referredID int64, now time.Time,
+		apply func(referrerID int64, username string, days int) ([]model.OutboxMessage, error)) error
+	UserReferral(ctx context.Context, id int64) (model.UserReferral, error)
 	SetUserPanel(ctx context.Context, id int64, expireAt time.Time, status string, at time.Time) error
 	ListPayments(ctx context.Context, f model.PaymentFilter) ([]model.Payment, int, error)
 	Revenue(ctx context.Context, from, to time.Time) (int, error)

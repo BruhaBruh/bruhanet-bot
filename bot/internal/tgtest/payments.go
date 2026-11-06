@@ -32,10 +32,20 @@ type Payments struct {
 	grants         []Grant
 	failTrialOnce  bool
 
-	// Отдельный мьютекс: панель зовут из apply под p.mu.
-	userMu  sync.Mutex
-	touched []model.UserSeen
-	panel   []PanelWrite
+	// Отдельный мьютекс: панель зовут из apply под p.mu. Под ним же рефералка: users (кто уже есть), referred_by, награды.
+	userMu     sync.Mutex
+	touched    []model.UserSeen
+	panel      []PanelWrite
+	known      map[int64]bool
+	referredBy map[int64]int64
+	rewards    map[int64]*Reward
+}
+
+// Reward — строка referral_rewards.
+type Reward struct {
+	Referrer, Days   int64
+	FriendRewarded   bool
+	ReferrerRewarded bool
 }
 
 // Grant — строка grants пробного периода (источник trial).
@@ -70,6 +80,135 @@ func (p *Payments) TouchUser(_ context.Context, u model.UserSeen) error {
 	p.userMu.Lock()
 	defer p.userMu.Unlock()
 	p.touched = append(p.touched, u)
+	p.markKnown(u.TelegramID)
+	return nil
+}
+
+func (p *Payments) markKnown(id int64) {
+	if p.known == nil {
+		p.known = map[int64]bool{}
+	}
+	p.known[id] = true
+}
+
+// SeedUser — юзер уже есть в users (как после первого касания).
+func (p *Payments) SeedUser(id int64) {
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	p.markKnown(id)
+}
+
+// RecordReferral — как store: запись только для нового юзера, пригласивший должен быть и не быть самим юзером.
+func (p *Payments) RecordReferral(_ context.Context, u model.UserSeen, referrerID int64) (bool, error) {
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	if p.known[u.TelegramID] || !p.known[referrerID] || referrerID == u.TelegramID {
+		return false, nil
+	}
+	p.markKnown(u.TelegramID)
+	if p.referredBy == nil {
+		p.referredBy = map[int64]int64{}
+	}
+	p.referredBy[u.TelegramID] = referrerID
+	return true, nil
+}
+
+// ReferredBy — кто пригласил юзера.
+func (p *Payments) ReferredBy(id int64) (int64, bool) {
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	r, ok := p.referredBy[id]
+	return r, ok
+}
+
+// Rewards — награды рефералки по приглашённому.
+func (p *Payments) Rewards() map[int64]Reward {
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	out := map[int64]Reward{}
+	for k, v := range p.rewards {
+		out[k] = *v
+	}
+	return out
+}
+
+// ResolvePaymentRef — ResolvePayment с рефералкой по правилам store.ResolvePaymentRef (в упрощённом виде, без параллельности).
+func (p *Payments) ResolvePaymentRef(
+	ctx context.Context, id int64, status model.PaymentStatus, at time.Time, days int, apply func(model.Payment) ([]model.OutboxMessage, error),
+) (model.Payment, error) {
+	if days <= 0 || status != model.PaymentConfirmed {
+		return p.ResolvePayment(ctx, id, status, at, apply)
+	}
+	var referrer int64
+	reward, friendDays := false, false
+	res, err := p.ResolvePayment(ctx, id, status, at, func(x model.Payment) ([]model.OutboxMessage, error) {
+		p.userMu.Lock()
+		r, ok := p.referredBy[x.TelegramID]
+		_, done := p.rewards[x.TelegramID]
+		p.userMu.Unlock()
+		if ok && !done && x.Kind == model.KindTariff && x.Price > 0 &&
+			!slices.ContainsFunc(p.payments, func(o model.Payment) bool {
+				return o.TelegramID == x.TelegramID && o.Status == model.PaymentConfirmed && o.Kind == model.KindTariff && o.Price > 0 && o.ID != x.ID
+			}) {
+			referrer, reward = r, true
+			if friendDays = !p.blocked[x.TelegramID]; friendDays {
+				x.ReferralFriendDays = days
+			}
+		}
+		return apply(x)
+	})
+	if err != nil || !reward {
+		return res, err
+	}
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	if p.rewards == nil {
+		p.rewards = map[int64]*Reward{}
+	}
+	p.rewards[res.TelegramID] = &Reward{Referrer: referrer, Days: int64(days), FriendRewarded: friendDays}
+	if friendDays {
+		p.grants = append(p.grants, Grant{TelegramID: res.TelegramID, Days: days, Source: "referral"})
+	}
+	res.ReferralPending = true
+	return res, nil
+}
+
+func (p *Payments) isBlocked(id int64) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.blocked[id]
+}
+
+// GrantReferral — как store.GrantReferral; apply зовётся без мьютексов (из него идёт запись в users через панель).
+func (p *Payments) GrantReferral(
+	_ context.Context, referredID int64, now time.Time, apply func(int64, string, int) ([]model.OutboxMessage, error),
+) error {
+	p.userMu.Lock()
+	r, ok := p.rewards[referredID]
+	p.userMu.Unlock()
+	switch {
+	case !ok:
+		return store.ErrNotFound
+	case r.ReferrerRewarded:
+		return store.ErrAlreadyRewarded
+	case p.isBlocked(r.Referrer):
+		return store.ErrBlocked
+	}
+	msgs, err := apply(r.Referrer, "referrer", int(r.Days))
+	if err != nil {
+		return err
+	}
+	p.mu.Lock()
+	if i := p.pendingIdx(r.Referrer); i >= 0 {
+		x := &p.payments[i]
+		x.PrevExpireAt = later(x.PrevExpireAt, now).Add(time.Duration(r.Days) * 24 * time.Hour)
+	}
+	p.outbox = append(p.outbox, msgs...)
+	p.mu.Unlock()
+	p.userMu.Lock()
+	defer p.userMu.Unlock()
+	r.ReferrerRewarded = true
+	p.grants = append(p.grants, Grant{TelegramID: r.Referrer, Days: int(r.Days), Source: "referral"})
 	return nil
 }
 

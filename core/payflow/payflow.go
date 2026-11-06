@@ -32,7 +32,7 @@ type Panel interface {
 
 // Store — core/store: ошибки store.ErrNotFound и store.ErrNotPending проходят как есть.
 type Store interface {
-	ResolvePayment(ctx context.Context, id int64, status model.PaymentStatus, at time.Time,
+	ResolvePaymentRef(ctx context.Context, id int64, status model.PaymentStatus, at time.Time, referralDays int,
 		apply func(model.Payment) ([]model.OutboxMessage, error)) (model.Payment, error)
 }
 
@@ -46,6 +46,9 @@ type Decision struct {
 	AdminID int64
 	// DevicesBase — устройств в базе (settings.DevicesBase): лимит в панели = база + доп. устройства.
 	DevicesBase int
+	// ReferralDays — дни рефералки (settings.ReferralDays); 0 — рефералка выключена. Бонус другу складывается с этим же
+	// подтверждением: одна запись срока в панель. Пригласивший получает свои дни отдельно (PayReferrer, если p.ReferralPending).
+	ReferralDays int
 }
 
 // ExtendedExpire — срок после подтверждения: от прежнего срока или от at, если он в прошлом.
@@ -84,7 +87,7 @@ func Resolve(ctx context.Context, st Store, panel Panel, d Decision) (model.Paym
 	if d.Approve {
 		status, key = model.PaymentConfirmed, "payment.confirmed"
 	}
-	return st.ResolvePayment(ctx, d.ID, status, d.At, func(p model.Payment) ([]model.OutboxMessage, error) {
+	return st.ResolvePaymentRef(ctx, d.ID, status, d.At, d.ReferralDays, func(p model.Payment) ([]model.OutboxMessage, error) {
 		var msgs []model.OutboxMessage
 		if p.Kind == model.KindDevices {
 			if err := ApplyDeviceLimit(ctx, panel, p, d.Approve, d.DevicesBase); err != nil {
@@ -101,7 +104,7 @@ func Resolve(ctx context.Context, st Store, panel Panel, d Decision) (model.Paym
 		}
 		expireAt := p.PrevExpireAt
 		if d.Approve {
-			expireAt = ExtendedExpire(p.PrevExpireAt, d.At, p.Month)
+			expireAt = ExtendedExpire(p.PrevExpireAt, d.At, p.Month).Add(time.Duration(p.ReferralFriendDays) * 24 * time.Hour)
 		}
 		if _, err := panel.UpdateUser(ctx, p.TelegramID, p.Username, expireAt, d.Squad); err != nil {
 			return nil, errors.Join(ErrPanel, err)
@@ -110,6 +113,12 @@ func Resolve(ctx context.Context, st Store, panel Panel, d Decision) (model.Paym
 			return nil, errors.Join(ErrPanel, err)
 		}
 		msgs = []model.OutboxMessage{{EventType: EventResult, ChatID: p.TelegramID, TextKey: key, ExpireAt: expireAt, ParseMode: "HTML"}}
+		if p.ReferralFriendDays > 0 {
+			msgs = append(msgs, model.OutboxMessage{
+				EventType: EventReferralFriend, ChatID: p.TelegramID, TextKey: "referral.friend_bonus",
+				Days: p.ReferralFriendDays, ExpireAt: expireAt, ParseMode: "HTML",
+			})
+		}
 		return withAdminClosed(msgs, p, d), nil
 	})
 }
@@ -167,39 +176,78 @@ func GrantDays(ctx context.Context, st GrantStore, panel GrantPanel, r GrantRequ
 	if r.Days < 1 || r.Days > MaxGrantDays {
 		return time.Time{}, ErrGrantDays
 	}
-	var oldExpire, newExpire time.Time
+	var g termGrant
 	err := st.GrantDays(ctx, r.TelegramID, r.AdminID, r.Days, r.At, func() ([]model.OutboxMessage, error) {
-		u, err := panel.CreateUser(ctx, r.TelegramID, r.Username, r.Squad)
-		if err != nil {
-			return nil, errors.Join(ErrPanel, err)
-		}
-		next := u.ExpireAt
-		if r.At.After(next) {
-			next = r.At
-		}
-		next = next.Add(time.Duration(r.Days) * 24 * time.Hour)
-		if _, err = panel.UpdateUser(ctx, r.TelegramID, r.Username, next, r.Squad); err != nil {
-			return nil, errors.Join(ErrPanel, err)
-		}
-		oldExpire, newExpire = u.ExpireAt, next
-		return []model.OutboxMessage{{
-			EventType: EventGrant, ChatID: r.TelegramID, TextKey: "grant.days", Days: r.Days, ExpireAt: next, ParseMode: "HTML",
-		}}, nil
+		return g.apply(ctx, panel, r, EventGrant, "grant.days")
 	})
-	if err != nil && !newExpire.IsZero() {
-		// ponytail: GetUser→UpdateUser не атомарен; окно — миллисекунды после редкого сбоя коммита.
-		cctx := context.WithoutCancel(ctx)
-		cur, gerr := panel.GetUser(cctx, r.TelegramID)
-		switch {
-		case gerr != nil:
-			err = errors.Join(err, ErrNotRestored, gerr)
-		case cur.ExpireAt.Equal(newExpire):
-			if _, uerr := panel.UpdateUser(cctx, r.TelegramID, r.Username, oldExpire, r.Squad); uerr != nil {
-				err = errors.Join(err, ErrNotRestored, uerr)
-			}
+	return g.newExpire, g.restore(ctx, panel, r, err)
+}
+
+// termGrant — продление срока на дни в панели внутри транзакции выдачи и его откат при сбое коммита.
+type termGrant struct{ oldExpire, newExpire time.Time }
+
+func (g *termGrant) apply(ctx context.Context, panel GrantPanel, r GrantRequest, event, key string) ([]model.OutboxMessage, error) {
+	u, err := panel.CreateUser(ctx, r.TelegramID, r.Username, r.Squad)
+	if err != nil {
+		return nil, errors.Join(ErrPanel, err)
+	}
+	next := u.ExpireAt
+	if r.At.After(next) {
+		next = r.At
+	}
+	next = next.Add(time.Duration(r.Days) * 24 * time.Hour)
+	if _, err = panel.UpdateUser(ctx, r.TelegramID, r.Username, next, r.Squad); err != nil {
+		return nil, errors.Join(ErrPanel, err)
+	}
+	g.oldExpire, g.newExpire = u.ExpireAt, next
+	return []model.OutboxMessage{{
+		EventType: event, ChatID: r.TelegramID, TextKey: key, Days: r.Days, ExpireAt: next, ParseMode: "HTML",
+	}}, nil
+}
+
+// restore после сбоя транзакции возвращает прежний срок, если панель уже продлена и срок в ней всё ещё наш.
+func (g *termGrant) restore(ctx context.Context, panel GrantPanel, r GrantRequest, err error) error {
+	if err == nil || g.newExpire.IsZero() {
+		return err
+	}
+	// ponytail: GetUser→UpdateUser не атомарен; окно — миллисекунды после редкого сбоя коммита.
+	cctx := context.WithoutCancel(ctx)
+	cur, gerr := panel.GetUser(cctx, r.TelegramID)
+	switch {
+	case gerr != nil:
+		err = errors.Join(err, ErrNotRestored, gerr)
+	case cur.ExpireAt.Equal(g.newExpire):
+		if _, uerr := panel.UpdateUser(cctx, r.TelegramID, r.Username, g.oldExpire, r.Squad); uerr != nil {
+			err = errors.Join(err, ErrNotRestored, uerr)
 		}
 	}
-	return newExpire, err
+	return err
+}
+
+// Уведомления рефералки: другу (в подтверждении первой оплаты) и пригласившему (отдельной транзакцией позже).
+const (
+	EventReferralFriend   = "referral_friend"
+	EventReferralReferrer = "referral_referrer"
+)
+
+// ReferralStore — core/store: ошибки ErrNotFound, ErrBlocked, ErrAlreadyRewarded проходят как есть.
+type ReferralStore interface {
+	GrantReferral(ctx context.Context, referredID int64, now time.Time,
+		apply func(referrerID int64, username string, days int) ([]model.OutboxMessage, error)) error
+}
+
+// PayReferrer выдаёт пригласившему дни за друга referredID: абсолютная дата от later(срок в панели, at), панель внутри
+// транзакции store.GrantReferral (под замком срока пригласившего), уведомление в outbox. Идемпотентен: если дни уже
+// выданы — store.ErrAlreadyRewarded (не сбой); заблокированному — store.ErrBlocked (награда остаётся до снятия блокировки).
+// Ошибка панели откатывает транзакцию (ErrPanel), повтор считает ту же дату; после сбоя коммита срок откатывается как у GrantDays.
+func PayReferrer(ctx context.Context, st ReferralStore, panel GrantPanel, referredID int64, at time.Time, squad uuid.UUID) (time.Time, error) {
+	var g termGrant
+	var r GrantRequest
+	err := st.GrantReferral(ctx, referredID, at, func(referrerID int64, username string, days int) ([]model.OutboxMessage, error) {
+		r = GrantRequest{TelegramID: referrerID, Username: username, Days: days, At: at, Squad: squad}
+		return g.apply(ctx, panel, r, EventReferralReferrer, "referral.referrer_bonus")
+	})
+	return g.newExpire, g.restore(ctx, panel, r, err)
 }
 
 // EventTrial — уведомление юзеру о выданном пробном периоде.

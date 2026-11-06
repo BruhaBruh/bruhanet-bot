@@ -52,6 +52,7 @@ const (
 	groupPayment  = "Оплата"
 	groupPromo    = "Промокоды"
 	groupTrial    = "Пробный период"
+	groupReferral = "Рефералка"
 	groupReminder = "Напоминания"
 	groupError    = "Ошибки"
 	groupButton   = "Кнопки"
@@ -80,6 +81,8 @@ var (
 	varTrialDays    = Var{Name: "days", Description: "Дней пробного периода", Sample: "3", Max: 4}
 	varTrialDevices = Var{Name: "devices", Description: "Устройств на пробном периоде", Sample: "2", Max: 4}
 
+	varReferralDays = Var{Name: "days", Description: "Дней каждому за первую оплату друга (из настроек)", Sample: "7", Max: 4}
+
 	varDevicePrice = Var{Name: "devicePrice", Description: "Цена одного доп. устройства в месяц, ₽", Sample: "50", Max: 8}
 	varDevCount    = Var{Name: "count", Description: "Сколько устройств добавляется, с единицей: «2 устройства»", Sample: "2 устройства", Max: 16}
 	varDevTotal    = Var{Name: "price", Description: "Итоговая цена в рублях", Sample: "500", Max: 8}
@@ -104,6 +107,7 @@ const (
 	promoHead    = "<b>Промокод</b>\n\n"
 	devicesHead  = "<b>Устройства</b>\n\n"
 	trialHead    = "<b>Пробный период</b>\n\n"
+	referralHead = "<b>Пригласить друга</b>\n\n"
 	infoHead     = "<b>Информация о подписке</b>\n\n<b>Статус</b>\n"
 )
 
@@ -140,7 +144,7 @@ func (d Def) on(route, style, when string) Def {
 
 // mainButtons — главная клавиатура (routes.mainKeyboard): набор зависит от того, есть ли юзер в панели.
 var mainButtons = []string{
-	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.trial", "button.service_down",
+	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.trial", "button.referral", "button.service_down",
 }
 
 const reasonPromo = "В ответ на присланный промокод: "
@@ -297,6 +301,23 @@ var registry = []Def{
 	msg("trial.unavailable", groupTrial, "Пробный период недоступен", trialHead+"Пробный период сейчас недоступен").
 		shown("Когда юзер нажал «Пробный период», но получить его уже нельзя (причину не раскрываем)", "button.back"),
 
+	msg("referral.menu", groupReferral, "Пригласить друга",
+		referralHead+"Отправьте другу вашу ссылку. Когда он впервые оплатит подписку, вам обоим добавится по <b>{{.days}}</b> дн.\n\n"+
+			"Ваша ссылка:\n<code>{{.link}}</code>",
+		varReferralDays,
+		Var{Name: "link", Description: "Личная ссылка юзера для приглашения", Sample: "https://t.me/bot?start=ref_123456789", Max: 100}).
+		shown("По кнопке «Пригласить друга» в главном меню, пока дни рефералки в настройках больше нуля", "button.copy_link", "button.back"),
+	msg("referral.friend_bonus", groupReferral, "Бонус другу за первую оплату",
+		"<b>Бонус за первую оплату</b>\n\nВы пришли по приглашению, поэтому к подписке добавлено дней: <b>{{.days}}</b>\n\n"+
+			"<b>Дата окончания подписки</b>\n{{.expireAt}}",
+		varReferralDays).
+		shown("Отдельным сообщением после подтверждения первой оплаты приглашённого (не заблокированного админом), через очередь уведомлений", mainButtons...),
+	msg("referral.referrer_bonus", groupReferral, "Бонус пригласившему",
+		"<b>Друг оплатил подписку</b>\n\nПриглашённый вами друг оплатил подписку. Вам добавлено дней: <b>{{.days}}</b>\n\n"+
+			"<b>Дата окончания подписки</b>\n{{.expireAt}}",
+		varReferralDays).
+		shown("Пригласившему, когда его дни за первую оплату друга выданы (сразу или позже, если он был заблокирован), через очередь уведомлений", mainButtons...),
+
 	msg("reminder.week", groupReminder, "Подписка скоро закончится (первый порог)",
 		reminderHead+"Ваша подписка скоро закончится"+reminderTail).
 		shown("Раз в день, когда до конца подписки осталось меньше первого порога из настроек; один раз на дату окончания", "button.renew", "button.subscription"),
@@ -324,6 +345,8 @@ var registry = []Def{
 		on("dev", StyleDefault, "Экран «Устройства», по кнопке на количество"),
 	btn("button.drop_devices", "Без доп. устройств", "Без доп. устройств").on("buyd", StyleDefault, "Подтверждение тарифа, если у юзера есть доп. устройства"),
 	btn("button.trial", "Пробный период (в меню)", "Пробный период").on("trial", StyleDefault, "Главное меню, пока пробный включён в настройках и юзер на него имеет право"),
+	btn("button.referral", "Пригласить друга (в меню)", "Пригласить друга").on("referral", StyleDefault, "Главное меню, пока дни рефералки в настройках больше нуля"),
+	btn("button.copy_link", "Скопировать ссылку приглашения", "Скопировать ссылку").on("copy:ссылка приглашения", StyleSuccess, "Экран «Пригласить друга»"),
 	btn("button.have_promo", "Есть промокод (при оплате)", "Есть промокод").on("have_promo", StyleDefault, "Подтверждение тарифа"),
 	btn("button.remove_promo", "Убрать промокод", "Убрать промокод").on("price", StyleDefault, "Подтверждение тарифа со скидкой"),
 }

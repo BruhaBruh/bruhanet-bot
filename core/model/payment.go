@@ -45,6 +45,12 @@ type Payment struct {
 	// TrialConvert — юзер на неоплаченном пробном (лимит устройств в панели — пробный): подтверждение подписки обязано
 	// записать лимит base+extra. Считается под блокировкой в ResolvePayment; только в apply.
 	TrialConvert bool `json:"-"`
+	// ReferralFriendDays — бонус рефералки другу в этом подтверждении (дни поверх ExtendedExpire): первое оплаченное
+	// подтверждение приглашённого, друг не заблокирован. Считается под блокировкой в ResolvePayment; только в apply.
+	ReferralFriendDays int `json:"-"`
+	// ReferralPending — подтверждение создало награду рефералки: пригласивший ещё ждёт свои дни (payflow.PayReferrer).
+	// Выставляется после транзакции ResolvePayment.
+	ReferralPending bool `json:"-"`
 	// PhotoFileID — file_id чека; наружу не отдаётся, панель смотрит HasPhoto и GET /api/payments/{id}/photo.
 	PhotoFileID string `json:"-"`
 	HasPhoto    bool   `json:"hasPhoto"`
@@ -77,4 +83,13 @@ func (p Payment) ExtraAfter(cur int) int {
 		return cur + p.ExtraDevices
 	}
 	return p.ExtraDevices
+}
+
+// UserReferral — рефералка юзера: Invited — сколько юзеров пришло по его ссылке, Paid — сколько из них оплатили
+// (строки referral_rewards), ReferredBy — кто пригласил его самого (nil — никто).
+type UserReferral struct {
+	Invited            int    `json:"invited"`
+	Paid               int    `json:"paid"`
+	ReferredBy         *int64 `json:"referredBy"`
+	ReferredByUsername string `json:"referredByUsername"`
 }

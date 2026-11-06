@@ -19,6 +19,9 @@ type writeThrough struct {
 	pay Payments
 }
 
+// WriteThrough оборачивает панель так же, как хендлеры: срок и статус сразу пишутся в users (для сверки рефералки).
+func WriteThrough(rw Remnawave, pay Payments) Remnawave { return writeThrough{rw, pay} }
+
 func (w writeThrough) CreateUser(ctx context.Context, id int64, username string, squad uuid.UUID) (*api.UserItemInfo, error) {
 	u, err := w.Remnawave.CreateUser(ctx, id, username, squad)
 	if err == nil {

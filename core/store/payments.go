@@ -201,6 +201,19 @@ func userStats(ctx context.Context, q rowQuerier, telegramID, excludeID int64) (
 func (s *Store) ResolvePayment(
 	ctx context.Context, id int64, status model.PaymentStatus, at time.Time, apply func(p model.Payment) ([]model.OutboxMessage, error),
 ) (model.Payment, error) {
+	return s.ResolvePaymentRef(ctx, id, status, at, 0, apply)
+}
+
+// ResolvePaymentRef — ResolvePayment с рефералкой: referralDays > 0 включает награду за первую оплату приглашённого.
+// Условие (всё под блокировкой юзера, строки юзера и платежа): подтверждение подписки (kind tariff) с ценой > 0 —
+// платёж промокодом на 0 ₽ и докупка устройств не считаются; у юзера есть referred_by; награды за него ещё нет и
+// раньше не было другого подтверждённого оплаченного тарифа. Тогда в apply приходит p.ReferralFriendDays (дни другу;
+// 0, если друг заблокирован админом), а после apply в той же транзакции пишется строка referral_rewards и, если друг
+// получил дни, строка grants (source referral). Дни пригласившему выдаёт payflow.PayReferrer отдельной транзакцией.
+func (s *Store) ResolvePaymentRef(
+	ctx context.Context, id int64, status model.PaymentStatus, at time.Time, referralDays int,
+	apply func(p model.Payment) ([]model.OutboxMessage, error),
+) (model.Payment, error) {
 	if status != model.PaymentConfirmed && status != model.PaymentDeclined {
 		return model.Payment{}, errors.Join(ErrInvalidStatus, fmt.Errorf("status %q", status))
 	}
@@ -218,9 +231,11 @@ func (s *Store) ResolvePayment(
 			return err
 		}
 		var curExtra int
-		var trialConvert bool
-		if err := tx.QueryRow(ctx, `SELECT extra_devices, `+trialOpen("users")+` FROM users WHERE telegram_id = $1 FOR UPDATE`, owner).
-			Scan(&curExtra, &trialConvert); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		var trialConvert, ownerBlocked bool
+		var referrer *int64
+		if err := tx.QueryRow(ctx, `SELECT extra_devices, `+trialOpen("users")+`, referred_by, blocked_at IS NOT NULL
+			FROM users WHERE telegram_id = $1 FOR UPDATE`, owner).
+			Scan(&curExtra, &trialConvert, &referrer, &ownerBlocked); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 		var err error
@@ -232,6 +247,19 @@ func (s *Store) ResolvePayment(
 			return ErrNotPending
 		}
 		p.UserExtra, p.TrialConvert = curExtra, trialConvert
+		reward := false
+		if status == model.PaymentConfirmed && referralDays > 0 && referrer != nil && p.Kind == model.KindTariff && p.Price > 0 {
+			var done bool
+			if err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM referral_rewards WHERE referred_id = $1)
+				OR EXISTS (SELECT 1 FROM payments WHERE telegram_id = $1 AND status = 'confirmed' AND kind = 'tariff' AND price > 0 AND id <> $2)`,
+				owner, id).Scan(&done); err != nil {
+				return err
+			}
+			reward = !done
+			if reward && !ownerBlocked {
+				p.ReferralFriendDays = referralDays
+			}
+		}
 		// Активация — до apply: повтор бесплатного платежа отклоняется раньше, чем тронута панель.
 		if status == model.PaymentConfirmed && p.PromoID != nil {
 			if err = activatePaymentPromo(ctx, tx, p, at); err != nil {
@@ -254,15 +282,40 @@ func (s *Store) ResolvePayment(
 				}
 			}
 		}
+		if reward {
+			if err = insertReward(ctx, tx, p, *referrer, referralDays, at); err != nil {
+				return err
+			}
+		}
 		for _, m := range msgs {
 			if err = enqueue(ctx, tx, m); err != nil {
 				return err
 			}
 		}
 		p.Status, p.ResolvedAt = status, &at
+		p.ReferralPending = reward
 		return nil
 	})
 	return p, err
+}
+
+// insertReward пишет награду за приглашённого (PRIMARY KEY — не больше одной за всё время) и, если друг получил дни
+// в этом подтверждении, его выдачу в grants.
+func insertReward(ctx context.Context, tx pgx.Tx, p model.Payment, referrer int64, days int, at time.Time) error {
+	var friendAt *time.Time
+	if p.ReferralFriendDays > 0 {
+		friendAt = &at
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO referral_rewards (referred_id, referrer_id, days, payment_id, referred_rewarded_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`, p.TelegramID, referrer, days, p.ID, friendAt, at); err != nil {
+		return err
+	}
+	if p.ReferralFriendDays > 0 {
+		_, err := tx.Exec(ctx, `INSERT INTO grants (telegram_id, days, created_at, source) VALUES ($1, $2, $3, 'referral')`,
+			p.TelegramID, p.ReferralFriendDays, at)
+		return err
+	}
+	return nil
 }
 
 // activatePaymentPromo засчитывает промокод подтверждённого платежа. Оплаченный (цена > 0) подтверждает
