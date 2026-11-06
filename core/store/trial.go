@@ -28,7 +28,7 @@ func trialAllowed(ctx context.Context, q rowQuerier, telegramID int64, advanceLi
 	err := q.QueryRow(ctx, `SELECT
 			coalesce((SELECT blocked_at IS NOT NULL FROM users WHERE telegram_id = $1), false),
 			coalesce((SELECT trial_used_at IS NOT NULL FROM users WHERE telegram_id = $1), false),
-			EXISTS (SELECT 1 FROM payments WHERE telegram_id = $1 AND status = 'confirmed')`, telegramID).Scan(&blocked, &used, &paid)
+			EXISTS (SELECT 1 FROM payments WHERE telegram_id = $1 AND status = 'confirmed' AND kind <> 'gift')`, telegramID).Scan(&blocked, &used, &paid)
 	if err != nil {
 		return err
 	}

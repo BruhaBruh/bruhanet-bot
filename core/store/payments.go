@@ -46,8 +46,10 @@ func lockUserTerm(ctx context.Context, tx pgx.Tx, telegramID int64) error {
 // Иначе PrevExpireAt даёт readPrev (срок юзера в панели), вызванный уже под advisory-замком юзера: выдача дней
 // (GrantDays/ActivateDaysPromo), начатая раньше, уже закоммичена и видна в панели, начатая позже — сдвинет новый pending.
 // readPrev == nil — берётся p.PrevExpireAt.
-// Платёж за устройства (Kind devices) чужой pending не отменяет: есть открытый платёж — ErrPendingExists. Открытый платёж
-// за устройства новая оплата подписки отменяет, а срок для неё читается заново: prev_expire_at у него ничего не значит.
+// Платёж за устройства (Kind devices) и за подарок (Kind gift) чужой pending не отменяет: есть открытый платёж —
+// ErrPendingExists. Открытый платёж за устройства или подарок новая оплата подписки отменяет (подарок становится
+// cancelled), а срок для неё читается заново: prev_expire_at у них ничего не значит. Платёж за подарок вместе с
+// pending-строкой gifts создаётся здесь же, в одной транзакции.
 func (s *Store) CreatePayment(
 	ctx context.Context, p model.Payment, rollback func(old model.Payment) error,
 	readPrev func(ctx context.Context) (time.Time, error),
@@ -77,7 +79,7 @@ func (s *Store) CreatePayment(
 			`SELECT `+paymentCols+` FROM payments WHERE telegram_id = $1 AND status = 'pending' FOR UPDATE`,
 			p.TelegramID))
 		switch {
-		case err == nil && p.Kind == model.KindDevices:
+		case err == nil && p.Kind != model.KindTariff:
 			return ErrPendingExists
 		case err == nil:
 			if err = rollback(old); err != nil {
@@ -87,14 +89,17 @@ func (s *Store) CreatePayment(
 				`UPDATE payments SET status = 'cancelled', resolved_at = now() WHERE id = $1`, old.ID); err != nil {
 				return err
 			}
+			if err = cancelGift(ctx, tx, old.ID); err != nil {
+				return err
+			}
 			old.Status = model.PaymentCancelled
 			cancelled = &old
-			if old.Kind == model.KindDevices && readPrev != nil {
+			if old.Kind == model.KindTariff {
+				p.PrevExpireAt = old.PrevExpireAt
+			} else if readPrev != nil {
 				if p.PrevExpireAt, err = readPrev(ctx); err != nil {
 					return err
 				}
-			} else if old.Kind != model.KindDevices {
-				p.PrevExpireAt = old.PrevExpireAt
 			}
 		case !errors.Is(err, ErrNotFound):
 			return err
@@ -108,6 +113,9 @@ func (s *Store) CreatePayment(
 			`INSERT INTO payments (telegram_id, username, months, price, status, prev_expire_at, promo_id, base_price, kind, extra_devices)
 			 VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9) RETURNING `+paymentCols,
 			p.TelegramID, p.Username, p.Month, p.Price, p.PrevExpireAt, p.PromoID, p.BasePrice, p.Kind, p.ExtraDevices))
+		if err == nil && p.Kind == model.KindGift {
+			err = insertPendingGift(ctx, tx, p.TelegramID, created.ID, p.Month)
+		}
 		return err
 	})
 	if err != nil {
@@ -247,6 +255,12 @@ func (s *Store) ResolvePaymentRef(
 			return ErrNotPending
 		}
 		p.UserExtra, p.TrialConvert = curExtra, trialConvert
+		if p.Kind == model.KindGift {
+			// Строка подарка — под блокировкой платежа; код нужен apply для ссылки покупателю.
+			if err = tx.QueryRow(ctx, `SELECT code FROM gifts WHERE payment_id = $1 AND status = 'pending' FOR UPDATE`, id).Scan(&p.GiftCode); err != nil {
+				return errors.Join(ErrNotFound, err)
+			}
+		}
 		reward := false
 		if status == model.PaymentConfirmed && referralDays > 0 && referrer != nil && p.Kind == model.KindTariff && p.Price > 0 {
 			var done bool
@@ -273,6 +287,15 @@ func (s *Store) ResolvePaymentRef(
 		if _, err = tx.Exec(ctx, `UPDATE payments SET status = $2, resolved_at = $3 WHERE id = $1`,
 			id, status, at); err != nil {
 			return err
+		}
+		if p.Kind == model.KindGift {
+			next := model.GiftCancelled
+			if status == model.PaymentConfirmed {
+				next = model.GiftReady
+			}
+			if _, err = tx.Exec(ctx, `UPDATE gifts SET status = $2 WHERE payment_id = $1`, id, next); err != nil {
+				return err
+			}
 		}
 		// Устройства юзера меняет только подтверждение; то же правило (ExtraAfter) применил apply при записи лимита в панель.
 		if status == model.PaymentConfirmed {
@@ -338,12 +361,20 @@ func activatePaymentPromo(ctx context.Context, tx pgx.Tx, p model.Payment, at ti
 
 // CancelPayment отменяет pending-платёж (без отката аванса — вызывающий проверяет сам); иначе ErrNotPending.
 func (s *Store) CancelPayment(ctx context.Context, id int64) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE payments SET status = 'cancelled', resolved_at = now() WHERE id = $1 AND status = 'pending'`, id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotPending
-	}
-	return nil
+	return s.tx(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE payments SET status = 'cancelled', resolved_at = now() WHERE id = $1 AND status = 'pending'`, id)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotPending
+		}
+		return cancelGift(ctx, tx, id)
+	})
+}
+
+// cancelGift гасит pending-подарок отменённого платежа (у платежей других видов строки нет — ничего не делает).
+func cancelGift(ctx context.Context, tx pgx.Tx, paymentID int64) error {
+	_, err := tx.Exec(ctx, `UPDATE gifts SET status = 'cancelled' WHERE payment_id = $1 AND status = 'pending'`, paymentID)
+	return err
 }

@@ -8,7 +8,7 @@ import (
 
 // OutboxMessage — исходящее сообщение Telegram; payload-колонка хранит всё, кроме EventType.
 type OutboxMessage struct {
-	EventType string `json:"-"` // payment_result | payment_admin_closed | grant_days | trial_started | referral_friend | referral_referrer | reminder | broadcast | broadcast_summary | direct | text_test
+	EventType string `json:"-"` // payment_result | payment_admin_closed | grant_days | trial_started | referral_friend | referral_referrer | gift_result | gift_redeemed | reminder | broadcast | broadcast_summary | direct | text_test
 
 	ChatID    int64                        `json:"chat_id"`
 	Text      string                       `json:"text,omitempty"`
@@ -34,6 +34,9 @@ type OutboxMessage struct {
 	ExpireAt time.Time `json:"expire_at,omitzero"`
 	Devices  int       `json:"devices,omitempty"` // payment_result за устройства: куплено штук (переменная {{.devices}})
 	Days     int       `json:"days,omitempty"`    // grant_days: сколько дней выдано (переменная {{.days}})
+	// GiftCode — gift_result (подтверждённый подарок): код для ссылки покупателю; воркер собирает ссылку с username бота.
+	// Месяцы подарка в gift_result/gift_redeemed лежат в Months.
+	GiftCode string `json:"gift_code,omitempty"`
 
 	// payment_admin_closed: решение из панели закрывает MessageID у админа; 0 — чека не было, закрывать нечего.
 	Confirmed bool `json:"confirmed,omitempty"`

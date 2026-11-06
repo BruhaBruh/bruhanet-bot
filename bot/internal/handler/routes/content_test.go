@@ -254,7 +254,7 @@ func TestButtonStyle(t *testing.T) {
 		return out
 	}
 	e.process(t, tgtest.Message(userID, "/start"))
-	want := map[string]string{"Информация": "primary", "Оплатить": "", "Подписка": "success", "Поддержка": "danger", "Промокод": "", "Пробный период": "", "Пригласить друга": ""}
+	want := map[string]string{"Информация": "primary", "Оплатить": "", "Подписка": "success", "Поддержка": "danger", "Промокод": "", "Пробный период": "", "Пригласить друга": "", "Подарить": ""}
 	if got := styles(); !maps.Equal(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}

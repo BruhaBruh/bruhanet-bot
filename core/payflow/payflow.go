@@ -21,6 +21,12 @@ const (
 	EventAdminClosed = "payment_admin_closed"
 )
 
+// События подарков: результат платежа покупателю (ссылка или отказ) и активация (активировавшему и покупателю).
+const (
+	EventGiftResult   = "gift_result"
+	EventGiftRedeemed = "gift_redeemed"
+)
+
 // ErrPanel — панель не приняла новый срок; транзакция откатана, повтор считает ту же дату.
 var ErrPanel = errors.New("payflow: panel update failed")
 
@@ -101,6 +107,14 @@ func Resolve(ctx context.Context, st Store, panel Panel, d Decision) (model.Paym
 				EventType: EventResult, ChatID: p.TelegramID, TextKey: key, Devices: p.ExtraDevices, ParseMode: "HTML",
 			}}
 			return withAdminClosed(msgs, p, d), nil
+		}
+		if p.Kind == model.KindGift {
+			// Подарок срок, устройства и панель покупателя не трогает: подтверждение открывает ссылку, отклонение гасит.
+			msg := model.OutboxMessage{EventType: EventGiftResult, ChatID: p.TelegramID, TextKey: "gift.declined", Months: p.Month, ParseMode: "HTML"}
+			if d.Approve {
+				msg.TextKey, msg.GiftCode = "gift.ready", p.GiftCode
+			}
+			return withAdminClosed([]model.OutboxMessage{msg}, p, d), nil
 		}
 		expireAt := p.PrevExpireAt
 		if d.Approve {
@@ -350,4 +364,51 @@ func StartTrial(ctx context.Context, st TrialStore, panel TrialPanel, r TrialReq
 		}
 	}
 	return newExpire, err
+}
+
+// GiftStore — core/store: ErrGiftUnavailable (любая причина отказа) проходит как есть.
+type GiftStore interface {
+	RedeemGift(ctx context.Context, code string, redeemerID int64, now time.Time,
+		apply func(g model.Gift) ([]model.OutboxMessage, error)) (model.Gift, error)
+}
+
+// GiftRedeem — активация подарка юзером. Prepare — необязательный шаг перед продлением внутри транзакции (бот заводит
+// нового юзера в панели с лимитом устройств); его сбой откатывает активацию.
+type GiftRedeem struct {
+	Code       string
+	TelegramID int64
+	Username   string
+	At         time.Time
+	Squad      uuid.UUID
+	Prepare    func(ctx context.Context) error
+}
+
+// RedeemGift продлевает юзера на месяцы подарка (месяц = 30 суток) абсолютной датой от later(срок в панели, At) под
+// транзакцией store.RedeemGift: ошибка панели откатывает её (ErrPanel, подарок остаётся ready, повтор считает ту же дату);
+// сбой коммита после записи в панель возвращает прежний срок, пока он ещё наш (как у GrantDays). Уведомления: активировавшему
+// и, если покупатель известен и это не он сам, покупателю (без имени активировавшего). Возвращает подарок и новый срок.
+// Отказ по любой причине — model.ErrGiftUnavailable.
+func RedeemGift(ctx context.Context, st GiftStore, panel GrantPanel, r GiftRedeem) (model.Gift, time.Time, error) {
+	var g termGrant
+	var req GrantRequest
+	gift, err := st.RedeemGift(ctx, r.Code, r.TelegramID, r.At, func(gf model.Gift) ([]model.OutboxMessage, error) {
+		if r.Prepare != nil {
+			if err := r.Prepare(ctx); err != nil {
+				return nil, errors.Join(ErrPanel, err)
+			}
+		}
+		req = GrantRequest{TelegramID: r.TelegramID, Username: r.Username, Days: gf.Months * 30, At: r.At, Squad: r.Squad}
+		msgs, err := g.apply(ctx, panel, req, EventGiftRedeemed, "gift.redeemed")
+		if err != nil {
+			return nil, err
+		}
+		msgs[0].Months = gf.Months
+		if gf.BuyerID != nil && *gf.BuyerID != r.TelegramID {
+			msgs = append(msgs, model.OutboxMessage{
+				EventType: EventGiftRedeemed, ChatID: *gf.BuyerID, TextKey: "gift.redeemed_buyer", Months: gf.Months, ParseMode: "HTML",
+			})
+		}
+		return msgs, nil
+	})
+	return gift, g.newExpire, g.restore(ctx, panel, req, err)
 }

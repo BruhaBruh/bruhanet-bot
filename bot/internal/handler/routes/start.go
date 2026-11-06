@@ -27,6 +27,11 @@ func (h *handlers) start(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	h.recordReferral(ctx, u)
+	// Ссылка подарка: активация вместо приветствия (успех сообщает уведомление из очереди).
+	if code, ok := giftPayload(u); ok {
+		h.redeemGift(ctx, b, u, code)
+		return
+	}
 	// Ссылка со страницы входа админки (`?start=login`): админу — кнопка входа, как у /login.
 	// Остальным — обычное приветствие, ничего не выдаём (и не отличаем от простого /start).
 	if h.isAdmin(u) && isStartLogin(u) {
@@ -115,7 +120,7 @@ func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegr
 			rows = append(rows, keyboard.Row(callbackButton(ctx, c, "button.trial", routeTrial, keyboard.StyleDefault)))
 		}
 		rows = append(rows, keyboard.Row(promoBtn, support))
-		return keyboard.Inline(append(rows, referralRows(ctx, c)...)...)
+		return keyboard.Inline(append(append(rows, giftRows(ctx, c)...), referralRows(ctx, c)...)...)
 	case err != nil:
 		stlog.Error(ctx, "failed to get remnawave user", "error", err)
 		return keyboard.Inline(keyboard.Row(callbackButton(ctx, c, "button.service_down", routeMenu, keyboard.StyleDefault)))
@@ -134,7 +139,7 @@ func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegr
 		rows = append(rows, keyboard.Row(callbackButton(ctx, c, "button.trial", routeTrial, keyboard.StyleDefault)))
 	}
 	rows = append(rows, keyboard.Row(promoRow(ctx, c, promoBtn)...))
-	return keyboard.Inline(append(rows, referralRows(ctx, c)...)...)
+	return keyboard.Inline(append(append(rows, giftRows(ctx, c)...), referralRows(ctx, c)...)...)
 }
 
 // referralRows — «Пригласить друга», пока в настройках дни рефералки больше нуля.

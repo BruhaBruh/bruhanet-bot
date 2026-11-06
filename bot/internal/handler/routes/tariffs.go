@@ -34,11 +34,16 @@ func (h *handlers) tariffs(ctx context.Context, b *bot.Bot, u *models.Update) {
 }
 
 func (h *handlers) tariffKeyboard(ctx context.Context) *models.InlineKeyboardMarkup {
+	return h.tariffKeyboardFor(ctx, priceRoute)
+}
+
+// tariffKeyboardFor — кнопки тарифов, ведущие на route (покупка тарифа или подарок).
+func (h *handlers) tariffKeyboardFor(ctx context.Context, route callback.Route[int]) *models.InlineKeyboardMarkup {
 	prices := h.c.Settings(ctx).Prices
 	months := slices.Sorted(maps.Keys(prices))
 	buttons := make([]keyboard.Button, 0, len(months))
 	for _, m := range months {
-		buttons = append(buttons, keyboard.Callback(h.c.Text(ctx, "button.tariff", tariffVars(m, prices[m])), priceRoute.Data(m)).
+		buttons = append(buttons, keyboard.Callback(h.c.Text(ctx, "button.tariff", tariffVars(m, prices[m])), route.Data(m)).
 			Style(h.c.Style(ctx, "button.tariff", keyboard.StyleDefault)))
 	}
 	rows := keyboard.Grid(2, buttons...)
@@ -126,6 +131,19 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 	username := from.Username
 
 	np.TelegramID, np.Username = from.ID, username
+	// Подарок срок покупателя не читает и не трогает: юзера в панели не заводим.
+	var readPrev func(ctx context.Context) (time.Time, error)
+	if np.Kind != model.KindGift {
+		readPrev = func(ctx context.Context) (time.Time, error) {
+			// Срок читается под замком юзера в хранилище (после параллельной выдачи дней); CreateUser заводит юзера, если его нет.
+			user, err := h.ensureUser(ctx, from.ID, username, np.ExtraDevices)
+			if err != nil {
+				stlog.Error(ctx, "failed to create remnawave user", "error", err)
+				return time.Time{}, err
+			}
+			return user.ExpireAt, nil
+		}
+	}
 	// Старый pending отменяется в той же транзакции; выданный по нему аванс откатываем в панели.
 	p, cancelled, err := h.pay.CreatePayment(ctx, np, func(old model.Payment) error {
 		if !old.AdvanceGranted {
@@ -133,21 +151,17 @@ func (h *handlers) createPayment(ctx context.Context, b *bot.Bot, u *models.Upda
 		}
 		_, err := h.rw.UpdateUser(ctx, old.TelegramID, old.Username, old.PrevExpireAt, h.cfg.Remnawave.InternalSquadId)
 		return err
-	}, func(ctx context.Context) (time.Time, error) {
-		// Срок читается под замком юзера в хранилище (после параллельной выдачи дней); CreateUser заводит юзера, если его нет.
-		user, err := h.ensureUser(ctx, from.ID, username, np.ExtraDevices)
-		if err != nil {
-			stlog.Error(ctx, "failed to create remnawave user", "error", err)
-			return time.Time{}, err
-		}
-		return user.ExpireAt, nil
-	})
+	}, readPrev)
 	if errors.Is(err, promo.ErrBlocked) { // скидка заблокированному не выдаётся; для юзера — «кода нет»
 		h.rejectPromo(ctx, b, u, err, promo.PlacePayment, routePay)
 		return model.Payment{}, false
 	}
-	if errors.Is(err, store.ErrPendingExists) { // докупка устройств при открытой оплате
-		h.devicesBusy(ctx, b, u)
+	if errors.Is(err, store.ErrPendingExists) { // докупка устройств или подарок при открытой оплате
+		if np.Kind == model.KindGift {
+			h.giftBusy(ctx, b, u)
+		} else {
+			h.devicesBusy(ctx, b, u)
+		}
 		return model.Payment{}, false
 	}
 	if err != nil {

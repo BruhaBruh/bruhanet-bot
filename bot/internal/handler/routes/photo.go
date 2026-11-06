@@ -111,6 +111,15 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 				html.EscapeString(displayName(u)), handle, p.TelegramID, devicesCount(p.ExtraDevices), groupThousands(p.Price),
 			),
 		}
+	} else if p.Kind == model.KindGift {
+		head = []string{
+			"<b>Покупка подарка BruhaNet</b>",
+			"",
+			fmt.Sprintf(
+				"Пользователь <b>%s</b>%s (<b>%d</b>) покупает подарочную подписку на <b>%d %s</b> за <b>%s ₽</b>. Срок покупателя не меняется",
+				html.EscapeString(displayName(u)), handle, p.TelegramID, p.Month, pluralMonths(p.Month), groupThousands(p.Price),
+			),
+		}
 	} else if p.ExtraDevices > 0 {
 		head = append(head, fmt.Sprintf("🖥 доп. устройств в тарифе: %d", p.ExtraDevices))
 	}
@@ -132,8 +141,8 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 		return
 	}
 	observability.Payments.WithLabelValues("photo", strconv.Itoa(p.Month)).Inc()
-	// Аванс — день подписки на время проверки; за докупку устройств срока нет, аванса тоже.
-	if stats.UnpaidAdvances < limit && p.Kind != model.KindDevices {
+	// Аванс — день подписки на время проверки; за докупку устройств и подарок срока нет, аванса тоже.
+	if stats.UnpaidAdvances < limit && p.Kind == model.KindTariff {
 		h.grantAdvance(ctx, b, u, p)
 	} else {
 		send(ctx, b, u.Message.Chat.ID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))

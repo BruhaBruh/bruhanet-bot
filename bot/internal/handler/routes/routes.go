@@ -53,6 +53,9 @@ type Payments interface {
 	ResolvePaymentRef(ctx context.Context, id int64, status model.PaymentStatus, at time.Time, referralDays int,
 		apply func(model.Payment) ([]model.OutboxMessage, error)) (model.Payment, error)
 	CancelPayment(ctx context.Context, id int64) error
+	// Подарки: активация (payflow.GiftStore).
+	RedeemGift(ctx context.Context, code string, redeemerID int64, now time.Time,
+		apply func(g model.Gift) ([]model.OutboxMessage, error)) (model.Gift, error)
 	// Рефералка: пригласивший пишется один раз при первом создании юзера; дни пригласившему — payflow.ReferralStore.
 	RecordReferral(ctx context.Context, u model.UserSeen, referrerID int64) (bool, error)
 	GrantReferral(ctx context.Context, referredID int64, now time.Time,
@@ -116,6 +119,9 @@ func Register(r *router.Router, d Deps) {
 	r.Callback(priceRoute.Name(), h.price)
 	r.Callback(buyRoute.Name(), h.buy)
 	r.Callback(buyNoDevRoute.Name(), h.buyNoDevices)
+	r.Callback(routeGift, h.gift)
+	r.Callback(giftPriceRoute.Name(), h.giftPrice)
+	r.Callback(giftBuyRoute.Name(), h.giftBuy)
 	r.Callback(routeDevices, h.devices)
 	r.Callback(devPickRoute.Name(), h.devicesPick)
 	r.Callback(devYesRoute.Name(), h.devicesBuy)

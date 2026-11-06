@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -44,11 +45,17 @@ type Notice func(ctx context.Context, chatID int64, key string, expireAt time.Ti
 // Render подставляет переменные в текст для получателя (content.Provider): читает не больше строки users.
 type Render func(ctx context.Context, chatID int64, tpl string) string
 
+// GiftNotice — текст и клавиатура уведомления о подарке (ключи gift.*); ссылке нужен username бота, сбой его получения
+// возвращает ошибку, и строка уходит на повтор (routes.GiftNotice).
+type GiftNotice func(ctx context.Context, m model.OutboxMessage) (string, *models.InlineKeyboardMarkup, error)
+
 type Worker struct {
 	q      Queue
 	b      *bot.Bot
 	render Render
 	notice Notice
+	// Gift — сборка уведомлений о подарках; nil — они уходят как обычные TextKey через notice.
+	Gift GiftNotice
 
 	interval, idle time.Duration
 	backoff        func(attempt int) time.Duration
@@ -149,7 +156,13 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 	if it.EventType == payflow.EventAdminClosed {
 		return w.closeAdminMessage(ctx, it)
 	}
-	if it.TextKey != "" {
+	switch {
+	case strings.HasPrefix(it.TextKey, "gift.") && w.Gift != nil:
+		var err error
+		if it.Text, it.Keyboard, err = w.Gift(ctx, it.OutboxMessage); err != nil {
+			return err
+		}
+	case it.TextKey != "":
 		it.Text, it.Keyboard = w.notice(ctx, it.ChatID, it.TextKey, it.ExpireAt, it.Days, it.Devices)
 	}
 	if it.Template {

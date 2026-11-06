@@ -53,6 +53,7 @@ const (
 	groupPromo    = "Промокоды"
 	groupTrial    = "Пробный период"
 	groupReferral = "Рефералка"
+	groupGift     = "Подарки"
 	groupReminder = "Напоминания"
 	groupError    = "Ошибки"
 	groupButton   = "Кнопки"
@@ -83,6 +84,8 @@ var (
 
 	varReferralDays = Var{Name: "days", Description: "Дней каждому за первую оплату друга (из настроек)", Sample: "7", Max: 4}
 
+	varGiftLink = Var{Name: "link", Description: "Ссылка на подарок: срабатывает один раз", Sample: "https://t.me/bot?start=gift_AbCdEfGhIjKlMnOpQrStUv", Max: 100}
+
 	varDevicePrice = Var{Name: "devicePrice", Description: "Цена одного доп. устройства в месяц, ₽", Sample: "50", Max: 8}
 	varDevCount    = Var{Name: "count", Description: "Сколько устройств добавляется, с единицей: «2 устройства»", Sample: "2 устройства", Max: 16}
 	varDevTotal    = Var{Name: "price", Description: "Итоговая цена в рублях", Sample: "500", Max: 8}
@@ -108,6 +111,7 @@ const (
 	devicesHead  = "<b>Устройства</b>\n\n"
 	trialHead    = "<b>Пробный период</b>\n\n"
 	referralHead = "<b>Пригласить друга</b>\n\n"
+	giftHead     = "<b>Подарок</b>\n\n"
 	infoHead     = "<b>Информация о подписке</b>\n\n<b>Статус</b>\n"
 )
 
@@ -144,7 +148,7 @@ func (d Def) on(route, style, when string) Def {
 
 // mainButtons — главная клавиатура (routes.mainKeyboard): набор зависит от того, есть ли юзер в панели.
 var mainButtons = []string{
-	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.trial", "button.referral", "button.service_down",
+	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.trial", "button.referral", "button.gift", "button.service_down",
 }
 
 const reasonPromo = "В ответ на присланный промокод: "
@@ -318,6 +322,43 @@ var registry = []Def{
 		varReferralDays).
 		shown("Пригласившему, когда его дни за первую оплату друга выданы (сразу или позже, если он был заблокирован), через очередь уведомлений", mainButtons...),
 
+	msg("gift.tariffs", groupGift, "Подарок: выбор срока", giftHead+"Выберите, на сколько подарить подписку").
+		shown("По кнопке «Подарить» в главном меню и «Нет» на подтверждении подарка", "button.tariff", "button.back"),
+	msg("gift.confirm", groupGift, "Подарок: подтверждение",
+		giftHead+"Подарить подписку на <b>{{.months}}</b> за <b>{{.price}} ₽</b>?\nВаш срок подписки не изменится: после оплаты вы получите ссылку для друга, она сработает один раз.\n\nВерно?",
+		varMonths, varPrice).
+		shown("После выбора срока подарка", "button.yes", "button.no"),
+	msg("gift.requisites", groupGift, "Подарок: реквизиты для оплаты",
+		"<b>Оплата подарка на {{.months}} за {{.price}} ₽</b>\n\n<b>Для оплаты</b>\nПереведите <b>{{.price}} ₽</b>\n"+
+			"на номер <code>{{.phone}}</code> в <b>{{.bank}}</b>\nс одним из комментариев:\n{{.comments}}\nи отправьте в чат фото платежа",
+		varMonths, varPrice,
+		Var{
+			Name: "comments", Description: "Список комментариев к переводу, по строке «- <code>…</code>» на комментарий", Raw: true,
+			Max:    maxComments * (64 + 4),
+			Sample: "- <code>На кофе</code>\n- <code>Перекус</code>\n- <code>Одолжил</code>\n- <code>Вернул долг</code>",
+		}).
+		shown("По «Да» на подтверждении подарка, когда платёж создан; кнопок нет, бот ждёт фото"),
+	msg("gift.busy", groupGift, "Подарок: есть незавершённая оплата",
+		giftHead+"Сначала завершите текущую оплату: отправьте фото платежа или выберите «Нет» в тарифе. Потом можно оплатить подарок").
+		shown("Когда юзер хочет оплатить подарок, а у него уже есть открытая оплата", "button.back"),
+	msg("gift.ready", groupGift, "Подарок оплачен: ссылка",
+		giftHead+"<b>Оплата подтверждена</b>\n\nПодписка на <b>{{.months}}</b> готова. Отправьте другу эту ссылку, она сработает один раз:\n<code>{{.link}}</code>\n\nВаш срок подписки не изменился",
+		varMonths, varGiftLink).
+		shown("Когда админ подтвердил оплату подарка, через очередь уведомлений", "button.copy_link", "button.back"),
+	msg("gift.declined", groupGift, "Оплата подарка отклонена",
+		giftHead+"<b>Администратор отклонил оплату подарка</b>\n\nПодарок не создан, ваша подписка не изменилась").
+		shown("Когда админ отклонил оплату подарка, через очередь уведомлений", mainButtons...),
+	msg("gift.redeemed", groupGift, "Подарок активирован (получателю)",
+		giftHead+"<b>Вам подарили подписку</b>\n\nДобавлено: <b>{{.months}}</b>\n\n<b>Дата окончания подписки</b>\n{{.expireAt}}",
+		varMonths).
+		shown("Тому, кто открыл ссылку подарка и получил подписку, через очередь уведомлений", mainButtons...),
+	msg("gift.redeemed_buyer", groupGift, "Подарок активирован (покупателю)",
+		giftHead+"<b>Ваш подарок активирован</b>\n\nПодписку на <b>{{.months}}</b> получил тот, кому вы отправили ссылку",
+		varMonths).
+		shown("Покупателю подарка, когда ссылкой воспользовались (кто именно, не сообщается; если покупатель сам, не отправляется)", mainButtons...),
+	msg("gift.unavailable", groupGift, "Подарок недоступен", giftHead+"Этот подарок недоступен").
+		shown("Когда ссылка подарка не сработала (причину не раскрываем: нет такого, уже использован, отменён, нельзя юзеру)", "button.back"),
+
 	msg("reminder.week", groupReminder, "Подписка скоро закончится (первый порог)",
 		reminderHead+"Ваша подписка скоро закончится"+reminderTail).
 		shown("Раз в день, когда до конца подписки осталось меньше первого порога из настроек; один раз на дату окончания", "button.renew", "button.subscription"),
@@ -334,10 +375,10 @@ var registry = []Def{
 	btn("button.renew", "Продлить", "Продлить").on(routePay, StyleDefault, "«Информация о подписке» и напоминания"),
 	btn("button.subscription", "Подписка (копировать ссылку)", "Подписка").on("copy:ссылка подписки", StyleSuccess, "Главное меню, «Информация о подписке» и напоминания"),
 	btn("button.support", "Поддержка", "Поддержка").on("url:supportUrl", StyleDanger, "Главное меню и сообщение об ошибке"),
-	btn("button.back", "Назад", "Назад").on("menu | price | pay | devices", StyleDefault, "Экраны ввода промокода, списка тарифов, «Информации» и ошибки"),
-	btn("button.yes", "Да (подтвердить тариф)", "Да").on("buy | buyp | devy | trialy", StyleSuccess, "Подтверждение тарифа, со скидкой и без, покупки устройств и пробного периода"),
-	btn("button.no", "Нет (к выбору тарифа)", "Нет").on("pay | devices | menu", StyleDanger, "Подтверждение тарифа, со скидкой и без, покупки устройств и пробного периода"),
-	btn("button.tariff", "Тариф в списке", "{{.months}} за {{.price}} ₽", varMonths, varPrice).on("price", StyleDefault, "Список тарифов, по кнопке на тариф"),
+	btn("button.back", "Назад", "Назад").on("menu | price | pay | devices | gift", StyleDefault, "Экраны ввода промокода, списка тарифов, «Информации», подарка и ошибки"),
+	btn("button.yes", "Да (подтвердить тариф)", "Да").on("buy | buyp | devy | trialy | gbuy", StyleSuccess, "Подтверждение тарифа, со скидкой и без, покупки устройств, подарка и пробного периода"),
+	btn("button.no", "Нет (к выбору тарифа)", "Нет").on("pay | devices | menu | gift", StyleDanger, "Подтверждение тарифа, со скидкой и без, покупки устройств, подарка и пробного периода"),
+	btn("button.tariff", "Тариф в списке", "{{.months}} за {{.price}} ₽", varMonths, varPrice).on("price | gprice", StyleDefault, "Список тарифов и срок подарка, по кнопке на тариф"),
 	btn("button.service_down", "Сервис не работает", "Сервис не работает").on(routeMenu, StyleDefault, "Вместо главного меню, когда панель недоступна"),
 	btn("button.promo", "Промокод (в меню)", "Промокод").on("promo", StyleDefault, "Главное меню"),
 	btn("button.devices", "Устройства (в меню)", "Устройства").on("devices", StyleDefault, "Главное меню, если юзер есть в панели и продажа устройств включена"),
@@ -346,7 +387,8 @@ var registry = []Def{
 	btn("button.drop_devices", "Без доп. устройств", "Без доп. устройств").on("buyd", StyleDefault, "Подтверждение тарифа, если у юзера есть доп. устройства"),
 	btn("button.trial", "Пробный период (в меню)", "Пробный период").on("trial", StyleDefault, "Главное меню, пока пробный включён в настройках и юзер на него имеет право"),
 	btn("button.referral", "Пригласить друга (в меню)", "Пригласить друга").on("referral", StyleDefault, "Главное меню, пока дни рефералки в настройках больше нуля"),
-	btn("button.copy_link", "Скопировать ссылку приглашения", "Скопировать ссылку").on("copy:ссылка приглашения", StyleSuccess, "Экран «Пригласить друга»"),
+	btn("button.gift", "Подарить (в меню)", "Подарить").on("gift", StyleDefault, "Главное меню, пока в настройках есть тарифы"),
+	btn("button.copy_link", "Скопировать ссылку приглашения или подарка", "Скопировать ссылку").on("copy:ссылка приглашения или подарка", StyleSuccess, "Экран «Пригласить друга» и сообщение о готовом подарке"),
 	btn("button.have_promo", "Есть промокод (при оплате)", "Есть промокод").on("have_promo", StyleDefault, "Подтверждение тарифа"),
 	btn("button.remove_promo", "Убрать промокод", "Убрать промокод").on("price", StyleDefault, "Подтверждение тарифа со скидкой"),
 }

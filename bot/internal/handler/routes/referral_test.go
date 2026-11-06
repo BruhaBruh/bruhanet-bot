@@ -48,7 +48,7 @@ func TestStartRefRejected(t *testing.T) {
 		"zero":     "ref_0",
 		"negative": "ref_-5",
 		"huge":     "ref_99999999999999999999999",
-		"other":    "gift_abc",
+		"other":    "promo_abc",
 		"bare":     "ref_",
 	} {
 		t.Run(name, func(t *testing.T) {

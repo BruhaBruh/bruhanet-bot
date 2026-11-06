@@ -11,12 +11,13 @@ const (
 	PaymentCancelled PaymentStatus = "cancelled"
 )
 
-// PaymentKind — что оплачено: подписка или докупка устройств.
+// PaymentKind — что оплачено: подписка, докупка устройств или подарок (срок и устройства покупателя не меняет).
 type PaymentKind string
 
 const (
 	KindTariff  PaymentKind = "tariff"
 	KindDevices PaymentKind = "devices"
+	KindGift    PaymentKind = "gift"
 )
 
 type Payment struct {
@@ -35,7 +36,8 @@ type Payment struct {
 	// PromoID и BasePrice (цена тарифа до скидки) — nil у платежей без промокода.
 	PromoID   *int64 `json:"promoId"`
 	BasePrice *int   `json:"basePrice"`
-	// Kind — tariff|devices. У devices Month = 0, срок подписки платёж не меняет.
+	// Kind — tariff|devices|gift. У devices Month = 0, срок подписки платёж не меняет; у gift Month — срок подарка,
+	// срок и устройства покупателя тоже не меняются.
 	Kind PaymentKind `json:"kind"`
 	// ExtraDevices: у devices — сколько устройств куплено; у tariff — доп. устройства юзера после платежа
 	// (выбор на момент создания: подтверждение применяет это число, а не пересчитывает).
@@ -51,6 +53,8 @@ type Payment struct {
 	// ReferralPending — подтверждение создало награду рефералки: пригласивший ещё ждёт свои дни (payflow.PayReferrer).
 	// Выставляется после транзакции ResolvePayment.
 	ReferralPending bool `json:"-"`
+	// GiftCode — код подарка этого платежа (kind gift); только в apply под блокировкой, наружу не отдаётся.
+	GiftCode string `json:"-"`
 	// PhotoFileID — file_id чека; наружу не отдаётся, панель смотрит HasPhoto и GET /api/payments/{id}/photo.
 	PhotoFileID string `json:"-"`
 	HasPhoto    bool   `json:"hasPhoto"`
@@ -79,8 +83,11 @@ type PaymentFilter struct {
 
 // ExtraAfter — доп. устройства юзера после подтверждения платежа, если до него было cur.
 func (p Payment) ExtraAfter(cur int) int {
-	if p.Kind == KindDevices {
+	switch p.Kind {
+	case KindDevices:
 		return cur + p.ExtraDevices
+	case KindGift:
+		return cur // подарок устройств покупателя не трогает
 	}
 	return p.ExtraDevices
 }

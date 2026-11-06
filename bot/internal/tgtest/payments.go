@@ -3,6 +3,7 @@ package tgtest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ type Payments struct {
 	trial          map[int64]time.Time // users.trial_used_at
 	grants         []Grant
 	failTrialOnce  bool
+	gifts          []model.Gift // индекс = ID-1
 
 	// Отдельный мьютекс: панель зовут из apply под p.mu. Под ним же рефералка: users (кто уже есть), referred_by, награды.
 	userMu     sync.Mutex
@@ -314,7 +316,7 @@ func (p *Payments) CreatePayment(
 	var cancelled *model.Payment
 	if i := p.pendingIdx(np.TelegramID); i >= 0 {
 		old := &p.payments[i]
-		if np.Kind == model.KindDevices {
+		if np.Kind != model.KindTariff {
 			return model.Payment{}, nil, store.ErrPendingExists
 		}
 		if err := rollback(*old); err != nil {
@@ -322,16 +324,17 @@ func (p *Payments) CreatePayment(
 		}
 		at := time.Now()
 		old.Status, old.ResolvedAt = model.PaymentCancelled, &at
+		p.setGiftStatus(old.ID, model.GiftCancelled)
 		c := *old
 		cancelled = &c
-		if old.Kind == model.KindDevices && readPrev != nil {
+		if old.Kind == model.KindTariff {
+			np.PrevExpireAt = old.PrevExpireAt
+		} else if readPrev != nil {
 			prev, err := readPrev(ctx)
 			if err != nil {
 				return model.Payment{}, nil, err
 			}
 			np.PrevExpireAt = prev
-		} else if old.Kind != model.KindDevices {
-			np.PrevExpireAt = old.PrevExpireAt
 		}
 	} else if readPrev != nil {
 		prev, err := readPrev(ctx)
@@ -345,7 +348,67 @@ func (p *Payments) CreatePayment(
 	np.CreatedAt = time.Now()
 	np.AdvanceGranted, np.AdminMessageID, np.SubmittedAt, np.ResolvedAt = false, 0, nil, nil
 	p.payments = append(p.payments, np)
+	if np.Kind == model.KindGift {
+		id, buyer := np.ID, np.TelegramID
+		p.gifts = append(p.gifts, model.Gift{
+			ID: int64(len(p.gifts) + 1), Code: fmt.Sprintf("fakegiftcode%010d", len(p.gifts)+1), Months: np.Month,
+			Status: model.GiftPending, BuyerID: &buyer, PaymentID: &id,
+		})
+	}
 	return np, cancelled, nil
+}
+
+// setGiftStatus — статус подарка платежа paymentID (pending-подарок отменённого или решённого платежа).
+func (p *Payments) setGiftStatus(paymentID int64, st model.GiftStatus) {
+	for i := range p.gifts {
+		if p.gifts[i].PaymentID != nil && *p.gifts[i].PaymentID == paymentID {
+			p.gifts[i].Status = st
+		}
+	}
+}
+
+// SeedGift заводит готовый подарок (как выданный админом, если buyer == 0) и возвращает его код.
+func (p *Payments) SeedGift(code string, months int, buyer int64, st model.GiftStatus) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	g := model.Gift{ID: int64(len(p.gifts) + 1), Code: code, Months: months, Status: st, ByAdmin: buyer == 0}
+	if buyer != 0 {
+		g.BuyerID = &buyer
+	}
+	p.gifts = append(p.gifts, g)
+}
+
+// Gifts — подарки по порядку создания.
+func (p *Payments) Gifts() []model.Gift {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.gifts)
+}
+
+// RedeemGift — как store.RedeemGift: любой отказ — ErrGiftUnavailable; apply под мьютексом фейка (из него Payments звать нельзя).
+func (p *Payments) RedeemGift(
+	_ context.Context, code string, id int64, now time.Time, apply func(model.Gift) ([]model.OutboxMessage, error),
+) (model.Gift, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	i := slices.IndexFunc(p.gifts, func(g model.Gift) bool { return g.Code == code })
+	if i < 0 || p.gifts[i].Status != model.GiftReady || p.blocked[id] {
+		return model.Gift{}, model.ErrGiftUnavailable
+	}
+	g := &p.gifts[i]
+	days := g.Months * 30
+	if j := p.pendingIdx(id); j >= 0 && p.payments[j].Kind == model.KindTariff {
+		x := &p.payments[j]
+		x.PrevExpireAt = later(x.PrevExpireAt, now).Add(time.Duration(days) * 24 * time.Hour)
+	}
+	msgs, err := apply(*g)
+	if err != nil {
+		return model.Gift{}, err
+	}
+	g.Status, g.RedeemedBy, g.RedeemedAt = model.GiftRedeemed, &id, &now
+	p.grants = append(p.grants, Grant{TelegramID: id, Days: days, Source: "gift"})
+	p.outbox = append(p.outbox, msgs...)
+	return *g, nil
 }
 
 func (p *Payments) PendingPayment(_ context.Context, telegramID int64) (model.Payment, error) {
@@ -420,7 +483,7 @@ func (p *Payments) UserStats(_ context.Context, telegramID, excludeID int64) (mo
 		if x.Status != model.PaymentConfirmed {
 			continue
 		}
-		if x.Kind != model.KindDevices {
+		if x.Kind == model.KindTariff {
 			last = max(last, x.ID)
 		}
 		st.Confirmed++
@@ -486,6 +549,13 @@ func (p *Payments) ResolvePayment(
 	}
 	cur := p.extra[x.TelegramID]
 	x.UserExtra = cur
+	if x.Kind == model.KindGift {
+		for _, g := range p.gifts {
+			if g.PaymentID != nil && *g.PaymentID == x.ID {
+				x.GiftCode = g.Code
+			}
+		}
+	}
 	_, tr := p.trial[x.TelegramID]
 	x.TrialConvert = tr && !p.hasConfirmed(x.TelegramID)
 	msgs, err := apply(*x)
@@ -497,6 +567,13 @@ func (p *Payments) ResolvePayment(
 		return model.Payment{}, errCommit
 	}
 	x.Status, x.ResolvedAt = status, &at
+	if x.Kind == model.KindGift {
+		next := model.GiftCancelled
+		if status == model.PaymentConfirmed {
+			next = model.GiftReady
+		}
+		p.setGiftStatus(x.ID, next)
+	}
 	if status == model.PaymentConfirmed && x.ExtraAfter(cur) != cur {
 		p.setExtra(x.TelegramID, x.ExtraAfter(cur))
 	}
@@ -575,7 +652,7 @@ func (p *Payments) PromoUsage(_ context.Context, promoID, telegramID int64) (int
 
 func (p *Payments) hasConfirmed(telegramID int64) bool {
 	return slices.ContainsFunc(p.payments, func(x model.Payment) bool {
-		return x.TelegramID == telegramID && x.Status == model.PaymentConfirmed && x.Kind != model.KindDevices
+		return x.TelegramID == telegramID && x.Status == model.PaymentConfirmed && x.Kind == model.KindTariff
 	})
 }
 
@@ -647,6 +724,7 @@ func (p *Payments) CancelPayment(_ context.Context, id int64) error {
 	}
 	at := time.Now()
 	x.Status, x.ResolvedAt = model.PaymentCancelled, &at
+	p.setGiftStatus(x.ID, model.GiftCancelled)
 	return nil
 }
 
@@ -695,14 +773,14 @@ func (p *Payments) trialAllowed(id int64, advanceLimit int) bool {
 		return false
 	}
 	for _, x := range p.payments {
-		if x.TelegramID == id && x.Status == model.PaymentConfirmed {
+		if x.TelegramID == id && x.Status == model.PaymentConfirmed && x.Kind != model.KindGift {
 			return false
 		}
 	}
 	unpaid := 0
 	var last int64
 	for _, x := range p.payments {
-		if x.TelegramID == id && x.Status == model.PaymentConfirmed && x.Kind != model.KindDevices {
+		if x.TelegramID == id && x.Status == model.PaymentConfirmed && x.Kind == model.KindTariff {
 			last = max(last, x.ID)
 		}
 	}

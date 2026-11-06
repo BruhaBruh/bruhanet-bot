@@ -657,3 +657,26 @@ func TestWorkerAdminClosedRetries(t *testing.T) {
 		t.Fatal("нет реакции после восстановления")
 	}
 }
+
+// Уведомления gift.* собирает отдельный хук; его сбой (нет username бота) — повтор, а не потеря ссылки.
+func TestWorkerGiftNoticeRetriesOnHookError(t *testing.T) {
+	srv := tgtest.NewServer(t)
+	q := &fakeQueue{}
+	w := New(q, srv.Bot(t), nil, func(context.Context, int64, string, time.Time, int, int) (string, *models.InlineKeyboardMarkup) {
+		t.Error("gift row must not go through the payment notice")
+		return "", nil
+	})
+	calls := 0
+	w.Gift = func(_ context.Context, m model.OutboxMessage) (string, *models.InlineKeyboardMarkup, error) {
+		if calls++; calls < 3 {
+			return "", nil, errors.New("getMe failed")
+		}
+		return "ссылка " + m.GiftCode, nil, nil
+	}
+	q.add(model.OutboxMessage{EventType: payflow.EventGiftResult, ChatID: 7, TextKey: "gift.ready", GiftCode: "CODE", Months: 3, ParseMode: "HTML"})
+	drain(t, w, q)
+	msgs := srv.Calls("sendMessage")
+	if len(msgs) != 1 || msgs[0].Params.Get("text") != "ссылка CODE" || calls != 3 {
+		t.Fatalf("sendMessage: %+v calls=%d", msgs, calls)
+	}
+}

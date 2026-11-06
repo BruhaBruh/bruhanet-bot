@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
@@ -26,6 +27,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
 	"github.com/bruhabruh/bruhanet/bot/internal/referral"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
+	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/panelsync"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
@@ -116,6 +118,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	ow := outbox.New(st, b, cnt.Render, func(ctx context.Context, id int64, key string, expireAt time.Time, days, devices int) (string, *models.InlineKeyboardMarkup) {
 		return routes.PaymentNotice(ctx, cnt, rwObs, id, key, expireAt, days, devices)
 	})
+	ow.Gift = giftNotice(b, cnt, rwObs)
 	outboxDone := make(chan struct{})
 	bcDone := make(chan struct{})
 	bcSched := broadcast.New(st, config.Telegram.AdminID)
@@ -384,5 +387,26 @@ func syncPanel(ctx context.Context, panel panelsync.Panel, st panelsync.Store) {
 		stlog.Error(ctx, "panel sync failed", "error", err)
 	default:
 		stlog.Info(ctx, "panel sync done", "total", res.Total, "updated", res.Updated)
+	}
+}
+
+// giftNotice собирает уведомления о подарках; username бота берётся из getMe один раз (он не меняется за жизнь процесса).
+func giftNotice(b *bot.Bot, cnt *content.Provider, rw routes.Remnawave) outbox.GiftNotice {
+	var mu sync.Mutex
+	name := ""
+	return func(ctx context.Context, m model.OutboxMessage) (string, *models.InlineKeyboardMarkup, error) {
+		mu.Lock()
+		if name == "" {
+			me, err := b.GetMe(ctx)
+			if err != nil {
+				mu.Unlock()
+				return "", nil, err
+			}
+			name = me.Username
+		}
+		n := name
+		mu.Unlock()
+		text, kb := routes.GiftNotice(ctx, cnt, rw, n, m)
+		return text, kb, nil
 	}
 }
