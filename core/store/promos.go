@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -12,12 +14,12 @@ import (
 	"github.com/bruhabruh/bruhanet/core/promo"
 )
 
-const promoCols = `id, code, kind, value, max_activations, expires_at, only_new, telegram_id, disabled, created_at`
+const promoCols = `id, code, kind, value, max_activations, starts_at, expires_at, only_new, telegram_id, disabled, created_at`
 
 func scanPromo(row pgx.Row, extra ...any) (model.Promo, error) {
 	var p model.Promo
 	err := row.Scan(append([]any{
-		&p.ID, &p.Code, &p.Kind, &p.Value, &p.MaxActivations, &p.ExpiresAt,
+		&p.ID, &p.Code, &p.Kind, &p.Value, &p.MaxActivations, &p.StartsAt, &p.ExpiresAt,
 		&p.OnlyNew, &p.TelegramID, &p.Disabled, &p.CreatedAt,
 	}, extra...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -30,9 +32,9 @@ func scanPromo(row pgx.Row, extra ...any) (model.Promo, error) {
 // Валидация (promo.ValidateNew) — на вызывающем.
 func (s *Store) CreatePromo(ctx context.Context, p model.Promo) (model.Promo, error) {
 	created, err := scanPromo(s.pool.QueryRow(ctx,
-		`INSERT INTO promo_codes (code, kind, value, max_activations, expires_at, only_new, telegram_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING `+promoCols,
-		promo.Normalize(p.Code), p.Kind, p.Value, p.MaxActivations, p.ExpiresAt, p.OnlyNew, p.TelegramID))
+		`INSERT INTO promo_codes (code, kind, value, max_activations, starts_at, expires_at, only_new, telegram_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING `+promoCols,
+		promo.Normalize(p.Code), p.Kind, p.Value, p.MaxActivations, p.StartsAt, p.ExpiresAt, p.OnlyNew, p.TelegramID))
 	if pg, ok := errors.AsType[*pgconn.PgError](err); ok && pg.Code == "23505" {
 		return model.Promo{}, errors.Join(ErrPromoExists, err)
 	}
@@ -48,16 +50,42 @@ func (s *Store) PromoByID(ctx context.Context, id int64) (model.Promo, error) {
 	return scanPromo(s.pool.QueryRow(ctx, `SELECT `+promoCols+` FROM promo_codes WHERE id = $1`, id))
 }
 
-// ListPromos — коды с числом активаций, новые первыми; activeOnly — не выключенные,
-// не истёкшие к now и с оставшимися активациями.
-func (s *Store) ListPromos(ctx context.Context, activeOnly bool, now time.Time) ([]model.PromoWithUsage, error) {
+// ListPromos — коды с числом активаций, новые первыми. Фильтры (model.PromoFilter) складываются по И;
+// active — не выключенные, не истёкшие к now и с оставшимися активациями, expired — не выключенные с истёкшим сроком.
+func (s *Store) ListPromos(ctx context.Context, f model.PromoFilter, now time.Time) ([]model.PromoWithUsage, error) {
+	var where []string
+	var args []any
+	arg := func(v any) string { // позиционный параметр: незанятый $N Postgres не принимает
+		args = append(args, v)
+		return "$" + strconv.Itoa(len(args))
+	}
+	switch f.Status {
+	case model.PromoStatusActive:
+		where = append(where, `NOT disabled AND (expires_at IS NULL OR expires_at > `+arg(now)+`) AND (max_activations IS NULL OR used < max_activations)`)
+	case model.PromoStatusExpired:
+		where = append(where, `NOT disabled AND expires_at <= `+arg(now))
+	case model.PromoStatusDisabled:
+		where = append(where, `disabled`)
+	}
+	if f.Kind != "" {
+		where = append(where, `kind = `+arg(f.Kind))
+	}
+	switch f.Target {
+	case model.PromoTargetAll:
+		where = append(where, `telegram_id IS NULL AND NOT only_new`)
+	case model.PromoTargetNew:
+		where = append(where, `telegram_id IS NULL AND only_new`)
+	case model.PromoTargetUser:
+		where = append(where, `telegram_id IS NOT NULL`)
+	}
+	cond := ""
+	if len(where) > 0 {
+		cond = " WHERE " + strings.Join(where, " AND ")
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+promoCols+`, used FROM (
 			SELECT c.*, (SELECT count(*) FROM promo_activations a WHERE a.promo_id = c.id)::int AS used
-			FROM promo_codes c) c
-		WHERE NOT $1 OR (NOT disabled AND (expires_at IS NULL OR expires_at > $2)
-			AND (max_activations IS NULL OR used < max_activations))
-		ORDER BY id DESC`, activeOnly, now)
+			FROM promo_codes c) c`+cond+` ORDER BY id DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +104,11 @@ func (s *Store) ListPromos(ctx context.Context, activeOnly bool, now time.Time) 
 // DisablePromo выключает код; неизвестный — ErrNotFound.
 func (s *Store) DisablePromo(ctx context.Context, id int64) error {
 	return affected(s.pool.Exec(ctx, `UPDATE promo_codes SET disabled = true WHERE id = $1`, id))
+}
+
+// EnablePromo снимает флаг disabled; уже включённый — без изменений; неизвестный — ErrNotFound.
+func (s *Store) EnablePromo(ctx context.Context, id int64) error {
+	return affected(s.pool.Exec(ctx, `UPDATE promo_codes SET disabled = false WHERE id = $1`, id))
 }
 
 // PromoActivations — кто и когда активировал код, новые первыми.

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { generateCode, promoBody, promoStatus, promoUntil, promoValue, validatePromo, type PromoForm } from './promo'
+import { generateCode, promoBody, promosQuery, promoStatus, promoUntil, promoValue, validatePromo, type PromoForm } from './promo'
 
 test('promoValue formats each kind', () => {
   expect(promoValue({ kind: 'percent', value: 25 })).toBe('−25%')
@@ -22,12 +22,34 @@ test('promoStatus: disabled, then expired, then limit', () => {
   expect(promoStatus({ disabled: true, validUntil: '2026-11-05', maxActivations: 1, used: 1 }, now)).toBe('disabled')
 })
 
+test('promoStatus: not started yet comes right after disabled', () => {
+  const base = { disabled: false, validUntil: null, used: 0, maxActivations: null }
+  const now = new Date('2026-11-06T12:00:00Z')
+  expect(promoStatus({ ...base, validFrom: '2026-11-07' }, now)).toBe('upcoming')
+  expect(promoStatus({ ...base, validFrom: '2026-11-06' }, now)).toBe('active')
+  // полночь по МСК: 21:30 UTC уже 7 ноября
+  expect(promoStatus({ ...base, validFrom: '2026-11-07' }, new Date('2026-11-06T21:30:00Z'))).toBe('active')
+  expect(promoStatus({ ...base, validFrom: '2026-11-07', maxActivations: 1, used: 1 }, now)).toBe('upcoming')
+  expect(promoStatus({ ...base, disabled: true, validFrom: '2026-11-07' }, now)).toBe('disabled')
+})
+
+test('promosQuery keeps the old URL without filters', () => {
+  expect(promosQuery('all', '', '')).toBe('/api/promos?status=all')
+  expect(promosQuery('expired', 'rub', 'user')).toBe('/api/promos?status=expired&kind=rub&target=user')
+})
+
+test('validatePromo rejects a start after the end', () => {
+  const f = { code: '', kind: 'percent' as const, value: '5', maxActivations: '', validFrom: '2026-12-02', validUntil: '2026-12-01', onlyNew: false, user: '' }
+  expect(validatePromo(f)).toContain('позже')
+  expect(validatePromo({ ...f, validUntil: '2026-12-02' })).toBe('')
+})
+
 test('promoUntil', () => {
   expect(promoUntil('2026-08-31')).toBe('до 31.08')
   expect(promoUntil(null)).toBe('—')
 })
 
-const base: PromoForm = { code: '', kind: 'percent', value: '25', maxActivations: '', validUntil: '', onlyNew: false, user: '' }
+const base: PromoForm = { code: '', kind: 'percent', value: '25', maxActivations: '', validFrom: '', validUntil: '', onlyNew: false, user: '' }
 
 test('validatePromo ranges per kind', () => {
   expect(validatePromo(base)).toBe('')
@@ -53,7 +75,7 @@ test('validatePromo code, limit, user', () => {
 
 test('promoBody normalizes', () => {
   expect(promoBody({ ...base, code: ' sum25 ', maxActivations: '', validUntil: '', user: ' @v ' })).toEqual({
-    code: 'SUM25', kind: 'percent', value: 25, maxActivations: null, validUntil: null, onlyNew: false, user: '@v',
+    code: 'SUM25', kind: 'percent', value: 25, maxActivations: null, validFrom: null, validUntil: null, onlyNew: false, user: '@v',
   })
   expect(promoBody({ ...base, maxActivations: '5', validUntil: '2026-12-31' })).toMatchObject({ maxActivations: 5, validUntil: '2026-12-31' })
 })

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,12 +20,17 @@ const generateAttempts = 5
 type promoItem struct {
 	model.PromoWithUsage
 	Username *string `json:"username"`
+	// ValidFrom — включительная дата начала (МСК); startsAt — сырая граница (00:00 МСК).
+	ValidFrom *string `json:"validFrom"`
 	// ValidUntil — включительная дата (МСК) для UI; expiresAt — сырая граница (следующая полночь МСК).
 	ValidUntil *string `json:"validUntil"`
 }
 
 func (s *server) promoItem(r *http.Request, p model.PromoWithUsage) (promoItem, error) {
 	it := promoItem{PromoWithUsage: p}
+	if p.StartsAt != nil {
+		it.ValidFrom = ptr(p.StartsAt.In(moscow).Format(time.DateOnly))
+	}
 	if p.ExpiresAt != nil {
 		it.ValidUntil = ptr(p.ExpiresAt.In(moscow).AddDate(0, 0, -1).Format(time.DateOnly))
 	}
@@ -43,16 +49,28 @@ func (s *server) promoItem(r *http.Request, p model.PromoWithUsage) (promoItem, 
 }
 
 func (s *server) promos(w http.ResponseWriter, r *http.Request) {
-	var activeOnly bool
-	switch r.URL.Query().Get("status") {
-	case "active":
-		activeOnly = true
-	case "", "all":
-	default:
-		writeBadRequest(w)
-		return
+	q := r.URL.Query()
+	var f model.PromoFilter
+	for _, c := range []struct {
+		dst  *string
+		name string
+		ok   []string
+	}{
+		{&f.Status, "status", []string{"active", "expired", "disabled"}},
+		{&f.Kind, "kind", []string{"percent", "rub", "days"}},
+		{&f.Target, "target", []string{"new", "user", "all"}},
+	} {
+		v := q.Get(c.name)
+		if v == "" || (c.name == "status" && v == "all") {
+			continue
+		}
+		if !slices.Contains(c.ok, v) {
+			writeBadRequest(w)
+			return
+		}
+		*c.dst = v
 	}
-	list, err := s.Store.ListPromos(r.Context(), activeOnly, s.Now())
+	list, err := s.Store.ListPromos(r.Context(), f, s.Now())
 	if err != nil {
 		internal(w, r, "list promos", err)
 		return
@@ -74,6 +92,7 @@ type promoInput struct {
 	Kind           model.PromoKind `json:"kind"`
 	Value          int             `json:"value"`
 	MaxActivations *int            `json:"maxActivations"`
+	StartsAt       *string         `json:"validFrom"`
 	ExpiresAt      *string         `json:"validUntil"`
 	OnlyNew        bool            `json:"onlyNew"`
 	User           string          `json:"user"`
@@ -90,6 +109,14 @@ func (s *server) createPromo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := model.Promo{Code: in.Code, Kind: in.Kind, Value: in.Value, MaxActivations: in.MaxActivations, OnlyNew: in.OnlyNew}
+	if in.StartsAt != nil {
+		d, err := time.ParseInLocation(time.DateOnly, *in.StartsAt, moscow)
+		if err != nil {
+			writeInvalid(w, "дата начала — в формате ГГГГ-ММ-ДД")
+			return
+		}
+		p.StartsAt = &d
+	}
 	if in.ExpiresAt != nil {
 		d, err := time.ParseInLocation(time.DateOnly, *in.ExpiresAt, moscow)
 		if err != nil {
@@ -184,6 +211,22 @@ func (s *server) disablePromo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	case err != nil:
 		internal(w, r, "disable promo", err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (s *server) enablePromo(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	switch err := s.Store.EnablePromo(r.Context(), id); {
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+	case err != nil:
+		internal(w, r, "enable promo", err)
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}

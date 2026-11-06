@@ -47,17 +47,36 @@ func (f *fakeStore) PromoByID(_ context.Context, id int64) (model.Promo, error) 
 	return model.Promo{}, store.ErrNotFound
 }
 
-func (f *fakeStore) ListPromos(_ context.Context, activeOnly bool, at time.Time) ([]model.PromoWithUsage, error) {
+// ListPromos повторяет фильтры core/store (реальный SQL проверен в store-тестах).
+func (f *fakeStore) ListPromos(_ context.Context, fl model.PromoFilter, at time.Time) ([]model.PromoWithUsage, error) {
 	out := []model.PromoWithUsage{}
 	for i := len(f.promos) - 1; i >= 0; i-- {
 		p := f.promos[i]
-		if activeOnly && (p.Disabled || (p.ExpiresAt != nil && !p.ExpiresAt.After(at)) ||
-			(p.MaxActivations != nil && p.Used >= *p.MaxActivations)) {
+		expired := p.ExpiresAt != nil && !p.ExpiresAt.After(at)
+		active := !p.Disabled && !expired && (p.MaxActivations == nil || p.Used < *p.MaxActivations)
+		switch {
+		case fl.Status == "active" && !active,
+			fl.Status == "expired" && (p.Disabled || !expired),
+			fl.Status == "disabled" && !p.Disabled,
+			fl.Kind != "" && string(p.Kind) != fl.Kind,
+			fl.Target == "all" && (p.TelegramID != nil || p.OnlyNew),
+			fl.Target == "new" && (p.TelegramID != nil || !p.OnlyNew),
+			fl.Target == "user" && p.TelegramID == nil:
 			continue
 		}
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+func (f *fakeStore) EnablePromo(_ context.Context, id int64) error {
+	for i := range f.promos {
+		if f.promos[i].ID == id {
+			f.promos[i].Disabled = false
+			return nil
+		}
+	}
+	return store.ErrNotFound
 }
 
 func (f *fakeStore) DisablePromo(_ context.Context, id int64) error {
@@ -88,6 +107,8 @@ type promoJSON struct {
 	MaxActivations *int       `json:"maxActivations"`
 	Used           int        `json:"used"`
 	ExpiresAt      *time.Time `json:"expiresAt"`
+	ValidFrom      *string    `json:"validFrom"`
+	StartsAt       *time.Time `json:"startsAt"`
 	ValidUntil     *string    `json:"validUntil"`
 	OnlyNew        bool       `json:"onlyNew"`
 	TelegramID     *int64     `json:"telegramId"`
@@ -161,6 +182,44 @@ func TestCreatePromo(t *testing.T) {
 	}
 	if len(st.promos) != 6 {
 		t.Fatalf("stored %d", len(st.promos))
+	}
+}
+
+func TestCreatePromoValidFrom(t *testing.T) {
+	h, _, c := promoServer(t)
+	p := createPromo(t, h, c, `{"kind":"days","value":3,"validFrom":"2026-12-01","validUntil":"2026-12-01"}`, http.StatusCreated)
+	if want := time.Date(2026, 12, 1, 0, 0, 0, 0, time.FixedZone("MSK", 3*3600)); p.StartsAt == nil || !p.StartsAt.Equal(want) {
+		t.Fatalf("startsAt = %v, want %v", p.StartsAt, want)
+	}
+	if p.ValidFrom == nil || *p.ValidFrom != "2026-12-01" || p.ValidUntil == nil || *p.ValidUntil != "2026-12-01" {
+		t.Fatalf("dates = %v %v", p.ValidFrom, p.ValidUntil)
+	}
+	if p = createPromo(t, h, c, `{"kind":"days","value":3}`, http.StatusCreated); p.ValidFrom != nil || p.StartsAt != nil {
+		t.Fatalf("no start: %+v", p)
+	}
+	for body, msg := range map[string]string{
+		`{"kind":"days","value":3,"validFrom":"2026-12-02","validUntil":"2026-12-01"}`: "позже даты окончания",
+		`{"kind":"days","value":3,"validFrom":"01.12.2026"}`:                           "формате",
+	} {
+		if w := send(h, http.MethodPost, "/api/promos", c, body); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), msg) {
+			t.Fatalf("%s: %d %s", body, w.Code, w.Body)
+		}
+	}
+}
+
+func TestEnablePromo(t *testing.T) {
+	h, st, c := promoServer(t)
+	st.promos = []model.PromoWithUsage{{Promo: model.Promo{ID: 1, Code: "OFF", Kind: model.PromoDays, Value: 3, Disabled: true}}}
+	for range 2 { // повтор — тоже 204
+		if w := send(h, http.MethodPost, "/api/promos/1/enable", c, ""); w.Code != http.StatusNoContent || st.promos[0].Disabled {
+			t.Fatalf("enable: %d", w.Code)
+		}
+	}
+	if w := send(h, http.MethodPost, "/api/promos/99/enable", c, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown: %d", w.Code)
+	}
+	if w := send(h, http.MethodPost, "/api/promos/x/enable", c, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("bad id: %d", w.Code)
 	}
 }
 
@@ -267,8 +326,22 @@ func TestListDisableActivations(t *testing.T) {
 	if out.Items[0].Username == nil || *out.Items[0].Username != "Bob" || out.Items[1].Used != 1 {
 		t.Fatalf("items = %+v", out.Items)
 	}
-	if w := send(h, http.MethodGet, "/api/promos?status=x", c, ""); w.Code != http.StatusBadRequest {
-		t.Fatalf("bad status: %d", w.Code)
+	for _, q := range []string{"status=x", "kind=gift", "target=x"} {
+		if w := send(h, http.MethodGet, "/api/promos?"+q, c, ""); w.Code != http.StatusBadRequest {
+			t.Fatalf("%s: %d", q, w.Code)
+		}
+	}
+	for q, want := range map[string]string{
+		"status=expired":                  "OLD",
+		"status=disabled":                 "OFF",
+		"kind=rub":                        "MINE",
+		"target=user":                     "MINE",
+		"target=all&status=active":        "LIVE",
+		"status=all&kind=days&target=new": "",
+	} {
+		if got := strings.Join(codes("/api/promos?"+q), ","); got != want {
+			t.Fatalf("%s = %q, want %q", q, got, want)
+		}
 	}
 
 	// disable

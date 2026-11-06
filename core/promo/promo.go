@@ -69,6 +69,9 @@ func ValidateNew(p model.Promo) error {
 	if p.MaxActivations != nil && *p.MaxActivations < 1 {
 		return invalid("максимум активаций — не меньше 1")
 	}
+	if p.StartsAt != nil && p.ExpiresAt != nil && !p.StartsAt.Before(*p.ExpiresAt) {
+		return invalid("«Действует с» позже даты окончания")
+	}
 	if p.TelegramID != nil && *p.TelegramID <= 0 {
 		return invalid("некорректный telegram id")
 	}
@@ -81,6 +84,8 @@ func Check(p model.Promo, used int, telegramID int64, hasConfirmed, alreadyActiv
 	switch {
 	case p.Disabled:
 		return ErrDisabled
+	case p.StartsAt != nil && now.Before(*p.StartsAt):
+		return ErrNotStarted
 	case p.ExpiresAt != nil && !now.Before(*p.ExpiresAt):
 		return ErrExpired
 	case p.MaxActivations != nil && used >= *p.MaxActivations:

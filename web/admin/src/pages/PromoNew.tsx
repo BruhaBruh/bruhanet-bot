@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { NOT_WIRED } from '@/lib/not-wired'
 import { Avatar, Button, Card, IconTile, Input, SearchField, SegmentedControl, Switch, toast, type IconName } from '@/ui'
 import { ApiError, get, post } from '../api'
 import { formatCount, formatDay, mskDate, plural } from '../format'
@@ -37,6 +36,7 @@ export default function PromoNew() {
   const [limitOn, setLimitOn] = useState(false)
   const [limit, setLimit] = useState('')
   const [termOn, setTermOn] = useState(false)
+  const [from, setFrom] = useState('')
   const [until, setUntil] = useState('')
   const [target, setTarget] = useState<Target>('all')
   const [picked, setPicked] = useState<UserSummary>()
@@ -79,6 +79,7 @@ export default function PromoNew() {
       kind,
       value,
       maxActivations: limitOn ? limit : '',
+      validFrom: termOn ? from : '',
       validUntil: termOn ? until : '',
       onlyNew: target === 'new',
       user: target === 'user' && picked ? String(picked.telegramId) : '',
@@ -102,10 +103,11 @@ export default function PromoNew() {
 
   const limitCount = formatCount(Number(limit) || 0)
   const untilLabel = until && formatDay(until)
+  const fromLabel = from && formatDay(from)
   const summary = [
     { k: 'Тип', v: kindLabels[kind] },
     { k: 'Активации', v: limitOn ? `${limitCount} ${plural(Number(limit) || 0, ['раз', 'раза', 'раз'])}` : 'без ограничений' },
-    { k: 'Срок', v: !termOn ? 'бессрочно' : untilLabel ? `по ${untilLabel}` : 'дата не выбрана' },
+    { k: 'Срок', v: !termOn ? 'бессрочно' : untilLabel ? `${fromLabel ? `с ${fromLabel} ` : ''}по ${untilLabel}` : 'дата не выбрана' },
     {
       k: 'Для кого',
       v: target === 'all' ? 'Все пользователи' : target === 'new' ? 'Только новые' : picked ? userLabel(picked) : 'Пользователь не выбран',
@@ -204,18 +206,26 @@ export default function PromoNew() {
             <div className="flex min-h-14 items-center gap-3">
               <div className="flex grow flex-col">
                 <span>Ограничить срок действия</span>
-                <span className={note}>{!termOn ? 'сейчас — бессрочно' : untilLabel ? `по ${untilLabel} включительно` : 'дата не выбрана'}</span>
+                <span className={note}>{!termOn ? 'сейчас — бессрочно' : untilLabel ? `${fromLabel ? `с ${fromLabel} ` : ''}по ${untilLabel} включительно` : 'дата не выбрана'}</span>
               </div>
               <Switch checked={termOn} onChange={setTermOn} aria-label="Ограничить срок действия" />
             </div>
             {termOn && (
               <div className="flex flex-wrap gap-3 pb-4">
-                <Input className="flex-[0_1_--spacing(55)]" label="Действует с" type="date" disabled hint={NOT_WIRED} />
+                <Input
+                  className="flex-[0_1_--spacing(55)]"
+                  label="Действует с"
+                  type="date"
+                  min={mskDate(new Date())}
+                  hint="Необязательно, с 00:00 по Москве"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
                 <Input
                   className="flex-[0_1_--spacing(55)]"
                   label="Действует по"
                   type="date"
-                  min={mskDate(new Date())}
+                  min={from || mskDate(new Date())}
                   hint="Включительно, по Москве"
                   value={until}
                   onChange={(e) => setUntil(e.target.value)}

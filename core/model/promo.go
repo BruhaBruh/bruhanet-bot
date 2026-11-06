@@ -17,12 +17,27 @@ type Promo struct {
 	Kind           PromoKind  `json:"kind"`
 	Value          int        `json:"value"`
 	MaxActivations *int       `json:"maxActivations"`
+	StartsAt       *time.Time `json:"startsAt"`
 	ExpiresAt      *time.Time `json:"expiresAt"`
 	OnlyNew        bool       `json:"onlyNew"`
 	TelegramID     *int64     `json:"telegramId"`
 	Disabled       bool       `json:"disabled"`
 	CreatedAt      time.Time  `json:"createdAt"`
 }
+
+// Значения PromoFilter; пустая строка — без фильтра.
+const (
+	PromoStatusActive   = "active"
+	PromoStatusExpired  = "expired"
+	PromoStatusDisabled = "disabled"
+
+	PromoTargetAll  = "all"
+	PromoTargetNew  = "new"
+	PromoTargetUser = "user"
+)
+
+// PromoFilter — фильтры списка кодов: Status active|expired|disabled, Kind — PromoKind, Target all|new|user.
+type PromoFilter struct{ Status, Kind, Target string }
 
 // PromoWithUsage — промокод со счётчиком активаций.
 type PromoWithUsage struct {

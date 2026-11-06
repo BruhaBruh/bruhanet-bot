@@ -237,6 +237,7 @@ func TestPromoRejectReasons(t *testing.T) {
 	}{
 		{name: "not found", want: "Такого промокода нет"},
 		{name: "disabled", promo: model.Promo{Disabled: true}, want: "больше не действует"},
+		{name: "not started", promo: model.Promo{StartsAt: ptr(now.Add(time.Hour))}, want: "ещё не начал действовать"},
 		{name: "expired", promo: model.Promo{ExpiresAt: ptr(now)}, want: "Срок действия этого промокода истёк"},
 		{name: "exhausted", promo: model.Promo{MaxActivations: ptr(0)}, want: "Активации этого промокода закончились"},
 		{name: "not yours", promo: model.Promo{TelegramID: ptr[int64](7)}, want: "предназначен другому пользователю"},

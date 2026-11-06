@@ -6,6 +6,7 @@ import "errors"
 var (
 	ErrNotFound    = errors.New("promo not found")
 	ErrDisabled    = errors.New("promo disabled")
+	ErrNotStarted  = errors.New("promo not started")
 	ErrExpired     = errors.New("promo expired")
 	ErrExhausted   = errors.New("promo activations exhausted")
 	ErrNotYours    = errors.New("promo is personal for another user")

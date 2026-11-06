@@ -291,6 +291,8 @@ func promoErrorKey(err error, place promo.Place) string {
 		return "promo.not_found"
 	case errors.Is(err, promo.ErrDisabled):
 		return "promo.disabled"
+	case errors.Is(err, promo.ErrNotStarted):
+		return "promo.not_started"
 	case errors.Is(err, promo.ErrExpired):
 		return "promo.expired"
 	case errors.Is(err, promo.ErrExhausted):

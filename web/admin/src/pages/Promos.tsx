@@ -1,27 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { notWired } from '@/lib/not-wired'
-import { Button, DataTable, Dialog, RowAction, RowMenu, SegmentedControl, Spinner, StatusTag, toast, type DataTableColumn, type Tone } from '@/ui'
+import { Button, Card, DataTable, Dialog, RowAction, RowMenu, SegmentedControl, Spinner, StatusTag, toast, type DataTableColumn, type Tone } from '@/ui'
 import { get, post } from '../api'
 import { formatCount, formatDay, formatShortDate } from '../format'
-import { kindLabels, promoStatus, promoUntil, promoValue, userLabel, type PromoStatus } from '../promo'
+import { kindLabels, promoStatus, promoUntil, promoValue, promosQuery, userLabel, type PromoStatus } from '../promo'
 import type { Promo, PromoActivation } from '../types'
 
 const SEGMENTS = [
   { value: 'all', label: 'Все' },
   { value: 'active', label: 'Активные' },
-  { value: 'draft', label: 'Черновики' },
   { value: 'expired', label: 'Истёкшие' },
 ]
 const EMPTY: Record<string, string> = {
   all: 'Промокодов ещё нет',
   active: 'Активных промокодов нет',
-  draft: 'Черновиков нет',
   expired: 'Истёкших промокодов нет',
 }
 
 const STATUS: Record<PromoStatus, [Tone, string]> = {
   active: ['success', 'Активен'],
+  upcoming: ['accent', 'Ещё не действует'],
   expired: ['neutral', 'Истёк'],
   limit: ['warning', 'Лимит исчерпан'],
   disabled: ['neutral', 'Выключен'],
@@ -31,6 +29,14 @@ const statusTag = (p: Promo) => {
   const [tone, label] = STATUS[promoStatus(p)]
   return <StatusTag tone={tone}>{label}</StatusTag>
 }
+
+const KIND_FILTER = [{ value: 'any', label: 'Любой' }, ...(['percent', 'rub', 'days'] as const).map((value) => ({ value, label: kindLabels[value] }))]
+const TARGET_FILTER = [
+  { value: 'any', label: 'Любые' },
+  { value: 'all', label: 'Для всех' },
+  { value: 'new', label: 'Для новых' },
+  { value: 'user', label: 'Конкретному пользователю' },
+]
 
 const target = (p: Promo) =>
   p.telegramId ? userLabel({ username: p.username, telegramId: p.telegramId }) : p.onlyNew ? 'Новые пользователи' : 'Все'
@@ -71,7 +77,10 @@ async function copyCode(code: string) {
 export default function Promos() {
   const navigate = useNavigate()
   const [segment, setSegment] = useState('all')
-  const apiStatus = segment === 'active' ? 'active' : 'all'
+  const [showFilters, setShowFilters] = useState(false)
+  const [kind, setKind] = useState('')
+  const [who, setWho] = useState('')
+  const apiStatus = promosQuery(segment, kind, who)
   const [reloads, setReloads] = useState(0)
   // Ответ привязан к статусу: при смене фильтра старый список не показывается, items нет — ошибка загрузки.
   const [data, setData] = useState<{ status: string; items?: Promo[] }>()
@@ -79,7 +88,7 @@ export default function Promos() {
   // Устаревший ответ при быстром переключении не перетирает новый; после «Выключить» — текущий фильтр.
   useEffect(() => {
     let stale = false
-    get<{ items: Promo[] }>(`/api/promos?status=${apiStatus}`).then(
+    get<{ items: Promo[] }>(apiStatus).then(
       (r) => {
         if (!stale) setData({ status: apiStatus, items: r.items })
       },
@@ -111,28 +120,26 @@ export default function Promos() {
   }
 
   const [confirming, setConfirming] = useState<Promo>()
-  const disabling = useRef(false)
-  async function disable(p: Promo) {
+  const toggling = useRef(false)
+  async function setEnabled(p: Promo, enable: boolean) {
     setConfirming(undefined)
-    if (disabling.current) return
-    disabling.current = true
+    if (toggling.current) return
+    toggling.current = true
     try {
-      await post(`/api/promos/${p.id}/disable`)
-      toast(`Промокод ${p.code} выключен`, { icon: 'check' })
+      await post(`/api/promos/${p.id}/${enable ? 'enable' : 'disable'}`)
+      toast(enable ? 'Промокод включён' : `Промокод ${p.code} выключен`, { icon: 'check' })
       setReloads((n) => n + 1)
     } catch {
-      toast('Не удалось выключить промокод')
+      toast(enable ? 'Не удалось включить промокод' : 'Не удалось выключить промокод')
     } finally {
-      disabling.current = false
+      toggling.current = false
     }
   }
 
   const loaded = data?.status === apiStatus ? data : undefined
-  const items = loaded?.items ?? []
-  // ponytail: «Истёкшие» фильтруются на клиенте, у API только status=active|all; «Черновиков» нет в API и БД.
-  const rows = segment === 'draft' ? [] : segment === 'expired' ? items.filter((p) => promoStatus(p) === 'expired') : items
-
-  const empty = segment === 'draft' ? EMPTY.draft : !loaded ? 'Загрузка…' : !loaded.items ? 'Не удалось загрузить промокоды' : EMPTY[segment]
+  const rows = loaded?.items ?? []
+  const filtered = kind || who
+  const empty = !loaded ? 'Загрузка…' : !loaded.items ? 'Не удалось загрузить промокоды' : filtered ? 'Ничего не найдено' : EMPTY[segment]
 
   const expanded = (p: Promo) =>
     open !== p.id ? null : (
@@ -144,7 +151,11 @@ export default function Promos() {
             <Button variant="gray" size="sm" icon="copy" onClick={() => void copyCode(p.code)}>
               Скопировать код
             </Button>
-            {!p.disabled && (
+            {p.disabled ? (
+              <Button variant="gray" size="sm" onClick={() => void setEnabled(p, true)}>
+                Включить
+              </Button>
+            ) : (
               <Button variant="destructive" size="sm" onClick={() => setConfirming(p)}>
                 Выключить
               </Button>
@@ -178,13 +189,25 @@ export default function Promos() {
           <SegmentedControl options={SEGMENTS} value={segment} onChange={setSegment} />
         </div>
         <div className="grow" />
-        <Button variant="gray" icon="filter" onClick={notWired}>
+        <Button variant="gray" icon="filter" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}>
           Фильтры
         </Button>
         <Button icon="plus" onClick={() => navigate('/promos/new')}>
           Создать промокод
         </Button>
       </div>
+      {showFilters && (
+        <Card className="admin-body">
+          <div className="flex flex-col gap-2">
+            <span className="admin-label px-0.5 text-text-secondary">Тип</span>
+            <SegmentedControl options={KIND_FILTER} value={kind || 'any'} onChange={(v) => setKind(v === 'any' ? '' : v)} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <span className="admin-label px-0.5 text-text-secondary">Для кого</span>
+            <SegmentedControl options={TARGET_FILTER} value={who || 'any'} onChange={(v) => setWho(v === 'any' ? '' : v)} />
+          </div>
+        </Card>
+      )}
       <div className="overflow-x-auto">
         <DataTable
           columns={columns}
@@ -193,13 +216,17 @@ export default function Promos() {
           onRowClick={(p) => void toggle(p.id)}
           expandedRow={expanded}
           // У API нет страниц: весь список — одна страница.
-          pagination={loaded?.items && segment !== 'draft' ? { page: 1, pages: 1, from: rows.length ? 1 : 0, to: rows.length, total: formatCount(rows.length) } : undefined}
+          pagination={loaded?.items ? { page: 1, pages: 1, from: rows.length ? 1 : 0, to: rows.length, total: formatCount(rows.length) } : undefined}
           rowActions={(p) => (
             <span className="inline-flex gap-0.5">
               <RowAction icon="copy" label="Скопировать код" onClick={() => void copyCode(p.code)} />
               <RowMenu
                 label="Действия с промокодом"
-                items={[{ label: 'Выключить', destructive: true, disabled: p.disabled, onSelect: () => setConfirming(p) }]}
+                items={[
+                  p.disabled
+                    ? { label: 'Включить', onSelect: () => void setEnabled(p, true) }
+                    : { label: 'Выключить', destructive: true, onSelect: () => setConfirming(p) },
+                ]}
               />
             </span>
           )}
@@ -214,10 +241,10 @@ export default function Promos() {
       {confirming && (
         <Dialog
           title="Выключить промокод?"
-          message={`Код ${confirming.code} перестанет работать. Включить его снова нельзя.`}
+          message={`Код ${confirming.code} перестанет работать. Его можно включить обратно.`}
           actions={[
             { label: 'Отмена', style: 'cancel', onClick: () => setConfirming(undefined) },
-            { label: 'Выключить', style: 'destructive', onClick: () => void disable(confirming) },
+            { label: 'Выключить', style: 'destructive', onClick: () => void setEnabled(confirming, false) },
           ]}
         />
       )}

@@ -146,6 +146,7 @@ export interface Promo {
   value: number
   maxActivations: number | null
   used: number
+  validFrom: string | null // YYYY-MM-DD включительно, МСК
   validUntil: string | null // YYYY-MM-DD включительно, МСК
   onlyNew: boolean
   telegramId: number | null

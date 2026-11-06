@@ -47,6 +47,7 @@ const promo = (id: number, code: string, extra: object = {}) => ({
   value: 10,
   maxActivations: null,
   used: 0,
+  validFrom: null,
   validUntil: null,
   onlyNew: false,
   telegramId: null,
@@ -82,6 +83,7 @@ describe('Promos list', () => {
         promo(3, 'FULL', { kind: 'rub', value: 1500, maxActivations: 2, used: 2, telegramId: 8 }),
         promo(4, 'OLD', { validUntil: '2020-01-31' }),
         promo(5, 'OFF', { disabled: true }),
+        promo(6, 'SOON', { validFrom: '2099-01-01' }),
       ],
     })
     await show()
@@ -92,24 +94,58 @@ describe('Promos list', () => {
     expect(cells('FULL')[6]).toBe('Лимит исчерпан')
     expect(cells('OLD')[6]).toBe('Истёк')
     expect(cells('OFF')[6]).toBe('Выключен')
+    expect(cells('SOON')[6]).toBe('Ещё не действует')
   })
 
-  it('segments: active asks the API, expired filters on the client, drafts are empty', async () => {
+  it('segments ask the server for each status, no drafts tab', async () => {
     replies['GET /api/promos?status=all'] = json(200, { items: [promo(1, 'LIVE'), promo(2, 'OLD', { validUntil: '2020-01-31' })] })
+    replies['GET /api/promos?status=expired'] = json(200, { items: [promo(2, 'OLD', { validUntil: '2020-01-31' })] })
     replies['GET /api/promos?status=active'] = json(200, { items: [promo(1, 'LIVE')] })
     await show()
+    expect(screen.queryByRole('radio', { name: 'Черновики' })).toBeNull()
     segment('Истёкшие')
     await flush()
     expect(table().queryByText('LIVE')).toBeNull()
     expect(table().getByText('OLD')).toBeTruthy()
-    expect(calls.filter((c) => c.url === '/api/promos?status=all')).toHaveLength(1)
     segment('Активные')
     await flush()
     expect(table().getByText('LIVE')).toBeTruthy()
     expect(table().queryByText('OLD')).toBeNull()
-    segment('Черновики')
+    expect(calls.map((c) => c.url)).toEqual(['/api/promos?status=all', '/api/promos?status=expired', '/api/promos?status=active'])
+  })
+
+  it('«Фильтры» pick type and audience on the server and combine with the tab', async () => {
+    replies['GET /api/promos?status=all'] = json(200, { items: [promo(1, 'A')] })
+    replies['GET /api/promos?status=all&kind=days'] = json(200, { items: [promo(2, 'WEEK', { kind: 'days', value: 7 })] })
+    replies['GET /api/promos?status=active&kind=days&target=user'] = json(200, { items: [] })
+    await show()
+    fireEvent.click(screen.getByRole('button', { name: 'Фильтры' }))
+    segment('Бонусные дни')
     await flush()
-    expect(table().getByText('Черновиков нет')).toBeTruthy()
+    expect(table().getByText('WEEK')).toBeTruthy()
+    segment('Активные')
+    segment('Конкретному пользователю')
+    await flush()
+    expect(calls.at(-1)!.url).toBe('/api/promos?status=active&kind=days&target=user')
+    expect(table().getByText('Ничего не найдено')).toBeTruthy()
+    segment('Любой')
+    segment('Любые')
+    await flush()
+    expect(calls.at(-1)!.url).toBe('/api/promos?status=active')
+  })
+
+  it('«Включить» on a disabled promo posts enable, toasts and reloads', async () => {
+    replies['GET /api/promos?status=all'] = json(200, { items: [promo(2, 'GONE', { disabled: true })] })
+    replies['POST /api/promos/2/enable'] = json(204)
+    await show()
+    await openMenu('GONE')
+    expect(screen.queryByRole('menuitem', { name: 'Выключить' })).toBeNull()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Включить' }))
+    await flush()
+    expect(posts().map((c) => c.url)).toEqual(['/api/promos/2/enable'])
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByRole('status').textContent).toContain('Промокод включён')
+    expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2)
   })
 
   it('stale filter response does not overwrite newer', async () => {
@@ -158,11 +194,6 @@ describe('Promos list', () => {
     const disabled = deferred()
     replies['POST /api/promos/1/disable'] = () => disabled.p
     await show()
-
-    await openMenu('GONE')
-    expect(screen.getByRole('menuitem', { name: 'Выключить' }).getAttribute('aria-disabled')).toBe('true')
-    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
-    await flush()
 
     await openMenu('ACTIVE')
     fireEvent.click(screen.getByRole('menuitem', { name: 'Выключить' }))
@@ -239,7 +270,7 @@ describe('PromoNew', () => {
     fireEvent.click(btn)
     await flush()
     expect(posts()).toHaveLength(1)
-    expect(posts()[0].body).toEqual({ code: '', kind: 'percent', value: 15, maxActivations: null, validUntil: null, onlyNew: false, user: '' })
+    expect(posts()[0].body).toEqual({ code: '', kind: 'percent', value: 15, maxActivations: null, validFrom: null, validUntil: null, onlyNew: false, user: '' })
     created.resolve(json(201, { promo: promo(5, 'X7K2') })())
     await flush()
     expect(screen.getByRole('status').textContent).toContain('Промокод X7K2 создан')
@@ -324,12 +355,14 @@ describe('PromoNew', () => {
     type('Сколько раз можно применить', '100')
     fireEvent.click(screen.getByRole('switch', { name: 'Ограничить срок действия' }))
     expect(create().disabled).toBe(true)
-    expect((screen.getByLabelText('Действует с') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Действует с') as HTMLInputElement).disabled).toBe(false)
     type('Действует по', '2099-12-31')
     expect(within(screen.getByRole('complementary', { name: 'Итог' })).getByText('по 31 дек. 2099')).toBeTruthy()
+    type('Действует с', '2099-12-01')
+    expect(within(screen.getByRole('complementary', { name: 'Итог' })).getByText('с 1 дек. 2099 по 31 дек. 2099')).toBeTruthy()
     fireEvent.click(create())
     await flush()
-    expect(posts()[0].body).toMatchObject({ code: 'SALE', maxActivations: 100, validUntil: '2099-12-31', user: '' })
+    expect(posts()[0].body).toMatchObject({ code: 'SALE', maxActivations: 100, validFrom: '2099-12-01', validUntil: '2099-12-31', user: '' })
   })
 
   it('switching term off drops the entered date', async () => {
@@ -342,7 +375,7 @@ describe('PromoNew', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Ограничить срок действия' }))
     fireEvent.click(create())
     await flush()
-    expect(posts()[0].body).toMatchObject({ validUntil: null })
+    expect(posts()[0].body).toMatchObject({ validFrom: null, validUntil: null })
   })
 
   it('new users target sends onlyNew', async () => {

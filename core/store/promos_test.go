@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -77,7 +78,7 @@ func TestListDisablePromos(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 
-	all, err := s.ListPromos(ctx, false, now)
+	all, err := s.ListPromos(ctx, model.PromoFilter{}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +89,7 @@ func TestListDisablePromos(t *testing.T) {
 	if len(all) != 4 || all[0].ID != off.ID || !all[0].Disabled || usedBy["USED"] != 1 || usedBy["FULL"] != 1 || usedBy["OLD"] != 0 {
 		t.Fatalf("all = %+v", all)
 	}
-	active, err := s.ListPromos(ctx, true, now)
+	active, err := s.ListPromos(ctx, model.PromoFilter{Status: model.PromoStatusActive}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,5 +417,88 @@ func TestActivateDaysPromoShiftsPending(t *testing.T) {
 		if !got.Equal(c.want) {
 			t.Fatalf("tg %d: prev = %v, want %v", c.tg, got, c.want)
 		}
+	}
+}
+
+func TestListPromosFilters(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	now := time.Now()
+	pct := mustPromo(t, s, model.Promo{Code: "PCT", Kind: promo.KindPercent, Value: 10})
+	newOnly := mustPromo(t, s, model.Promo{Code: "NEWB", Kind: promo.KindRub, Value: 10, OnlyNew: true})
+	user := mustPromo(t, s, model.Promo{Code: "USR", Kind: promo.KindDays, Value: 3, TelegramID: ptr(int64(7)), OnlyNew: true})
+	old := mustPromo(t, s, model.Promo{Code: "OLDX", Kind: promo.KindDays, Value: 1, ExpiresAt: ptr(now.Add(-time.Hour))})
+	off := mustPromo(t, s, model.Promo{Code: "OFFX", Kind: promo.KindDays, Value: 1, ExpiresAt: ptr(now.Add(-time.Hour))})
+	if err := s.DisablePromo(ctx, off.ID); err != nil {
+		t.Fatal(err)
+	}
+	ids := func(f model.PromoFilter) []int64 {
+		t.Helper()
+		l, err := s.ListPromos(ctx, f, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]int64, 0, len(l))
+		for _, p := range l {
+			out = append(out, p.ID)
+		}
+		return out
+	}
+	for name, tc := range map[string]struct {
+		f    model.PromoFilter
+		want []int64
+	}{
+		"expired skips disabled": {model.PromoFilter{Status: "expired"}, []int64{old.ID}},
+		"disabled":               {model.PromoFilter{Status: "disabled"}, []int64{off.ID}},
+		"kind":                   {model.PromoFilter{Kind: "days"}, []int64{off.ID, old.ID, user.ID}},
+		"target all":             {model.PromoFilter{Target: "all", Status: "active"}, []int64{pct.ID}},
+		"target new":             {model.PromoFilter{Target: "new"}, []int64{newOnly.ID}},
+		"target user":            {model.PromoFilter{Target: "user"}, []int64{user.ID}},
+		"combined":               {model.PromoFilter{Kind: "days", Target: "user", Status: "active"}, []int64{user.ID}},
+	} {
+		if got := ids(tc.f); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: got %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+func TestEnablePromo(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	p := mustPromo(t, s, model.Promo{Code: "ENBL", Kind: promo.KindDays, Value: 1})
+	if err := s.DisablePromo(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // повтор — без ошибки
+		if err := s.EnablePromo(ctx, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, _ := s.PromoByID(ctx, p.ID); got.Disabled {
+		t.Fatal("still disabled")
+	}
+	if err := s.EnablePromo(ctx, p.ID+100); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+// starts_at хранится и участвует в Check под блокировкой: до старта активировать нельзя, на границе можно.
+func TestActivateDaysPromoStartsAt(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	now := time.Now().Truncate(time.Microsecond)
+	p := mustPromo(t, s, model.Promo{Code: "LATER", Kind: promo.KindDays, Value: 2, StartsAt: ptr(now.Add(time.Hour))})
+	if p.StartsAt == nil || !p.StartsAt.Equal(now.Add(time.Hour)) {
+		t.Fatalf("startsAt = %v", p.StartsAt)
+	}
+	noop := func(model.Promo) error { return nil }
+	if err := s.ActivateDaysPromo(ctx, p.ID, 1, now, noop); !errors.Is(err, promo.ErrNotStarted) {
+		t.Fatalf("before start: %v", err)
+	}
+	if err := s.ActivateDaysPromo(ctx, p.ID, 1, now.Add(time.Hour), noop); err != nil {
+		t.Fatalf("at start: %v", err)
+	}
+	if _, err := s.CreatePromo(ctx, model.Promo{Code: "BADRANGE", Kind: promo.KindDays, Value: 1, StartsAt: ptr(now), ExpiresAt: ptr(now)}); err == nil {
+		t.Fatal("starts_at == expires_at accepted by the db")
 	}
 }

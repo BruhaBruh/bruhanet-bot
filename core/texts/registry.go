@@ -180,6 +180,8 @@ var registry = []Def{
 		shown(reasonPromo+"такого кода нет", "button.back"),
 	msg("promo.disabled", groupPromo, "Промокод выключен", promoHead+"Этот промокод больше не действует").
 		shown(reasonPromo+"код выключен в админке", "button.back"),
+	msg("promo.not_started", groupPromo, "Промокод ещё не действует", promoHead+"Этот промокод ещё не начал действовать").
+		shown(reasonPromo+"срок действия кода ещё не наступил", "button.back"),
 	msg("promo.expired", groupPromo, "Срок промокода истёк", promoHead+"Срок действия этого промокода истёк").
 		shown(reasonPromo+"срок кода истёк", "button.back"),
 	msg("promo.exhausted", groupPromo, "Активации закончились", promoHead+"Активации этого промокода закончились").
