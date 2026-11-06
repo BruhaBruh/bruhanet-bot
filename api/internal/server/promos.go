@@ -12,6 +12,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/promo"
 	"github.com/bruhabruh/bruhanet/core/store"
+	"github.com/bruhabruh/bruhanet/core/usererr"
 )
 
 const generateAttempts = 5
@@ -196,9 +197,7 @@ func (s *server) createPromo(w http.ResponseWriter, r *http.Request) {
 }
 
 // promoReason — человекочитаемая причина из errors.Join(ErrInvalid, причина).
-func promoReason(err error) string {
-	return strings.TrimPrefix(err.Error(), promo.ErrInvalid.Error()+"\n")
-}
+func promoReason(err error) string { return usererr.Message(err) }
 
 func (s *server) disablePromo(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

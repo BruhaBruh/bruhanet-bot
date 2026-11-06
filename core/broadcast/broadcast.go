@@ -3,7 +3,6 @@ package broadcast
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/bruhabruh/bruhanet/core/texts"
+	"github.com/bruhabruh/bruhanet/core/usererr"
 )
 
 const (
@@ -45,8 +45,8 @@ const (
 )
 
 var (
-	ErrAudience = errors.New("некорректная аудитория")
-	ErrButtons  = errors.New("некорректные кнопки")
+	ErrAudience = errors.New("invalid audience")
+	ErrButtons  = errors.New("invalid buttons")
 )
 
 // Button — url-кнопка под сообщением рассылки; Style — значения texts.Styles.
@@ -59,13 +59,13 @@ type Button struct {
 // ValidateAudience: expiring требует days 1..60, остальные days не принимают (nil).
 func ValidateAudience(audience string, days *int) error {
 	if !slices.Contains(Audiences, audience) {
-		return errors.Join(ErrAudience, fmt.Errorf("неизвестная аудитория «%s»", audience))
+		return errors.Join(ErrAudience, usererr.Errorf("unknown audience %q", "неизвестная аудитория «%s»", audience))
 	}
 	switch {
 	case audience != AudienceExpiring && days != nil:
-		return errors.Join(ErrAudience, errors.New("число дней нужно только для «подписка истекает»"))
+		return errors.Join(ErrAudience, usererr.Errorf("days are only valid for the expiring audience", "число дней нужно только для «подписка истекает»"))
 	case audience == AudienceExpiring && (days == nil || *days < MinDays || *days > MaxDays):
-		return errors.Join(ErrAudience, fmt.Errorf("«подписка истекает» — от %d до %d дней", MinDays, MaxDays))
+		return errors.Join(ErrAudience, usererr.Errorf("expiring audience needs days in %d..%d", "«подписка истекает» — от %d до %d дней", MinDays, MaxDays))
 	}
 	return nil
 }
@@ -74,21 +74,21 @@ func ValidateAudience(audience string, days *int) error {
 // javascript:, data:, tg: и http: отклоняются: разрешён только https с хостом.
 func ValidateButtons(bs []Button) error {
 	if len(bs) > MaxButtons {
-		return errors.Join(ErrButtons, fmt.Errorf("кнопок может быть не больше %d", MaxButtons))
+		return errors.Join(ErrButtons, usererr.Errorf("at most %d buttons", "кнопок может быть не больше %d", MaxButtons))
 	}
 	for i, b := range bs {
 		n := i + 1
 		if t := strings.TrimSpace(b.Text); t == "" || t != b.Text || len(utf16.Encode([]rune(t))) > MaxButtonText {
-			return errors.Join(ErrButtons, fmt.Errorf("кнопка %d: текст от 1 до %d символов, без пробелов по краям", n, MaxButtonText))
+			return errors.Join(ErrButtons, usererr.Errorf("button %d: text must be 1..%d characters without surrounding spaces", "кнопка %d: текст от 1 до %d символов, без пробелов по краям", n, MaxButtonText))
 		}
 		if strings.Contains(b.Text, "{{") {
-			return errors.Join(ErrButtons, fmt.Errorf("кнопка %d: в тексте кнопки нельзя использовать переменные", n))
+			return errors.Join(ErrButtons, usererr.Errorf("button %d: variables are not allowed in button text", "кнопка %d: в тексте кнопки нельзя использовать переменные", n))
 		}
 		if !slices.Contains(texts.Styles, b.Style) {
-			return errors.Join(ErrButtons, fmt.Errorf("кнопка %d: неизвестный стиль", n))
+			return errors.Join(ErrButtons, usererr.Errorf("button %d: unknown style", "кнопка %d: неизвестный стиль", n))
 		}
 		if !validURL(b.URL) {
-			return errors.Join(ErrButtons, fmt.Errorf("кнопка %d: ссылка должна начинаться с https:// и быть не длиннее %d символов", n, MaxButtonURL))
+			return errors.Join(ErrButtons, usererr.Errorf("button %d: url must be https and at most %d characters", "кнопка %d: ссылка должна начинаться с https:// и быть не длиннее %d символов", n, MaxButtonURL))
 		}
 	}
 	return nil

@@ -315,7 +315,7 @@ func TestSupportURLInHref(t *testing.T) {
 func TestMalformedVar(t *testing.T) {
 	d := Def{Kind: KindMessage}
 	for _, body := range []string{"{{name}}", "{{.na me}}", "{{.name}", "{{.name", "{{ .name } }"} {
-		if err := Validate(d, body, nil); !errors.Is(err, ErrInvalidMarkup) || !strings.Contains(err.Error(), "неправильная переменная") {
+		if err := Validate(d, body, nil); !errors.Is(err, ErrInvalidMarkup) || !strings.Contains(Problem(err), "неправильная переменная") {
 			t.Errorf("%q: %v", body, err)
 		}
 	}
@@ -476,7 +476,7 @@ func TestWidestVar(t *testing.T) {
 		t.Fatalf("widest = %q", got) // своя переменная в сообщении — до MaxCustomVar
 	}
 	err := Validate(d, strings.Repeat("b", 4090)+"{{.name}}", nil)
-	if !errors.Is(err, ErrTooLong) || !strings.Contains(err.Error(), "{{.name}}") {
+	if !errors.Is(err, ErrTooLong) || !strings.Contains(Problem(err), "{{.name}}") {
 		t.Fatalf("err = %v", err)
 	}
 }

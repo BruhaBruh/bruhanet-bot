@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/usererr"
 )
 
 type Kind = model.PromoKind
@@ -45,12 +46,13 @@ func Generate() string {
 	return string(b)
 }
 
-func invalid(msg string) error { return errors.Join(ErrInvalid, errors.New(msg)) }
+// invalid — отказ ValidateNew: en уходит в логи, ru показывает панель.
+func invalid(en, ru string) error { return errors.Join(ErrInvalid, &usererr.Error{En: en, Ru: ru}) }
 
 // ValidateNew проверяет код (после Normalize), тип, значение и ограничения нового промокода.
 func ValidateNew(p model.Promo) error {
 	if !codeRe.MatchString(Normalize(p.Code)) {
-		return invalid("код: 3–32 символа A-Z, 0-9, _ или -")
+		return invalid("bad code format", "код: 3–32 символа A-Z, 0-9, _ или -")
 	}
 	var maxValue int
 	switch p.Kind {
@@ -61,19 +63,19 @@ func ValidateNew(p model.Promo) error {
 	case KindDays:
 		maxValue = 3650
 	default:
-		return invalid("тип: percent, rub или days")
+		return invalid("unknown kind", "тип: percent, rub или days")
 	}
 	if p.Value < 1 || p.Value > maxValue {
-		return invalid("значение вне диапазона 1.." + strconv.Itoa(maxValue))
+		return invalid("value out of range", "значение вне диапазона 1.."+strconv.Itoa(maxValue))
 	}
 	if p.MaxActivations != nil && *p.MaxActivations < 1 {
-		return invalid("максимум активаций — не меньше 1")
+		return invalid("max activations below 1", "максимум активаций — не меньше 1")
 	}
 	if p.StartsAt != nil && p.ExpiresAt != nil && !p.StartsAt.Before(*p.ExpiresAt) {
-		return invalid("«Действует с» позже даты окончания")
+		return invalid("starts_at is not before expires_at", "«Действует с» позже даты окончания")
 	}
 	if p.TelegramID != nil && *p.TelegramID <= 0 {
-		return invalid("некорректный telegram id")
+		return invalid("bad telegram id", "некорректный telegram id")
 	}
 	return nil
 }

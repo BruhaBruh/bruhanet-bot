@@ -76,7 +76,7 @@ func New2[A, B Arg](name string) Route2[A, B] {
 		panic(err)
 	}
 	if len(name) > maxName2Len {
-		panic(fmt.Errorf("%w: %q длиннее %d", ErrInvalidName, name, maxName2Len))
+		panic(fmt.Errorf("%w: %q longer than %d", ErrInvalidName, name, maxName2Len))
 	}
 	return Route2[A, B]{name: name}
 }

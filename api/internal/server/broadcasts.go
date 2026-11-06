@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/core/texts"
+	"github.com/bruhabruh/bruhanet/core/usererr"
 )
 
 const (
@@ -40,7 +40,7 @@ func validateMessage(text string, hasPhoto bool, custom map[string]string) error
 		return err
 	}
 	if n := texts.WorstLen(def, text, custom); hasPhoto && n > maxCaptionLen {
-		return errors.Join(texts.ErrTooLong, fmt.Errorf("подпись к фото может оказаться длиннее %d символов (с самыми длинными значениями переменных — %d); самая длинная — {{.%s}}", maxCaptionLen, n, texts.WidestVar(def, text, custom)))
+		return errors.Join(texts.ErrTooLong, usererr.Errorf("photo caption may exceed %d characters (worst case %d, widest variable %s)", "подпись к фото может оказаться длиннее %d символов (с самыми длинными значениями переменных — %d); самая длинная — {{.%s}}", maxCaptionLen, n, texts.WidestVar(def, text, custom)))
 	}
 	return nil
 }
@@ -158,10 +158,10 @@ func parseSchedule(v string, now time.Time) (*time.Time, error) {
 	}
 	t, err := time.ParseInLocation(scheduleLayout, v, moscow)
 	if err != nil {
-		return nil, errors.New("время отправки: формат ГГГГ-ММ-ДДTЧЧ:ММ по московскому времени")
+		return nil, usererr.Errorf("invalid schedule format", "время отправки: формат ГГГГ-ММ-ДДTЧЧ:ММ по московскому времени")
 	}
 	if !t.After(now) {
-		return nil, errors.New("время отправки уже прошло")
+		return nil, usererr.Errorf("schedule is in the past", "время отправки уже прошло")
 	}
 	t = t.UTC()
 	return &t, nil
@@ -204,7 +204,7 @@ func (s *server) checkBroadcast(w http.ResponseWriter, r *http.Request, in *broa
 	}
 	at, err := parseSchedule(in.ScheduledAt, s.Now())
 	if err != nil {
-		writeInvalid(w, err.Error())
+		writeInvalid(w, usererr.Message(err))
 		return nil, false
 	}
 	return at, true
@@ -227,31 +227,31 @@ func normalizeDraft(in *broadcastIn) (*time.Time, error) {
 		in.Audience = broadcast.AudienceAll
 	}
 	if !slices.Contains(broadcast.Audiences, in.Audience) {
-		return nil, errors.New("неизвестная аудитория")
+		return nil, usererr.Errorf("unknown audience", "неизвестная аудитория")
 	}
 	if in.Audience != broadcast.AudienceExpiring || in.AudienceDays == nil || *in.AudienceDays < broadcast.MinDays || *in.AudienceDays > broadcast.MaxDays {
 		in.AudienceDays = nil
 	}
 	if len(in.Buttons) > broadcast.MaxButtons {
-		return nil, errors.New("кнопок может быть не больше 3")
+		return nil, usererr.Errorf("too many buttons", "кнопок может быть не больше 3")
 	}
 	for i, b := range in.Buttons {
 		if utf8.RuneCountInString(b.Text) > draftButtonText || len(b.URL) > draftButtonURL {
-			return nil, errors.New("слишком длинная кнопка")
+			return nil, usererr.Errorf("button is too long", "слишком длинная кнопка")
 		}
 		if !slices.Contains(texts.Styles, b.Style) {
 			in.Buttons[i].Style = ""
 		}
 	}
 	if len(in.Photo) > 512 {
-		return nil, errors.New("некорректное фото")
+		return nil, usererr.Errorf("invalid photo id", "некорректное фото")
 	}
 	if in.ScheduledAt == "" {
 		return nil, nil //nolint:nilnil // у черновика времени может не быть
 	}
 	t, err := time.ParseInLocation(scheduleLayout, in.ScheduledAt, moscow)
 	if err != nil {
-		return nil, errors.New("время отправки: формат ГГГГ-ММ-ДДTЧЧ:ММ по московскому времени")
+		return nil, usererr.Errorf("invalid schedule format", "время отправки: формат ГГГГ-ММ-ДДTЧЧ:ММ по московскому времени")
 	}
 	t = t.UTC()
 	return &t, nil
@@ -325,7 +325,7 @@ func (s *server) updateBroadcast(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrNotFound) || cur.Status == broadcast.StatusDraft:
 		at, nerr := normalizeDraft(&in)
 		if nerr != nil {
-			writeInvalid(w, nerr.Error())
+			writeInvalid(w, usererr.Message(nerr))
 			return
 		}
 		b, err = s.Store.SaveDraft(r.Context(), id, model.BroadcastDraft{

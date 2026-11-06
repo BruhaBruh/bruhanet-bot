@@ -18,7 +18,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
-var ErrInvalidSetting = errors.New("некорректная настройка")
+var ErrInvalidSetting = errors.New("invalid setting")
 
 const (
 	fallbackReminderTime = "12:00"

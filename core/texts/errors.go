@@ -1,6 +1,11 @@
 package texts
 
-import "errors"
+import (
+	"errors"
+	"strings"
+
+	"github.com/bruhabruh/bruhanet/core/usererr"
+)
 
 var (
 	ErrInvalidMarkup = errors.New("invalid telegram html")
@@ -8,12 +13,18 @@ var (
 	ErrBadButton     = errors.New("invalid button text")
 )
 
-// Problem — человеческое описание ошибки Validate без служебного префикса сентинела.
+// Problem — человеческое (русское) описание ошибки Validate без служебного префикса сентинела.
+// Берётся usererr.Message; ошибка без него даёт usererr.Fallback, err.Error() человеку не уходит.
 func Problem(err error) string {
+	es := []error{err}
 	if j, ok := err.(interface{ Unwrap() []error }); ok { //nolint:errorlint // errors.Join: [сентинел, подробность]
-		if es := j.Unwrap(); len(es) > 1 {
-			return errors.Join(es[1:]...).Error()
+		if u := j.Unwrap(); len(u) > 1 {
+			es = u[1:]
 		}
 	}
-	return err.Error()
+	msgs := make([]string, len(es))
+	for i, e := range es {
+		msgs[i] = usererr.Message(e)
+	}
+	return strings.Join(msgs, "\n")
 }
