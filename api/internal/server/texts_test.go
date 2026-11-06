@@ -339,3 +339,40 @@ func TestPutTextButtonVarsMustFit(t *testing.T) {
 		t.Errorf("message: %d %s", w.Code, w.Body)
 	}
 }
+
+// Сохранённый, но не применяемый ботом текст: inactive + причина; валидный и сброшенный — без флага.
+func TestTextsInactive(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	get := func() (inactive map[string]string, ok map[string]bool) {
+		w := send(h, http.MethodGet, "/api/texts", c, "")
+		var out struct {
+			Items []struct {
+				Key      string
+				Inactive bool
+				Problem  string
+			}
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		inactive, ok = map[string]string{}, map[string]bool{}
+		for _, it := range out.Items {
+			if it.Inactive {
+				inactive[it.Key] = it.Problem
+			} else if it.Problem == "" {
+				ok[it.Key] = true
+			}
+		}
+		return
+	}
+	st.overrides = map[string]string{"menu.greeting": "<b>не закрыт", "button.pay": "Оплатить"}
+	bad, good := get()
+	if bad["menu.greeting"] == "" || len(bad) != 1 || !good["button.pay"] {
+		t.Fatalf("bad = %v good = %v", bad, good)
+	}
+	st.overrides["menu.greeting"] = "Привет, <b>{{.name}}</b>"
+	if bad, _ := get(); len(bad) != 0 {
+		t.Fatalf("still inactive: %v", bad)
+	}
+}

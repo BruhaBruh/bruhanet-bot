@@ -48,6 +48,9 @@ type textItem struct {
 	Buttons    []string  `json:"buttons"`
 	Route      string    `json:"route,omitempty"`
 	Style      string    `json:"style"`
+	// Inactive: сохранённый текст не проходит проверку, бот его не применяет (та же texts.ValidateStored).
+	Inactive bool   `json:"inactive"`
+	Problem  string `json:"problem,omitempty"`
 }
 
 // readJSON читает тело в v; при ошибке сам отвечает 400.
@@ -103,6 +106,9 @@ func (s *server) texts(w http.ResponseWriter, r *http.Request) {
 		}
 		if b, ok := over[d.Key]; ok {
 			it.Body, it.Overridden = b, true
+			if err := texts.ValidateStored(d, b, cur.Vars); err != nil {
+				it.Inactive, it.Problem = true, texts.Problem(err)
+			}
 		}
 		items = append(items, it)
 	}
