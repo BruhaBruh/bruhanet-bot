@@ -58,8 +58,10 @@ func (s *Store) EnqueueMany(ctx context.Context, ms []model.OutboxMessage) error
 	})
 }
 
+// OutboxBatch — очередная пачка к доставке: сначала всё, что не рассылка (платежи, напоминания, личные), и только
+// затем строки рассылки; внутри группы по порядку id. Так платёж не ждёт хвост большой рассылки.
 func (s *Store) OutboxBatch(ctx context.Context, limit int) ([]model.OutboxItem, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, event_type, payload FROM outbox ORDER BY id LIMIT $1`, limit)
+	rows, err := s.pool.Query(ctx, `SELECT id, event_type, payload FROM outbox ORDER BY (event_type = 'broadcast'), id LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}

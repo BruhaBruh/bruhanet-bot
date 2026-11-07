@@ -10,6 +10,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/model"
 )
 
+// Внутри одного вида — по порядку id.
 func TestOutboxFIFO(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
@@ -106,4 +107,49 @@ func TestEnqueueRejectsEmpty(t *testing.T) {
 	if err := s.EnqueueMany(t.Context(), []model.OutboxMessage{{EventType: "x", ChatID: 1}, {}}); !errors.Is(err, ErrEmptyMessage) {
 		t.Fatalf("EnqueueMany = %v", err)
 	}
+}
+
+// Платёж и другие уведомления не ждут хвост рассылки: строки рассылки идут после всего остального, даже если
+// положены раньше.
+func TestOutboxPriorityOverBroadcast(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	err := s.EnqueueMany(ctx, []model.OutboxMessage{
+		{EventType: "broadcast", ChatID: 1, Text: "b1"},
+		{EventType: "broadcast", ChatID: 2, Text: "b2"},
+		{EventType: "payment_result", ChatID: 3, TextKey: "payment.confirmed"},
+		{EventType: "broadcast", ChatID: 4, Text: "b3"},
+		{EventType: "direct", ChatID: 5, Text: "d"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.OutboxBatch(ctx, 10)
+	if err != nil || len(got) != 5 {
+		t.Fatalf("got %v err=%v", got, err)
+	}
+	var order []int64
+	for _, it := range got {
+		order = append(order, it.ChatID)
+	}
+	if want := []int64{3, 5, 1, 2, 4}; !slicesEqual(order, want) {
+		t.Fatalf("order = %v, want %v", order, want)
+	}
+	// пачка в 2 строки: сначала два небольших уведомления, рассылка ждёт
+	got, _ = s.OutboxBatch(ctx, 2)
+	if len(got) != 2 || got[0].ChatID != 3 || got[1].ChatID != 5 {
+		t.Fatalf("small batch: %+v", got)
+	}
+}
+
+func slicesEqual(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

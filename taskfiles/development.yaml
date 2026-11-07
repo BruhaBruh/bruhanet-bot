@@ -30,6 +30,13 @@ tasks:
       - task: migrate
       - go -C {{.SVC}} run ./cmd
 
+  stack:
+    desc: 'Весь dev-стек одной командой: postgres + redis, миграции, бот, api и vite (Ctrl+C останавливает всё)'
+    cmds:
+      - task: up
+      - task: migrate
+      - bash scripts/dev-stack.sh
+
   dev:
     desc: 'Запустить с hot-reload через air (пример: task dev SVC=booking)'
     requires:
