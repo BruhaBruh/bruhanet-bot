@@ -443,7 +443,7 @@ describe('UserCard', () => {
     expect(screen.getByText('Промокоды', { selector: 'dt' }).nextSibling?.textContent).toBe('—')
     expect(screen.getByText('Получил рассылок').nextSibling?.textContent).toBe('0')
     expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('0 (оплатили 0)')
-    expect(screen.queryByText('Пригласил', { selector: 'dt' })).toBeNull()
+    expect(screen.queryByText('Кем приглашён', { selector: 'dt' })).toBeNull()
     expect(screen.getByText('Устройства', { selector: 'dt' }).nextSibling?.textContent).toBe('5 + 2 = 7')
     const row = within(screen.getByRole('table')).getByText('31').closest('tr')!
     expect(within(row).getByText('3 мес.')).toBeTruthy()
@@ -457,6 +457,17 @@ describe('UserCard', () => {
     await renderAt('/users/7')
     expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('5 (оплатили 2)')
     expect(screen.getByRole('link', { name: 'Алиса' }).getAttribute('href')).toBe('/users/9')
+    expect(screen.getByText('Кем приглашён', { selector: 'dt' })).toBeTruthy()
+  })
+
+  it('card sections list facts in a logical order: identity and status first, money by importance, then activity', async () => {
+    stub({ '/api/users/7': () => json(200, detail({ referral: { invited: 1, paid: 0, referredBy: 9, referredByUsername: 'alice' } })) })
+    await renderAt('/users/7')
+    // секцию находим по её первой строке: заголовки («Подписка») встречаются и в других местах карточки
+    const order = (first: string) => Array.from(screen.getByText(first, { selector: 'dt' }).closest('dl')!.querySelectorAll('dt')).map((e) => e.textContent)
+    expect(order('ID в панели')).toEqual(['ID в панели', 'Статус', 'Срок до', 'Тариф', 'Пробный период', 'Устройства'])
+    expect(order('Платежей')).toEqual(['Платежей', 'Оплачено всего', 'Средний чек', 'Первая оплата', 'Последняя оплата', 'Промокоды', 'Неоплаченные авансы'])
+    expect(order('Последний визит')).toEqual(['Последний визит', 'Получил рассылок', 'Кем приглашён', 'Пригласил друзей'])
   })
 
   it('shows the id when the inviter has no username', async () => {

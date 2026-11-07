@@ -201,11 +201,6 @@ function UserCardInner({ id }: { id?: string }) {
         <Facts
           title="Подписка"
           rows={[
-            ['Срок до', panel.error ? PANEL_UNAVAILABLE : day(panel.expireAt)],
-            ['Статус', !panel.error && panel.status ? panelStatusLabel(panel.status) : DASH],
-            ['Тариф', user.tariffMonths ? `${user.tariffMonths} мес.` : DASH],
-            ['Пробный период', user.trialUsedAt ? `использован ${day(user.trialUsedAt)}` : DASH],
-            ['Устройства', devices ? `${devices.base} + ${devices.extra} = ${devices.base + devices.extra}` : DASH],
             [
               'ID в панели',
               panel.id == null ? (
@@ -217,36 +212,41 @@ function UserCardInner({ id }: { id?: string }) {
                 </span>
               ),
             ],
+            ['Статус', !panel.error && panel.status ? panelStatusLabel(panel.status) : DASH],
+            ['Срок до', panel.error ? PANEL_UNAVAILABLE : day(panel.expireAt)],
+            ['Тариф', user.tariffMonths ? `${user.tariffMonths} мес.` : DASH],
+            ['Пробный период', user.trialUsedAt ? `использован ${day(user.trialUsedAt)}` : DASH],
+            ['Устройства', devices ? `${devices.base} + ${devices.extra} = ${devices.base + devices.extra}` : DASH],
           ]}
         />
         <Facts
           title="Финансы"
           rows={[
-            ['Оплачено всего', formatRub(stats.confirmedSum)],
             ['Платежей', formatCount(stats.confirmed)],
+            ['Оплачено всего', formatRub(stats.confirmedSum)],
             ['Средний чек', average],
-            ['Промокоды', promos.length ? <span className="mono break-all">{promos.map((p) => p.code).join(', ')}</span> : DASH],
-            ['Неоплаченные авансы', formatCount(stats.unpaidAdvances)],
             ['Первая оплата', day(stats.firstConfirmedAt)],
             ['Последняя оплата', day(stats.lastConfirmedAt)],
+            ['Промокоды', promos.length ? <span className="mono break-all">{promos.map((p) => p.code).join(', ')}</span> : DASH],
+            ['Неоплаченные авансы', formatCount(stats.unpaidAdvances)],
           ]}
         />
         <Facts
           title="Активность"
           rows={[
             ['Последний визит', user.lastSeenAt ? formatShortDate(user.lastSeenAt) : DASH],
-            ['Пригласил друзей', `${formatCount(referral.invited)} (оплатили ${formatCount(referral.paid)})`],
+            ['Получил рассылок', formatCount(user.broadcastsReceived)],
             ...(referral.referredBy == null
               ? []
               : [
                   [
-                    'Пригласил',
+                    'Кем приглашён',
                     <Link key="by" className="focus-ring break-all text-accent-strong" to={`/users/${referral.referredBy}`}>
                       <UserChip id={referral.referredBy} label={userLabel({ name: referral.referredByName, username: referral.referredByUsername, telegramId: referral.referredBy })} />
                     </Link>,
                   ] as [string, ReactNode],
                 ]),
-            ['Получил рассылок', formatCount(user.broadcastsReceived)],
+            ['Пригласил друзей', `${formatCount(referral.invited)} (оплатили ${formatCount(referral.paid)})`],
           ]}
         />
       </div>
