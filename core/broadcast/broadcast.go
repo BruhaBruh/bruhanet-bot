@@ -3,7 +3,6 @@ package broadcast
 
 import (
 	"errors"
-	"net/url"
 	"slices"
 	"strings"
 	"unicode/utf16"
@@ -106,13 +105,7 @@ func ValidateButtons(bs []Button) error {
 	return nil
 }
 
-func validURL(raw string) bool {
-	if raw == "" || len(raw) > MaxButtonURL || strings.ContainsFunc(raw, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
-		return false
-	}
-	u, err := url.Parse(raw)
-	return err == nil && u.Scheme == "https" && u.Host != "" && u.Hostname() != "" && u.User == nil && u.Opaque == ""
-}
+func validURL(raw string) bool { return texts.ValidHTTPSURL(raw, MaxButtonURL) }
 
 // Rows группирует кнопки в строки: Inline — в строку предыдущей (если там меньше 2), иначе новая строка.
 func Rows(bs []Button) [][]Button {
