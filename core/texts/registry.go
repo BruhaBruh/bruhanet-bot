@@ -236,6 +236,10 @@ var registry = []Def{
 			"Одно устройство — {{.devicePrice}} ₽ в месяц, цена считается до конца текущей подписки, срок не меняется.",
 		varDevicePrice, varDevMax).
 		shown("По кнопке «Докупить» на экране «Устройства»", "button.devices_add", "button.devices_custom", "button.back"),
+	msg("devices.limit", groupPayment, "Докупка: предел устройств",
+		devicesHead+"У тебя уже максимум устройств: <b>{{.limit}}</b>. Докупить больше нельзя.",
+		Var{Name: "limit", Description: "Сколько устройств сейчас в подписке", Sample: "100", Max: 4}).
+		shown("Когда сумма базовых и купленных устройств достигла предела панели (100)", "button.back"),
 	msg("devices.custom", groupPayment, "Докупка: ввод своего числа",
 		devicesHead+"Пришли число от 1 до <b>{{.max}}</b>: сколько устройств добавить.",
 		varDevMax).

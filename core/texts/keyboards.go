@@ -295,7 +295,7 @@ var keyboards = []Keyboard{
 	kb("back", "Одна кнопка «Назад»", []string{
 		"promo.enter_payment", "promo.enter_menu", "promo.not_found", "promo.disabled", "promo.not_started", "promo.expired",
 		"promo.exhausted", "promo.not_yours", "promo.only_new", "promo.already_used", "promo.wrong_place_payment", "promo.wrong_place_menu",
-		"trial.unavailable", "devices.custom", "devices.number_invalid", "devices.busy", "gift.busy", "gift.unavailable",
+		"trial.unavailable", "devices.custom", "devices.number_invalid", "devices.busy", "devices.limit", "gift.busy", "gift.unavailable",
 	}, fx("button.back"), nil, row("button.back")),
 	kb("login", "Вход в админ-панель", []string{"login.message"}, fx("button.login"), nil, row("button.login")),
 	kb("error", "Ошибка", []string{"error.generic"},

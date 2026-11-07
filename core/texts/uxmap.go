@@ -126,6 +126,8 @@ var mapTransitions = []MapTransition{
 	{"devices.custom", "flow:back", []string{"devices.buy"}},
 	{"devices.number_invalid", "flow:back", []string{"devices.buy"}},
 	{"devices.busy", "flow:back", []string{"menu.greeting"}},
+	{"devices.limit", "flow:back", []string{"devices.menu"}},
+	{"devices.menu", "route:devices_buy", []string{"devices.buy", "devices.limit"}},
 	{"gift.busy", "flow:back", []string{"menu.greeting"}},
 	{"gift.unavailable", "flow:back", []string{"menu.greeting"}},
 }

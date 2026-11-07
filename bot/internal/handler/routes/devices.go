@@ -103,6 +103,19 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 		callback("button.back", routeMenu, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.menu", vars))
 }
 
+// deviceMost — наибольшее число устройств за одну докупку: не больше настройки и не больше места до предела панели
+// (база + купленные ≤ devices.MaxTotal); 0 — докупать больше нельзя.
+func (h *handlers) deviceMost(ctx context.Context, extra int) int {
+	set := h.c.Settings(ctx)
+	return min(set.DeviceMax, devices.Room(set.DevicesBase, extra))
+}
+
+// showDevicesLimit — предел устройств достигнут.
+func (h *handlers) showDevicesLimit(ctx context.Context, b *bot.Bot, u *models.Update, extra int) {
+	set := h.c.Settings(ctx)
+	show(ctx, b, u, h.backKeyboard(ctx, "devices.limit", routeDevices), h.c.Text(ctx, "devices.limit", map[string]string{"limit": strconv.Itoa(set.DevicesBase + extra)}))
+}
+
 // devicesBuyMenu — меню докупки: варианты из настроек с ценой до конца подписки и «Своё число».
 func (h *handlers) devicesBuyMenu(ctx context.Context, b *bot.Bot, u *models.Update) {
 	set := h.c.Settings(ctx)
@@ -114,8 +127,16 @@ func (h *handlers) devicesBuyMenu(ctx context.Context, b *bot.Bot, u *models.Upd
 		h.devices(ctx, b, u)
 		return
 	}
+	most := h.deviceMost(ctx, extra)
+	if most < 1 {
+		h.showDevicesLimit(ctx, b, u, extra)
+		return
+	}
 	buttons := make([]keyboard.Button, 0, len(set.DeviceOptions))
 	for _, n := range set.DeviceOptions {
+		if n > most { // не влезает в предел панели
+			continue
+		}
 		price, err := devices.ProratedPrice(set.DevicePrice, n, user.ExpireAt, h.now())
 		if err != nil {
 			break
@@ -126,7 +147,7 @@ func (h *handlers) devicesBuyMenu(ctx context.Context, b *bot.Bot, u *models.Upd
 	}
 	h.leavePromo(ctx, tgupdate.UserID(u)) // выход из ожидания числа
 	vars := deviceVars(set, extra)
-	vars["max"] = strconv.Itoa(set.DeviceMax)
+	vars["max"] = strconv.Itoa(most)
 	show(ctx, b, u, h.kb(ctx, "devices_buy", "devices.buy").block("@devices", keyboard.Grid(2, buttons...)).
 		callback("button.devices_custom", routeDevicesCustom, keyboard.StyleDefault).
 		callback("button.back", routeDevices, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.buy", vars))
@@ -134,7 +155,7 @@ func (h *handlers) devicesBuyMenu(ctx context.Context, b *bot.Bot, u *models.Upd
 
 // devicesCustom — «Своё число»: ждём сообщение с числом.
 func (h *handlers) devicesCustom(ctx context.Context, b *bot.Bot, u *models.Update) {
-	user, _, ok := h.deviceUser(ctx, b, u)
+	user, extra, ok := h.deviceUser(ctx, b, u)
 	if !ok {
 		return
 	}
@@ -142,12 +163,17 @@ func (h *handlers) devicesCustom(ctx context.Context, b *bot.Bot, u *models.Upda
 		h.devices(ctx, b, u)
 		return
 	}
+	most := h.deviceMost(ctx, extra)
+	if most < 1 {
+		h.showDevicesLimit(ctx, b, u, extra)
+		return
+	}
 	if err := fsm.Put(ctx, fsm.For(h.fsm, tgupdate.UserID(u)), stateAwaitDevices, nil); err != nil {
 		stlog.Error(ctx, "failed to set devices state", "error", err)
 		h.showError(ctx, b, u)
 		return
 	}
-	show(ctx, b, u, h.backKeyboard(ctx, "devices.custom", routeDevicesBuy), h.c.Text(ctx, "devices.custom", map[string]string{"max": strconv.Itoa(h.c.Settings(ctx).DeviceMax)}))
+	show(ctx, b, u, h.backKeyboard(ctx, "devices.custom", routeDevicesBuy), h.c.Text(ctx, "devices.custom", map[string]string{"max": strconv.Itoa(most)}))
 }
 
 // devicesNumberText — число, присланное в ожидании: на подтверждение; не число или вне границ — подсказка и повторный ввод.
@@ -155,10 +181,21 @@ func (h *handlers) devicesNumberText(ctx context.Context, b *bot.Bot, u *models.
 	if h.escapePromo(ctx, b, u) { // команда, фото или не текст выходят из ожидания
 		return
 	}
-	max := h.c.Settings(ctx).DeviceMax
+	extra, err := h.pay.ExtraDevices(ctx, tgupdate.UserID(u))
+	if err != nil {
+		stlog.Error(ctx, "failed to load extra devices", "error", err)
+		h.showError(ctx, b, u)
+		return
+	}
+	most := h.deviceMost(ctx, extra)
+	if most < 1 { // предел достигнут, пока юзер вводил число
+		h.leavePromo(ctx, tgupdate.UserID(u))
+		h.showDevicesLimit(ctx, b, u, extra)
+		return
+	}
 	n, err := strconv.Atoi(strings.TrimSpace(u.Message.Text))
-	if err != nil || n < 1 || n > max {
-		send(ctx, b, tgupdate.ChatID(u), h.backKeyboard(ctx, "devices.number_invalid", routeDevicesBuy), h.c.Text(ctx, "devices.number_invalid", map[string]string{"max": strconv.Itoa(max)}))
+	if err != nil || n < 1 || n > most {
+		send(ctx, b, tgupdate.ChatID(u), h.backKeyboard(ctx, "devices.number_invalid", routeDevicesBuy), h.c.Text(ctx, "devices.number_invalid", map[string]string{"max": strconv.Itoa(most)}))
 		return
 	}
 	h.leavePromo(ctx, tgupdate.UserID(u))
@@ -203,12 +240,12 @@ func (h *handlers) devicePrice(ctx context.Context, b *bot.Bot, u *models.Update
 // priceFor — цена n устройств до конца подписки юзера; n вне 1..максимума из настроек и закончившаяся подписка — экран «Устройства».
 func (h *handlers) priceFor(ctx context.Context, b *bot.Bot, u *models.Update, n int) (int, bool) {
 	set := h.c.Settings(ctx)
-	if n < 1 || n > set.DeviceMax {
-		h.devices(ctx, b, u)
+	user, extra, ok := h.deviceUser(ctx, b, u)
+	if !ok {
 		return 0, false
 	}
-	user, _, ok := h.deviceUser(ctx, b, u)
-	if !ok {
+	if n < 1 || n > h.deviceMost(ctx, extra) { // подделка или предел достигнут: меню докупки покажет, сколько можно
+		h.devicesBuyMenu(ctx, b, u)
 		return 0, false
 	}
 	price, err := devices.ProratedPrice(set.DevicePrice, n, user.ExpireAt, h.now())

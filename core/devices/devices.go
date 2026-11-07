@@ -10,6 +10,12 @@ import (
 // они войдут в цену продления.
 var ErrNoTerm = errors.New("devices: no active subscription term")
 
+// MaxTotal — наибольший лимит устройств у юзера в сумме (база + купленные): верхняя граница, которую мы пишем в панель.
+const MaxTotal = 100
+
+// Room — сколько ещё устройств можно докупить при базе base и купленных extra; 0 — предел достигнут.
+func Room(base, extra int) int { return max(0, MaxTotal-base-extra) }
+
 const day = 24 * time.Hour
 
 // RemainingDays — сколько суток осталось до expire, с округлением вверх; 0 — срок вышел.

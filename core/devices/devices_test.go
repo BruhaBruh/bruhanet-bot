@@ -60,3 +60,11 @@ func TestTariffAddon(t *testing.T) {
 		t.Fatal("no extra")
 	}
 }
+
+func TestRoom(t *testing.T) {
+	for _, tc := range []struct{ base, extra, want int }{{5, 0, 95}, {5, 95, 0}, {5, 94, 1}, {100, 0, 0}, {5, 200, 0}} {
+		if got := Room(tc.base, tc.extra); got != tc.want {
+			t.Errorf("Room(%d, %d) = %d, want %d", tc.base, tc.extra, got, tc.want)
+		}
+	}
+}

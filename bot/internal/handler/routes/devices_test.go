@@ -309,3 +309,45 @@ func TestBlockedUserMayBuyDevices(t *testing.T) {
 		t.Fatalf("payment: %+v", p)
 	}
 }
+
+// Потолок: база + купленные ≤ 100. Меню и «Своё число» предлагают не больше, чем осталось места.
+func TestDevicesTotalCap(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.pay.SetExtraDevices(userID, 93) // база 5 + 93 = 98: осталось 2
+	e.process(t, tgtest.Callback(userID, "devbuy"))
+	kb := e.markup(t)
+	if !strings.Contains(kb, "+1 ") || !strings.Contains(kb, "+2 ") || strings.Contains(kb, "+3 ") || strings.Contains(kb, "+5 ") {
+		t.Fatalf("options must fit the cap: %s", kb)
+	}
+	if !strings.Contains(e.text(t), "до 2") {
+		t.Fatalf("text: %s", e.text(t))
+	}
+	e.process(t, tgtest.Callback(userID, "devc"))
+	e.process(t, tgtest.Message(userID, "3"))
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "от 1 до <b>2</b>") {
+		t.Fatalf("number over the cap: %s", text)
+	}
+	e.process(t, tgtest.Callback(userID, "dev:3")) // подделка: не влезает
+	e.process(t, tgtest.Callback(userID, "devy:3"))
+	if len(e.pay.All()) != 0 {
+		t.Fatalf("payment above the cap: %+v", e.pay.All())
+	}
+	e.process(t, tgtest.Callback(userID, "devc")) // подделка вывела из ожидания: входим снова
+	e.process(t, tgtest.Message(userID, "2"))
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "2 устройства") {
+		t.Fatalf("fitting number: %s", text)
+	}
+}
+
+func TestDevicesAtTheCap(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.pay.SetExtraDevices(userID, 95) // 5 + 95 = 100
+	e.process(t, tgtest.Callback(userID, "devbuy"))
+	if !strings.Contains(e.text(t), "максимум устройств") || strings.Contains(e.markup(t), "devc") {
+		t.Fatalf("limit screen expected: %s %s", e.text(t), e.markup(t))
+	}
+	e.process(t, tgtest.Callback(userID, "devc"))
+	if !strings.Contains(e.text(t), "максимум устройств") {
+		t.Fatalf("custom at the cap: %s", e.text(t))
+	}
+}
