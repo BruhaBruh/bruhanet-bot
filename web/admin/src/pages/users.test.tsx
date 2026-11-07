@@ -53,7 +53,10 @@ const detail = (over = {}) => ({
 function stub(routes: Record<string, () => Response | Promise<Response>>) {
   const fetchMock = vi.fn(async (...[url]: [string, RequestInit?]) => {
     if (url.startsWith('/api/payments')) return json(200, { items: [], total: 0, revenue: 0 })
-    const k = Object.keys(routes).find((p) => url.startsWith(p))
+    const k = Object.keys(routes)
+      .sort((a, b) => b.length - a.length)
+      .find((p) => url.startsWith(p))
+    if (/^\/api\/users\/\d+\/devices/.test(url) && !k?.includes('/devices')) return json(200, { items: [], limit: null })
     return k ? routes[k]() : json(500, {})
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -233,6 +236,141 @@ describe('Users', () => {
   })
 })
 
+const DEVICES = {
+  items: [
+    { hwid: 'h/1', platform: 'iOS', osVersion: '17.2', deviceModel: 'iPhone 15', userAgent: 'Happ/1.2', createdAt: '2026-11-01T10:00:00Z', updatedAt: '2026-11-05T10:00:00Z' },
+    { hwid: 'h2', platform: null, osVersion: null, deviceModel: null, userAgent: null, createdAt: '2026-11-01T10:00:00Z', updatedAt: '2026-11-01T10:00:00Z' },
+  ],
+  limit: 7,
+}
+
+describe('UserCard subscription link', () => {
+  const URL_ = 'https://sub.example/SECRET'
+
+  it('copies exactly the link, toasts, and never prints it', async () => {
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    stub({ '/api/users/7': () => json(200, detail({ panel: { id: 1234, expireAt: null, status: 'ACTIVE', error: null, subscriptionUrl: URL_ } })) })
+    await renderAt('/users/7')
+    expect(document.body.textContent).not.toContain('SECRET')
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку подписки' }))
+    await flush()
+    expect(writeText).toHaveBeenCalledWith(URL_)
+    expect(screen.getByText('Ссылка скопирована')).toBeTruthy()
+  })
+
+  it('falls back to execCommand without Clipboard API', async () => {
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined })
+    const exec = vi.fn(() => true)
+    Object.defineProperty(document, 'execCommand', { value: exec, configurable: true })
+    stub({ '/api/users/7': () => json(200, detail({ panel: { id: 1234, expireAt: null, status: 'ACTIVE', error: null, subscriptionUrl: URL_ } })) })
+    await renderAt('/users/7')
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку подписки' }))
+    await flush()
+    expect(exec).toHaveBeenCalledWith('copy')
+    expect(screen.getByText('Ссылка скопирована')).toBeTruthy()
+  })
+
+  it('is hidden without a panel user or when the panel is down', async () => {
+    stub({ '/api/users/7': () => json(200, detail({ panel: { id: null, expireAt: null, status: 'not_found', error: null } })) })
+    await renderAt('/users/7')
+    expect(screen.queryByRole('button', { name: 'Скопировать ссылку подписки' })).toBeNull()
+  })
+})
+
+describe('UserCard devices', () => {
+  it('lists devices with the limit and null-safe fields', async () => {
+    stub({ '/api/users/7/devices': () => json(200, DEVICES), '/api/users/7': () => json(200, detail()) })
+    await renderAt('/users/7')
+    expect(screen.getByRole('heading', { name: 'Устройства' })).toBeTruthy()
+    expect(screen.getByText('2 из 7')).toBeTruthy()
+    expect(screen.getByText('iOS · iPhone 15')).toBeTruthy()
+    expect(screen.getByText('17.2 · Happ/1.2')).toBeTruthy()
+    expect(screen.getByText('Устройство')).toBeTruthy()
+    expect(screen.getAllByText(/^добавлено /)).toHaveLength(2)
+  })
+
+  it('shows the empty state and hides «Удалить все»', async () => {
+    stub({ '/api/users/7': () => json(200, detail()) })
+    await renderAt('/users/7')
+    expect(screen.getByText('Нет подключённых устройств')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Удалить все' })).toBeNull()
+  })
+
+  it('shows an inline note when the panel is down', async () => {
+    stub({ '/api/users/7/devices': () => json(502, { error: 'panel_unavailable' }), '/api/users/7': () => json(200, detail()) })
+    await renderAt('/users/7')
+    expect(screen.getByText(/Не удалось загрузить устройства/)).toBeTruthy()
+  })
+
+  it('deletes one device after confirmation, once, and refreshes the list', async () => {
+    let list = DEVICES
+    const deletes: string[] = []
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        deletes.push(url)
+        list = { ...DEVICES, items: DEVICES.items.slice(1) }
+        return new Response(null, { status: 204 })
+      }
+      if (url.startsWith('/api/users/7/devices')) return json(200, list)
+      if (url.startsWith('/api/payments')) return json(200, { items: [], total: 0, revenue: 0 })
+      return json(200, detail())
+    })
+    await renderAt('/users/7')
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить устройство iOS · iPhone 15' }))
+    const dlg = within(screen.getByRole('alertdialog'))
+    expect(dlg.getByText('Удалить устройство?')).toBeTruthy()
+    expect(dlg.getByText('Оно отключится от подписки, юзер сможет добавить его снова.')).toBeTruthy()
+    const ok = dlg.getByRole('button', { name: 'Удалить' })
+    fireEvent.click(ok)
+    fireEvent.click(ok)
+    await flush()
+    expect(deletes).toEqual(['/api/users/7/devices/h%2F1'])
+    expect(screen.getByText('Устройство удалено')).toBeTruthy()
+    expect(screen.queryByText('iOS · iPhone 15')).toBeNull()
+    expect(screen.getByText('1 из 7')).toBeTruthy()
+  })
+
+  it('deletes all devices after confirmation', async () => {
+    let list = DEVICES
+    const deletes: string[] = []
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        deletes.push(url)
+        list = { ...DEVICES, items: [] }
+        return new Response(null, { status: 204 })
+      }
+      if (url.startsWith('/api/users/7/devices')) return json(200, list)
+      if (url.startsWith('/api/payments')) return json(200, { items: [], total: 0, revenue: 0 })
+      return json(200, detail())
+    })
+    await renderAt('/users/7')
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить все' }))
+    const dlg = within(screen.getByRole('alertdialog'))
+    expect(dlg.getByText('Удалить все устройства?')).toBeTruthy()
+    fireEvent.click(dlg.getByRole('button', { name: 'Удалить' }))
+    await flush()
+    expect(deletes).toEqual(['/api/users/7/devices'])
+    expect(screen.getByText('Устройства удалены')).toBeTruthy()
+    expect(screen.getByText('Нет подключённых устройств')).toBeTruthy()
+  })
+
+  it('keeps the list and toasts on a failed delete', async () => {
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return json(502, { error: 'panel_unavailable' })
+      if (url.startsWith('/api/users/7/devices')) return json(200, DEVICES)
+      if (url.startsWith('/api/payments')) return json(200, { items: [], total: 0, revenue: 0 })
+      return json(200, detail())
+    })
+    await renderAt('/users/7')
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить все' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Удалить' }))
+    await flush()
+    expect(screen.getByText('Не удалось удалить, попробуйте ещё раз')).toBeTruthy()
+    expect(screen.getByText('iOS · iPhone 15')).toBeTruthy()
+  })
+})
+
 describe('UserCard', () => {
   it('says the user is not found on 404', async () => {
     stub({ '/api/users/7': () => json(404, { error: 'not_found' }) })
@@ -306,7 +444,7 @@ describe('UserCard', () => {
     expect(screen.getByText('Получил рассылок').nextSibling?.textContent).toBe('0')
     expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('0 (оплатили 0)')
     expect(screen.queryByText('Пригласил', { selector: 'dt' })).toBeNull()
-    expect(screen.getByText('Устройства').nextSibling?.textContent).toBe('5 + 2 = 7')
+    expect(screen.getByText('Устройства', { selector: 'dt' }).nextSibling?.textContent).toBe('5 + 2 = 7')
     const row = within(screen.getByRole('table')).getByText('31').closest('tr')!
     expect(within(row).getByText('3 мес.')).toBeTruthy()
     expect(within(row).getByText('Оплачено')).toBeTruthy()

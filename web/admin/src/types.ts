@@ -71,12 +71,27 @@ export interface UserDetail {
     blocked: boolean
   }
   payments: Payment[]
-  panel: { id: number | null; expireAt: string | null; status: string | null; error: 'panel_unavailable' | null }
+  panel: { id: number | null; expireAt: string | null; status: string | null; error: 'panel_unavailable' | null; subscriptionUrl?: string }
   devices?: { base: number; extra: number; price: number }
   messages: DirectMessage[]
   promos: UserPromo[]
   grants: UserGrant[]
   referral: UserReferral
+}
+
+export interface UserDevice {
+  hwid: string
+  platform: string | null
+  osVersion: string | null
+  deviceModel: string | null
+  userAgent: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UserDevices {
+  items: UserDevice[]
+  limit: number | null
 }
 
 export interface UserReferral {

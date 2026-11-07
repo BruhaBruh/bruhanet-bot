@@ -7,6 +7,8 @@ import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabe
 import { usePageTitle, useSyncKey } from '../layout/page-title'
 import { userLabel, userTagUrl } from '../promo'
 import type { DirectMessage, UserDetail } from '../types'
+import { copyText } from '../lib/clipboard'
+import { DevicesCard } from './user-devices'
 import { userPayColumns, userPayMobileRow } from './payment-columns'
 import { usePaymentReview } from './payment-review'
 import { BlockDialog, GrantDialog } from './user-actions'
@@ -34,6 +36,11 @@ async function copyId(id: number) {
   } catch {
     toast('Не удалось скопировать ID')
   }
+}
+
+async function copyLink(url: string) {
+  if (await copyText(url)) toast('Ссылка скопирована', { icon: 'check' })
+  else toast('Не удалось скопировать ссылку')
 }
 
 function PanelTag({ panel }: { panel: UserDetail['panel'] }) {
@@ -158,6 +165,13 @@ function UserCardInner({ id }: { id?: string }) {
             </button>
             <span>с нами с {formatFullDay(user.createdAt)}</span>
           </div>
+          {panel.subscriptionUrl && (
+            <div>
+              <Button size="sm" variant="gray" icon="copy" onClick={() => void copyLink(panel.subscriptionUrl!)}>
+                Скопировать ссылку подписки
+              </Button>
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="tinted" aria-expanded={composer === 'open'} onClick={() => setComposer(composer === 'open' ? 'hidden' : 'open')}>
@@ -235,6 +249,8 @@ function UserCardInner({ id }: { id?: string }) {
           ]}
         />
       </div>
+
+      <DevicesCard userId={user.telegramId} reloadKey={syncKey + reloads} />
 
       <div className="overflow-x-auto">
         <DataTable
