@@ -1,6 +1,5 @@
-import { Button, Card, Icon, Input, Select } from '@/ui'
+import { Button, Card, Icon, Input, StyleSelect } from '@/ui'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/primitives/tooltip'
-import { STYLE_OPTIONS } from '../lib/button-rows'
 import type { KeyboardInfo, KeyboardSlot } from '../types'
 import { canJoin, canShow, canSplit, hide, moveInRow, moveRow, show, toggleJoin, type Layout } from './keyboard-layout'
 
@@ -30,15 +29,18 @@ export function ButtonFields({ id, view, busy, onLabel, onStyle }: ButtonCellPro
         <code className="truncate">{id}</code>
         {view.route && <code className="truncate">→ {view.route}</code>}
       </div>
-      <Input
-        placeholder={view.title}
-        aria-label={`Текст кнопки ${view.title}`}
-        maxLength={BUTTON_LIMIT}
-        disabled={busy}
-        value={view.label}
-        onChange={(e) => onLabel(e.target.value)}
-      />
-      <Select aria-label={`Стиль кнопки ${view.title}`} disabled={busy} options={STYLE_OPTIONS} value={view.style} onChange={onStyle} />
+      <div className="flex items-start gap-2">
+        <Input
+          className="min-w-0 grow"
+          placeholder={view.title}
+          aria-label={`Текст кнопки ${view.title}`}
+          maxLength={BUTTON_LIMIT}
+          disabled={busy}
+          value={view.label}
+          onChange={(e) => onLabel(e.target.value)}
+        />
+        <StyleSelect aria-label={`Стиль кнопки ${view.title}`} disabled={busy} value={view.style} onChange={onStyle} />
+      </div>
     </>
   )
 }

@@ -15,3 +15,11 @@ globalThis.ResizeObserver ??= class {
 // jsdom нет в тестах с окружением node (gen-tokens).
 const { jsdom } = globalThis as unknown as { jsdom?: { window: Window } }
 if (jsdom) Object.defineProperty(globalThis, 'localStorage', { value: jsdom.window.localStorage, configurable: true })
+
+// Radix Select (jsdom не умеет pointer capture и прокрутку к элементу).
+if (typeof Element !== 'undefined') {
+  Element.prototype.hasPointerCapture ??= () => false
+  Element.prototype.setPointerCapture ??= () => {}
+  Element.prototype.releasePointerCapture ??= () => {}
+  Element.prototype.scrollIntoView ??= () => {}
+}

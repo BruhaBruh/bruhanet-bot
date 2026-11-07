@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Dialog, Input, MessageBubble, SearchField, SegmentedControl, Select, Spinner, StatusTag, toast } from '@/ui'
+import { Button, Card, Dialog, Input, MessageBubble, SearchField, SegmentedControl, Spinner, StyleSelect, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { previewHtml, renderPlain, renderPreview, varLabel, visibleLen } from '../editor/serialize'
 import { formatCount } from '../format'
-import { STYLE_OPTIONS, previewStyle } from '../lib/button-rows'
+import { previewStyle } from '../lib/button-rows'
 import type { KeyboardInfo, KeyboardSlot, TextItem, TextVar } from '../types'
 import { ButtonFields, KeyboardCard, type SlotView } from './keyboard-editor'
 import { sameLayout, type Layout } from './keyboard-layout'
@@ -334,7 +334,9 @@ export default function Texts() {
                     {cur.route && <code className="truncate">→ {cur.route}</code>}
                   </div>
                 )}
+                <div className="flex items-start gap-2">
                 <Input
+                  className="min-w-0 grow"
                   ref={plain}
                   aria-label={cur.title}
                   placeholder={cur.title}
@@ -344,16 +346,9 @@ export default function Texts() {
                   after={counter(draft.length, BUTTON_LIMIT)}
                   hint={`Простой текст без разметки, до ${BUTTON_LIMIT} символов.`}
                 />
-                {cur.kind === 'button' && (
-                  <Select
-                    label="Стиль кнопки"
-                    options={STYLE_OPTIONS}
-                    value={styleOf(cur)}
-                    disabled={!!busy}
-                    onChange={(v) => setStyleDrafts((d) => ({ ...d, [cur.key]: v }))}
-                    hint="Подпись и стиль общие для всех экранов с этой кнопкой."
-                  />
-                )}
+                {cur.kind === 'button' && <StyleSelect aria-label="Стиль кнопки" disabled={!!busy} value={styleOf(cur)} onChange={(v) => setStyleDrafts((d) => ({ ...d, [cur.key]: v }))} />}
+                </div>
+                {cur.kind === 'button' && <span className="footnote text-text-secondary">Подпись и стиль общие для всех экранов с этой кнопкой.</span>}
               </div>
             )}
 

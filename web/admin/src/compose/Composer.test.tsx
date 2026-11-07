@@ -110,6 +110,12 @@ async function setup(
 const posts = () => calls.filter((c) => c.method === 'POST' && c.url === '/api/broadcasts')
 const disabled = (b?: HTMLElement) => (b as HTMLButtonElement).disabled
 
+const pickStyle = async (name: string, label: string) => {
+  fireEvent.keyDown(screen.getByRole('combobox', { name }), { key: 'Enter' })
+  fireEvent.click(await screen.findByRole('option', { name: label }))
+  await new Promise((r) => setTimeout(r, 0))
+}
+
 describe('Composer', () => {
   it('limit is 1024 with photo, 4096 without', async () => {
     const { r, setText, setPhoto, btn, count, countText } = await setup()
@@ -642,7 +648,7 @@ describe('Composer', () => {
       const { r, setText, click } = await setup()
       await setText('hi')
       await addButton('Сайт', 'https://e.com/x')
-      fireEvent.change(screen.getByRole('combobox', { name: 'Стиль кнопки 1' }), { target: { value: 'primary' } })
+      await pickStyle('Стиль кнопки 1', 'Основная')
       fireEvent.click(screen.getByRole('switch', { name: 'Без звука' }))
       await flush()
       const aside = within(r.container).getByRole('complementary', { name: 'Превью сообщения' })
@@ -694,14 +700,14 @@ describe('Composer', () => {
       expect(screen.getAllByRole('textbox', { name: /^Текст кнопки/ })).toHaveLength(5)
     })
 
-    it('url field is above the text field, style is a select', async () => {
+    it('url field is above the text field, style is a dot select in the text row', async () => {
       await setup()
       await addButton('a', 'https://e.com')
       const url = screen.getByRole('textbox', { name: 'Ссылка кнопки 1' })
       const text = screen.getByRole('textbox', { name: 'Текст кнопки 1' })
       expect(url.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-      const select = screen.getByRole('combobox', { name: 'Стиль кнопки 1' })
-      expect(Array.from((select as HTMLSelectElement).options).map((o) => o.value)).toEqual(['', 'primary', 'success', 'danger'])
+      fireEvent.keyDown(screen.getByRole('combobox', { name: 'Стиль кнопки 1' }), { key: 'Enter' })
+      expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Обычная', 'Основная', 'Успех', 'Опасная'])
       expect(screen.queryByRole('radiogroup', { name: 'Стиль кнопки 1' })).toBeNull()
     })
 

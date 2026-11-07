@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { TgAvatar, Button, Card, Dialog, Icon, Input, MessageBubble, Radio, RadioGroup, Select, Switch, toast } from '@/ui'
+import { TgAvatar, Button, Card, Dialog, Icon, Input, MessageBubble, Radio, RadioGroup, StyleSelect, Switch, toast } from '@/ui'
 import { ApiError, get, post, put } from '../api'
 import { previewHtml, renderPreview, varLabel, visibleText, worstLen } from '../editor/serialize'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { formatCount, plural } from '../format'
 import { useMe } from '../me'
-import { STYLE_OPTIONS, buttonRows, canInline, normalizeInline, previewStyle } from '../lib/button-rows'
+import { buttonRows, canInline, normalizeInline, previewStyle } from '../lib/button-rows'
 import type { Audience, Broadcast, BroadcastButton, DirectMessage, TextVar } from '../types'
 import { AUDIENCES, audienceLabel, daysValid, DEFAULT_DAYS, MAX_DAYS, MIN_DAYS } from './audience'
 import { PhotoPicker } from './PhotoPicker'
@@ -488,15 +488,18 @@ export function Composer(props: ComposerProps) {
                     value={b.url}
                     onChange={(e) => changeButton(i, { url: e.target.value })}
                   />
-                  <Input
-                    placeholder="Текст кнопки"
-                    aria-label={`Текст кнопки ${i + 1}`}
-                    maxLength={MAX_BUTTON_TEXT}
-                    disabled={busy}
-                    value={b.text}
-                    onChange={(e) => changeButton(i, { text: e.target.value })}
-                  />
-                  <Select aria-label={`Стиль кнопки ${i + 1}`} disabled={busy} options={STYLE_OPTIONS} value={b.style} onChange={(v) => changeButton(i, { style: v as BroadcastButton['style'] })} />
+                  <div className="flex items-start gap-2">
+                    <Input
+                      className="min-w-0 grow"
+                      placeholder="Текст кнопки"
+                      aria-label={`Текст кнопки ${i + 1}`}
+                      maxLength={MAX_BUTTON_TEXT}
+                      disabled={busy}
+                      value={b.text}
+                      onChange={(e) => changeButton(i, { text: e.target.value })}
+                    />
+                    <StyleSelect aria-label={`Стиль кнопки ${i + 1}`} disabled={busy} value={b.style} onChange={(v) => changeButton(i, { style: v as BroadcastButton['style'] })} />
+                  </div>
                   <div className="flex items-center gap-2">
                     <Switch
                       aria-label={`Кнопка ${i + 1} в строке с предыдущей`}

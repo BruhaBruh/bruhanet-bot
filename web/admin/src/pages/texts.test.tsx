@@ -114,6 +114,12 @@ const list = () => within(screen.getByRole('navigation', { name: 'Сообщен
 const preview = () => screen.getByRole('complementary', { name: 'Превью сообщения' })
 const puts = () => calls.filter((c) => c.method === 'PUT')
 
+const pickStyle = async (name: string, label: string) => {
+  fireEvent.keyDown(screen.getByRole('combobox', { name }), { key: 'Enter' })
+  fireEvent.click(await screen.findByRole('option', { name: label }))
+  await new Promise((r) => setTimeout(r, 0))
+}
+
 describe('Texts', () => {
   it('switching keys replaces editor content, unsaved edits do not leak', async () => {
     await open('/texts?key=a')
@@ -283,9 +289,11 @@ describe('Texts', () => {
       const id = screen.getAllByText('button.pay').find((e) => e.tagName === 'CODE')!
       expect(id.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(screen.getByText('→ pay')).toBeTruthy()
-      const style = screen.getByRole('combobox', { name: 'Стиль кнопки Оплатить' }) as HTMLSelectElement
-      expect(style.value).toBe('success')
-      expect(Array.from(style.options).map((o) => o.textContent)).toEqual(['Обычная', 'Основная (синяя)', 'Успех (зелёная)', 'Опасная (красная)'])
+      const style = screen.getByRole('combobox', { name: 'Стиль кнопки Оплатить' })
+      expect(style.getAttribute('title')).toBe('Успех')
+      fireEvent.keyDown(style, { key: 'Enter' })
+      expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Обычная', 'Основная', 'Успех', 'Опасная'])
+      fireEvent.keyDown(screen.getAllByRole('option')[0], { key: 'Escape' })
       expect(screen.queryByRole('radiogroup')).toBeNull()
       expect(screen.getAllByText('тарифы (из настроек)').length).toBeGreaterThan(0)
       expect(screen.getByText('Общая для сообщений: С клавиатурой, Другое')).toBeTruthy()
@@ -330,7 +338,7 @@ describe('Texts', () => {
       replies['PUT /api/keyboards/menu'] = json(204)
       await open('/texts?key=withKb')
       edit(screen.getByRole('textbox', { name: 'Текст кнопки Информация' }), 'О боте')
-      fireEvent.change(screen.getByRole('combobox', { name: 'Стиль кнопки Информация' }), { target: { value: 'primary' } })
+      await pickStyle('Стиль кнопки Информация', 'Основная')
       expect(kbButtons()).toContain('О боте')
       await click('Скрыть: Помощь')
       const saveBtn = save()
@@ -396,7 +404,7 @@ describe('Texts', () => {
       await open('/texts?key=btn')
       expect(screen.getAllByText('btn').some((e) => e.tagName === 'CODE')).toBe(true)
       expect(screen.queryByRole('radiogroup')).toBeNull()
-      fireEvent.change(screen.getByRole('combobox', { name: 'Стиль кнопки' }), { target: { value: 'danger' } })
+      await pickStyle('Стиль кнопки', 'Опасная')
       edit(screen.getByRole('textbox', { name: 'Кнопка' }), 'Платить')
       fireEvent.click(btn('Сохранить'))
       await flush()

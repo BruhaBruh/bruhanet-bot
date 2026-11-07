@@ -9,13 +9,6 @@ export function buttonRows<T extends { inline?: boolean }>(items: T[]): { item: 
   return rows
 }
 
-export const STYLE_OPTIONS = [
-  { value: '', label: 'Обычная' },
-  { value: 'primary', label: 'Основная (синяя)' },
-  { value: 'success', label: 'Успех (зелёная)' },
-  { value: 'danger', label: 'Опасная (красная)' },
-]
-
 export const previewStyle = (s: string) => (s || 'default') as 'default' | 'primary' | 'success' | 'danger'
 
 // Можно ли включить «в строке с предыдущей»: не первая, и в строке предыдущей ещё нет двух (выключить можно всегда).
