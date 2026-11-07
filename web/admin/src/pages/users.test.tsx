@@ -90,13 +90,13 @@ const userCalls = (f: ReturnType<typeof stub>) => f.mock.calls.map(([u]) => u).f
 
 describe('Users', () => {
   it('shows macro columns with tariff and status', async () => {
-    stub({ '/api/users?': () => json(200, page([user(1, 'ann', 2, { tariffMonths: 3, panelStatus: 'ACTIVE' }), user(2, '')])) })
+    stub({ '/api/users?': () => json(200, page([user(1, 'ann', 2, { tariffMonths: 3, expireAt: '2026-12-31T10:00:00Z', panelStatus: 'ACTIVE' }), user(2, '')])) })
     await renderAt('/users')
     const table = within(screen.getByRole('table'))
-    expect(table.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Пользователь', 'Тариф', 'Платежей', 'Оплачено всего', 'С нами с', 'Статус', 'Действия'])
+    expect(table.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Пользователь', 'Подписка до', 'Платежей', 'Оплачено всего', 'С нами с', 'Статус', 'Действия'])
     const cells = within(table.getByText('@ann').closest('tr')!).getAllByRole('cell').map((c) => c.textContent)
     expect(cells[0]).toContain('ID 1')
-    expect(cells.slice(1, 6)).toEqual(['3 мес.', '2', '600 ₽', '12 сент. 2026', 'активна'])
+    expect(cells.slice(1, 6)).toEqual(['31 дек. 2026', '2', '600 ₽', '12 сент. 2026', 'активна'])
     const second = within(table.getByText('ID 2').closest('tr')!).getAllByRole('cell').map((c) => c.textContent)
     expect([second[1], second[5]]).toEqual(['—', '—'])
   })
