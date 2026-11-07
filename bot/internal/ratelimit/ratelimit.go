@@ -3,6 +3,7 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -16,7 +17,7 @@ func New(rdb *redis.Client) *Redis { return &Redis{rdb: rdb} }
 // Fails — сколько неудач по ключу за текущее окно.
 func (r *Redis) Fails(ctx context.Context, key string) (int, error) {
 	n, err := r.rdb.Get(ctx, key).Int()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return 0, nil
 	}
 	return n, err
