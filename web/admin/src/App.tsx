@@ -21,6 +21,7 @@ const BroadcastNew = lazy(() => import('./pages/BroadcastNew'))
 const BroadcastEdit = lazy(() => import('./pages/BroadcastEdit'))
 const BroadcastView = lazy(() => import('./pages/BroadcastView'))
 const Texts = lazy(() => import('./pages/Texts'))
+const UxMap = lazy(() => import('./pages/UxMap'))
 
 const title = (pathname: string) =>
   `${pathname === '/login-required' ? 'Вход в админ-панель' : sectionOf(pathname).label} — BruhaNet`
@@ -52,6 +53,7 @@ export function App() {
           <Route path="/users/:id" element={<UserCard />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/texts" element={<Texts />} />
+          <Route path="/map" element={<UxMap />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

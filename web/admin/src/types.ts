@@ -188,6 +188,15 @@ export interface TextItem {
   keyboard?: MessageKeyboard | null
 }
 
+/** Ответ GET /api/texts. */
+export interface TextsReply {
+  items: TextItem[]
+  globals: TextVar[]
+  conditions?: KbCatalogs['conditions']
+  actions?: KbCatalogs['actions']
+  templates?: KbCatalogs['templates']
+}
+
 export interface Settings {
   prices: Record<string, number>
   phone: string

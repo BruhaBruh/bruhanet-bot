@@ -60,17 +60,24 @@ var mapEntries = []MapEntry{
 	{ID: "cmd_any", Kind: "command", Title: "Любое сообщение", When: "Текст вне сценария оплаты", Targets: tg("menu.greeting")},
 	{ID: "cmd_login", Kind: "command", Title: "/login", When: "Админ входит в панель (/start login от админа делает то же)", Targets: tg("login.message")},
 	{ID: "cmd_gift", Kind: "command", Title: "/start gift_<код>", When: "Юзер открыл ссылку подарка", Targets: []MapTarget{
-		{To: "gift.redeemed", Label: "подарок сработал"}, {To: "gift.unavailable", Label: "ссылка не подошла"}}},
+		{To: "gift.redeemed", Label: "подарок сработал"}, {To: "gift.unavailable", Label: "ссылка не подошла"},
+	}},
 	{ID: "cmd_photo", Kind: "command", Title: "Фото платежа", When: "Юзер прислал чек, пока есть открытая оплата", Targets: []MapTarget{
-		{To: "payment.photo_sent", Label: "аванса нет"}, {To: "payment.photo_sent_advance", Label: "выдан аванс"}}},
+		{To: "payment.photo_sent", Label: "аванса нет"}, {To: "payment.photo_sent_advance", Label: "выдан аванс"},
+	}},
 	{ID: "ev_confirm", Kind: "event", Title: "Админ подтвердил платёж", When: "Кнопка в боте или в панели", Targets: []MapTarget{
-		{To: "payment.confirmed", Label: "подписка"}, {To: "payment.devices_confirmed", Label: "устройства"},
-		{To: "gift.ready", Label: "подарок"}, {To: "referral.friend_bonus", Label: "первая оплата по приглашению"}}},
+		{To: "payment.confirmed", Label: "подписка"},
+		{To: "payment.devices_confirmed", Label: "устройства"},
+		{To: "gift.ready", Label: "подарок"},
+		{To: "referral.friend_bonus", Label: "первая оплата по приглашению"},
+	}},
 	{ID: "ev_decline", Kind: "event", Title: "Админ отклонил платёж", When: "Кнопка в боте или в панели", Targets: []MapTarget{
-		{To: "payment.declined", Label: "подписка"}, {To: "payment.devices_declined", Label: "устройства"}, {To: "gift.declined", Label: "подарок"}}},
+		{To: "payment.declined", Label: "подписка"}, {To: "payment.devices_declined", Label: "устройства"}, {To: "gift.declined", Label: "подарок"},
+	}},
 	{ID: "ev_grant", Kind: "event", Title: "Админ выдал дни", When: "Кнопка «Выдать дни» в карточке юзера", Targets: tg("grant.days")},
 	{ID: "ev_reminder", Kind: "event", Title: "Напоминание", When: "По расписанию, до конца подписки осталось мало", Targets: []MapTarget{
-		{To: "reminder.week", Label: "первый порог"}, {To: "reminder.day", Label: "второй порог"}}},
+		{To: "reminder.week", Label: "первый порог"}, {To: "reminder.day", Label: "второй порог"},
+	}},
 	{ID: "ev_referrer", Kind: "event", Title: "Друг впервые оплатил", When: "Подтверждена первая оплата приглашённого", Targets: tg("referral.referrer_bonus")},
 	{ID: "ev_gift_used", Kind: "event", Title: "Подарок активирован", When: "Кто-то открыл ссылку подарка", Targets: tg("gift.redeemed_buyer")},
 	{ID: "ev_error", Kind: "event", Title: "Сбой", When: "Панель, база или сохранение не ответили", Targets: tg("error.generic")},
@@ -114,7 +121,7 @@ var mapTransitions = []MapTransition{
 
 // mapLinks — переходы без кнопки.
 var mapLinks = func() []MapLink {
-	out := []MapLink{
+	base := []MapLink{
 		{"payment.requisites", "payment.photo_sent", "юзер прислал чек, аванса нет"},
 		{"payment.requisites", "payment.photo_sent_advance", "юзер прислал чек, выдан аванс"},
 		{"devices.requisites", "payment.photo_sent", "юзер прислал чек"},
@@ -140,6 +147,8 @@ var mapLinks = func() []MapLink {
 		{"login.message", "login.fallback", "Telegram не принял кнопку"},
 		{"gift.ready", "gift.redeemed_buyer", "ссылкой воспользовались"},
 	}
+	out := make([]MapLink, 0, len(base)+2*len(promoRejects))
+	out = append(out, base...)
 	for _, r := range promoRejects {
 		out = append(out, MapLink{"promo.enter_payment", r, "код не подошёл"}, MapLink{"promo.enter_menu", r, "код не подошёл"})
 	}

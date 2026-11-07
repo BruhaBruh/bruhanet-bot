@@ -9,17 +9,9 @@ import { previewHtml, renderPlain, renderPreview, varLabel, visibleLen } from '.
 import { formatCount, plural } from '../format'
 import { previewStyle } from '../lib/button-rows'
 import { payload, sameKb, usedConditions, visibleRows } from '../lib/message-keyboard'
-import type { KbCatalogs, KbCellOut, Settings, TextItem, TextVar } from '../types'
+import type { KbCatalogs, KbCellOut, Settings, TextItem, TextsReply, TextVar } from '../types'
 import { tplName } from '../lib/message-keyboard'
 import { MessageKeyboardCard, type TplText } from './message-keyboard'
-
-interface TextsReply {
-  items: TextItem[]
-  globals: TextVar[]
-  conditions?: KbCatalogs['conditions']
-  actions?: KbCatalogs['actions']
-  templates?: KbCatalogs['templates']
-}
 
 const path = (c: TextItem) => `/api/texts/${encodeURIComponent(c.key)}`
 

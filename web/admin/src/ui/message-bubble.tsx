@@ -8,6 +8,8 @@ export interface KeyboardButton {
   url?: string
   style?: 'default' | 'primary' | 'success' | 'danger'
   onClick?: () => void
+  /** Что положить внутрь кнопки (например, точку привязки стрелки на схеме); кнопка уже `relative`. */
+  handle?: ReactNode
 }
 
 export interface MessageBubbleProps {
@@ -80,6 +82,7 @@ export function MessageBubble({
                   onClick={button.onClick}
                 >
                   <span className="block truncate">{button.text}</span>
+                  {button.handle}
                   {button.url && (
                     <Icon name="link" size={12} strokeWidth={2.4} className="absolute top-1 right-1" />
                   )}

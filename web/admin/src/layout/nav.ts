@@ -13,6 +13,7 @@ export const nav: Array<Section | { section: string }> = [
   section('/gifts', 'Подарки', 'Подарки', 'gift'),
   { section: 'Бот' },
   section('/texts', 'Редактор сообщений', 'Тексты', 'message'),
+  section('/map', 'Схема бота', 'Схема', 'map'),
   { section: 'Данные' },
   section('/users', 'Пользователи', 'Юзеры', 'users'),
   section('/payments', 'Платежи', 'Платежи', 'card'),
