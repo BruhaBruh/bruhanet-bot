@@ -7,6 +7,8 @@ export interface AvatarProps {
   size?: number
   color?: (typeof COLORS)[number]
   colorIndex?: number
+  /** Картинка не загрузилась (404, сеть): вызывающий возвращает буквенный аватар. */
+  onImgError?: () => void
 }
 
 function initials(name?: string) {
@@ -26,19 +28,29 @@ function hash(value: string) {
 
 const base = 'inline-flex flex-none items-center justify-center rounded-full font-semibold select-none'
 
-export function Avatar({ name, id, src, size = 40, color, colorIndex }: AvatarProps) {
+export function Avatar({ name, id, src, size = 40, color, colorIndex, onImgError }: AvatarProps) {
   const style = { width: size, height: size, fontSize: Math.round(size * 0.4) }
-  if (src) return <img className={`${base} object-cover`} src={src} alt={name ?? ''} style={style} />
   const tone = color ?? COLORS[(colorIndex ?? hash(String(id || name || ''))) % COLORS.length]
+  const background = `linear-gradient(180deg, var(--avatar-${tone}-top), var(--avatar-${tone}))`
+  // имя есть в тексте рядом: картинка декоративна; градиент держит место, пока она грузится
+  if (src)
+    return (
+      <img
+        className={`${base} object-cover`}
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        style={{ ...style, background }}
+        onError={onImgError}
+      />
+    )
   return (
     <span
       className={`${base} text-white`}
       role="img"
       aria-label={name}
-      style={{
-        ...style,
-        background: `linear-gradient(180deg, var(--avatar-${tone}-top), var(--avatar-${tone}))`,
-      }}
+      style={{ ...style, background }}
     >
       {initials(name)}
     </span>

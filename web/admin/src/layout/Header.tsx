@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { Avatar, Button, SearchField } from '@/ui'
+import { TgAvatar, Button, SearchField } from '@/ui'
 import { useMe } from '../me'
 import { useTheme } from '../theme'
 import { SyncButton } from './SyncButton'
@@ -30,7 +30,7 @@ export function Header({ title, onLogout, onSynced }: { title: string; onLogout:
       {/* На телефоне аватар уступает место заголовку. */}
       {who && (
         <div className="hidden items-center gap-2.5 pl-1 md:flex">
-          <Avatar name={me.name || me.username} colorIndex={2} size={32} />
+          <TgAvatar tg={me.telegramId || undefined} name={me.name || me.username} colorIndex={2} size={32} />
           <div className="flex flex-col">
             <span className="admin-table font-semibold">{who}</span>
             <span className="caption-1 text-text-secondary">Владелец</span>

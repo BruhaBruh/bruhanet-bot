@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { Avatar, Button, Card, DataTable, RowAction, Spinner, StatusTag, toast, type Tone } from '@/ui'
+import { TgAvatar, Button, Card, DataTable, RowAction, Spinner, StatusTag, toast, type Tone } from '@/ui'
 import { ApiError, get } from '../api'
 import { snippet } from '../editor/serialize'
 import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabels, panelStatusTones } from '../format'
@@ -126,7 +126,7 @@ function UserCardInner({ id }: { id?: string }) {
     <>
       {back}
       <section className="admin-body flex flex-wrap items-center gap-5 rounded-lg bg-surface p-6 shadow-card">
-        <Avatar name={name} id={user.telegramId} size={64} />
+        <TgAvatar tg={user.telegramId} name={name} id={user.telegramId} size={64} />
         <div className="flex min-w-0 flex-[1_1_--spacing(70)] flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="title-2 min-w-0 break-all">{name}</h2>

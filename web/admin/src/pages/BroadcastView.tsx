@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { Avatar, Button, Card, Dialog, Icon, MessageBubble, Spinner, toast } from '@/ui'
+import { TgAvatar, Button, Card, Dialog, Icon, MessageBubble, Spinner, toast } from '@/ui'
 import { ApiError, get, post } from '../api'
 import { audienceLabel } from '../compose/audience'
 import { formatSchedule, isoToMskLocal } from '../compose/schedule'
@@ -177,7 +177,7 @@ export default function BroadcastView() {
           <h2 className="admin-label px-1 text-text-secondary">Сообщение с примером данных</h2>
           <div className="flex flex-col overflow-hidden rounded-lg shadow-card">
             <div className="flex items-center gap-2.5 bg-header-bg px-3.5 py-2.5 shadow-[inset_0_-0.5px_0_var(--separator)]">
-              <Avatar name={botName} colorIndex={5} size={32} />
+              <TgAvatar tg="bot" name={botName} colorIndex={5} size={32} />
               <div className="flex flex-col">
                 <span className="font-semibold">{botName}</span>
                 <span className="caption-1 text-text-secondary">бот</span>

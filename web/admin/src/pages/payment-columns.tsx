@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { Avatar, RowAction, StatusTag, toast, type CellProps, type DataTableColumn, type Tone } from '@/ui'
+import { TgAvatar, RowAction, StatusTag, toast, type CellProps, type DataTableColumn, type Tone } from '@/ui'
 import { formatRub, formatShortDate } from '../format'
 import { userLabel, userSub } from '../promo'
 import type { Payment } from '../types'
@@ -47,7 +47,7 @@ const userColumn: Column = {
   render: (p) => (
     // stopPropagation: клик по строке ведёт туда же, вторая запись в истории не нужна.
     <Link to={`/users/${p.telegramId}`} className="focus-ring flex items-center gap-2.5 text-inherit" onClick={(e) => e.stopPropagation()}>
-      <Avatar name={userLabel(p)} id={p.telegramId} size={28} />
+      <TgAvatar tg={p.telegramId} name={userLabel(p)} id={p.telegramId} size={28} />
       <span className="flex min-w-0 flex-col">
         <span className="truncate">{userLabel(p)}</span>
         {userSub(p) && <span className="caption-1 truncate text-text-secondary">{userSub(p)}</span>}

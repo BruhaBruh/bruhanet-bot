@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Avatar, Button, Sidebar, Spinner, TabBar, toast } from '@/ui'
+import { TgAvatar, Button, Sidebar, Spinner, TabBar, toast } from '@/ui'
 import { get, post } from '../api'
 import { MeProvider, useLoadMe, useMe } from '../me'
 import { Header } from './Header'
@@ -75,7 +75,7 @@ function Shell() {
       >
         {(bot.name || bot.username) && (
           <div className={cn('flex items-center gap-2.5 pt-5 pb-2', collapsed ? 'justify-center' : 'px-5')}>
-            <Avatar name={bot.name || bot.username} colorIndex={5} size={36} />
+            <TgAvatar tg="bot" name={bot.name || bot.username} colorIndex={5} size={36} />
             {!collapsed && (
               <div className="flex min-w-0 flex-col">
                 {bot.name && <span className="admin-body truncate font-semibold">{bot.name}</span>}

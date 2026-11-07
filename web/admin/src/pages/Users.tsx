@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { Avatar, Button, Card, Checkbox, DataTable, Input, RowAction, SearchField, SegmentedControl, StatusTag, type DataTableColumn } from '@/ui'
+import { TgAvatar, Button, Card, Checkbox, DataTable, Input, RowAction, SearchField, SegmentedControl, StatusTag, type DataTableColumn } from '@/ui'
 import { get } from '../api'
 import { formatCount, formatFullDay, formatRub, panelStatusLabels, panelStatusTones } from '../format'
 import { useSyncKey } from '../layout/page-title'
@@ -67,7 +67,7 @@ const columns: DataTableColumn<UserSummary>[] = [
     maxWidth: 240,
     render: (u) => (
       <span className="flex items-center gap-2.5">
-        <Avatar name={userLabel(u)} id={u.telegramId} size={28} />
+        <TgAvatar tg={u.telegramId} name={userLabel(u)} id={u.telegramId} size={28} />
         <span className="flex min-w-0 flex-col">
           <span className="truncate">{userLabel(u)}</span>
           {userSub(u) && <span className="caption-1 truncate text-text-secondary">{userSub(u)}</span>}
@@ -197,7 +197,7 @@ export default function Users() {
           }
           rowActions={(u) => <RowAction icon="more" label="Действия с пользователем" onClick={() => open(u)} />}
           mobileRow={(u) => ({
-            before: <Avatar name={userLabel(u)} id={u.telegramId} size={40} />,
+            before: <TgAvatar tg={u.telegramId} name={userLabel(u)} id={u.telegramId} size={40} />,
             title: <span className="block truncate">{userLabel(u)}</span>,
             subtitle: [userSub(u), `с нами с ${formatFullDay(u.createdAt)}`].filter(Boolean).join(', '),
             value: formatRub(u.confirmedSum),

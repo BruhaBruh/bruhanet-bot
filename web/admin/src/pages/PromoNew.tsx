@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Avatar, Button, Card, IconTile, Input, SearchField, SegmentedControl, Switch, toast, type IconName } from '@/ui'
+import { TgAvatar, Button, Card, IconTile, Input, SearchField, SegmentedControl, Switch, toast, type IconName } from '@/ui'
 import { ApiError, get, post } from '../api'
 import { formatCount, formatDay, mskDate, plural } from '../format'
 import { generateCode, kindLabels, promoBody, promoValue, userLabel, userSub, validatePromo, type PromoKind } from '../promo'
@@ -241,7 +241,7 @@ export default function PromoNew() {
             <p className={note}>{TARGET_HINTS[target]}</p>
             {target === 'user' && picked && (
               <div className="flex items-center gap-3 rounded-md bg-accent-tint px-3 py-2.5">
-                <Avatar name={userLabel(picked)} id={picked.telegramId} size={32} />
+                <TgAvatar tg={picked.telegramId} name={userLabel(picked)} id={picked.telegramId} size={32} />
                 <div className="flex min-w-0 grow flex-col">
                   <span className="truncate font-semibold">{userLabel(picked)}</span>
                   <span className={`${note} truncate`}>{userSub(picked)}</span>
@@ -277,7 +277,7 @@ export default function PromoNew() {
                             setQuery('')
                           }}
                         >
-                          <Avatar name={userLabel(u)} id={u.telegramId} size={28} />
+                          <TgAvatar tg={u.telegramId} name={userLabel(u)} id={u.telegramId} size={28} />
                           <span className="min-w-0 grow truncate">{userLabel(u)}</span>
                           <span className={`${note} max-w-[50%] shrink-0 truncate`}>{userSub(u)}</span>
                         </button>

@@ -111,6 +111,8 @@ describe('AppShell', () => {
     expect(within(document.querySelector('header')!).getByText('@owner_nick')).toBeTruthy()
     expect(screen.getByText('Shop Bot')).toBeTruthy()
     expect(screen.getByText('@shop_bot')).toBeTruthy()
+    expect(document.querySelector('img[src="/api/avatars/bot"]')).not.toBeNull()
+    expect(document.querySelector('header img')!.getAttribute('src')).toBe('/api/avatars/1')
     // навигация не перечитывает /api/me
     fireEvent.click(sidebar().getByRole('button', { name: /Платежи/ }))
     await flush()
