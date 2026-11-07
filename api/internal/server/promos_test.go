@@ -358,7 +358,7 @@ func TestListDisableActivations(t *testing.T) {
 	// activations
 	st.acts = []model.PromoActivation{{ID: 1, PromoID: 1, TelegramID: 7, Username: "Bob", PaymentID: ptrI64(3), CreatedAt: now}}
 	w := send(h, http.MethodGet, "/api/promos/1/activations", c, "")
-	want := `{"items":[{"id":1,"promoId":1,"telegramId":7,"username":"Bob","paymentId":3,"createdAt":"2026-11-02T12:00:00Z"}]}`
+	want := `{"items":[{"id":1,"promoId":1,"telegramId":7,"username":"Bob","name":"","paymentId":3,"createdAt":"2026-11-02T12:00:00Z"}]}`
 	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != want {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
