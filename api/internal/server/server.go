@@ -83,7 +83,7 @@ type Store interface {
 	SetUserBlocked(ctx context.Context, telegramID int64, blocked bool, at time.Time) error
 	UserGrants(ctx context.Context, telegramID int64, limit int) ([]model.Grant, error)
 	// Подарки: выдача админом, отмена готового, список со страницами.
-	CreateAdminGifts(ctx context.Context, months, count int, at time.Time) ([]model.Gift, error)
+	CreateAdminGiftsOnce(ctx context.Context, key uuid.UUID, months, count int, at time.Time) ([]model.Gift, bool, error)
 	CancelGift(ctx context.Context, id int64) error
 	DeleteGift(ctx context.Context, id int64) error
 	ListGifts(ctx context.Context, f model.GiftFilter) ([]model.Gift, int, error)

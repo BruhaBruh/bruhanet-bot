@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/google/uuid"
+
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/store"
 )
@@ -42,6 +44,8 @@ func (s *server) gifts(w http.ResponseWriter, r *http.Request) {
 type giftInput struct {
 	Months int `json:"months"`
 	Count  int `json:"count"`
+	// IdempotencyKey — необязателен: повтор с тем же ключом возвращает ту же пачку (200), а не создаёт новую.
+	IdempotencyKey uuid.UUID `json:"idempotencyKey"`
 }
 
 // createGifts выдаёт count подарков от админа на months месяцев: сразу готовые ссылки.
@@ -59,12 +63,16 @@ func (s *server) createGifts(w http.ResponseWriter, r *http.Request) {
 		writeInvalid(w, "количество — от 1 до "+strconv.Itoa(maxGiftBatch))
 		return
 	}
-	items, err := s.Store.CreateAdminGifts(r.Context(), in.Months, in.Count, s.Now())
+	items, created, err := s.Store.CreateAdminGiftsOnce(r.Context(), in.IdempotencyKey, in.Months, in.Count, s.Now())
 	if err != nil {
 		internal(w, r, "create gifts", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"items": items})
+	code := http.StatusCreated
+	if !created {
+		code = http.StatusOK
+	}
+	writeJSON(w, code, map[string]any{"items": items})
 }
 
 // cancelGift отзывает готовый подарок (в панели «Отозвать»; срок получателя не меняется); активированный или уже отменённый — 409.

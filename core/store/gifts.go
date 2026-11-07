@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bruhabruh/bruhanet/core/model"
@@ -55,17 +56,52 @@ func insertPendingGift(ctx context.Context, tx pgx.Tx, buyer int64, paymentID in
 
 // CreateAdminGifts создаёт count подарков от админа на months месяцев сразу в статусе ready.
 func (s *Store) CreateAdminGifts(ctx context.Context, months, count int, at time.Time) ([]model.Gift, error) {
-	out := make([]model.Gift, 0, count)
-	err := s.tx(ctx, func(tx pgx.Tx) error {
-		out = out[:0]
+	out, _, err := s.CreateAdminGiftsOnce(ctx, uuid.Nil, months, count, at)
+	return out, err
+}
+
+// CreateAdminGiftsOnce — CreateAdminGifts с ключом идемпотентности: пачка с тем же ключом уже есть — возвращается она
+// (created=false, месяцы и число из повтора игнорируются); нет — создаётся новая. Нулевой ключ — всегда новая пачка.
+// Параллельные повторы сериализует advisory-замок по ключу: вторая транзакция увидит уже созданную пачку.
+func (s *Store) CreateAdminGiftsOnce(ctx context.Context, key uuid.UUID, months, count int, at time.Time) (out []model.Gift, created bool, err error) {
+	out = make([]model.Gift, 0, count)
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		out, created = out[:0], true
+		var batch any // NULL у пачки без ключа
+		if key != uuid.Nil {
+			batch = key
+			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('gift_batch:'||$1::text, 0))`, key); err != nil {
+				return err
+			}
+			rows, err := tx.Query(ctx, `SELECT `+giftCols+giftFrom+` WHERE g.batch_key = $1 ORDER BY g.id`, key)
+			if err != nil {
+				return err
+			}
+			for rows.Next() {
+				g, err := scanGift(rows)
+				if err != nil {
+					rows.Close()
+					return err
+				}
+				out = append(out, g)
+			}
+			rows.Close()
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			if len(out) > 0 {
+				created = false
+				return nil
+			}
+		}
 		for range count {
 			code, err := NewGiftCode()
 			if err != nil {
 				return err
 			}
 			g, err := scanGift(tx.QueryRow(ctx, `WITH g AS (
-				INSERT INTO gifts (code, months, status, created_by_admin, created_at) VALUES ($1, $2, 'ready', true, $3) RETURNING *)
-				SELECT `+giftCols+` FROM g `+giftJoins, code, months, at))
+				INSERT INTO gifts (code, months, status, created_by_admin, created_at, batch_key) VALUES ($1, $2, 'ready', true, $3, $4) RETURNING *)
+				SELECT `+giftCols+` FROM g `+giftJoins, code, months, at, batch))
 			if err != nil {
 				return err
 			}
@@ -73,7 +109,7 @@ func (s *Store) CreateAdminGifts(ctx context.Context, months, count int, at time
 		}
 		return nil
 	})
-	return out, err
+	return out, created, err
 }
 
 // giftJoins — те же join'ы для CTE с алиасом g.

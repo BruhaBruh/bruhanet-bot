@@ -71,6 +71,8 @@ function CreateDialog({ onClose, onDone }: { onClose: () => void; onDone: () => 
   const [touched, setTouched] = useState(false)
   const [created, setCreated] = useState<Gift[]>()
   const sending = useRef(false)
+  // ключ идемпотентности одной выдачи: повтор после потерянного ответа не создаст вторую пачку; другой срок или число — другой ключ
+  const attempt = useRef({ sig: '', key: '' })
 
   useEffect(() => {
     let stale = false
@@ -96,7 +98,9 @@ function CreateDialog({ onClose, onDone }: { onClose: () => void; onDone: () => 
     if (sending.current) return
     sending.current = true
     try {
-      const r = await post<{ items: Gift[] }>('/api/gifts', { months: m, count: n })
+      const sig = `${m}:${n}`
+      if (attempt.current.sig !== sig) attempt.current = { sig, key: crypto.randomUUID() }
+      const r = await post<{ items: Gift[] }>('/api/gifts', { months: m, count: n, idempotencyKey: attempt.current.key })
       setCreated(r.items)
       onDone()
     } catch (e) {

@@ -11,14 +11,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/payflow"
 	"github.com/bruhabruh/bruhanet/core/store"
 )
 
-func (f *fakeStore) CreateAdminGifts(_ context.Context, months, count int, at time.Time) ([]model.Gift, error) {
+func (f *fakeStore) CreateAdminGiftsOnce(_ context.Context, key uuid.UUID, months, count int, at time.Time) ([]model.Gift, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if key != uuid.Nil {
+		if prev, ok := f.giftBatches[key]; ok {
+			return prev, false, nil
+		}
+	}
 	out := make([]model.Gift, 0, count)
 	for range count {
 		g := model.Gift{
@@ -28,7 +35,13 @@ func (f *fakeStore) CreateAdminGifts(_ context.Context, months, count int, at ti
 		f.gifts = append(f.gifts, g)
 		out = append(out, g)
 	}
-	return out, nil
+	if key != uuid.Nil {
+		if f.giftBatches == nil {
+			f.giftBatches = map[uuid.UUID][]model.Gift{}
+		}
+		f.giftBatches[key] = out
+	}
+	return out, true, nil
 }
 
 func (f *fakeStore) CancelGift(_ context.Context, id int64) error {
@@ -88,6 +101,28 @@ type giftsJSON struct {
 		ByAdmin bool   `json:"byAdmin"`
 	} `json:"items"`
 	Total int `json:"total"`
+}
+
+// Повтор POST /api/gifts с тем же ключом (потерянный ответ, двойной клик) отдаёт ту же пачку, а не новую.
+func TestGiftsCreateIsIdempotent(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	const key = `"idempotencyKey":"7d444840-9dc0-11d1-b245-5ffdce74fad2"`
+	first := send(h, http.MethodPost, "/api/gifts", c, `{"months":3,"count":2,`+key+`}`)
+	again := send(h, http.MethodPost, "/api/gifts", c, `{"months":3,"count":2,`+key+`}`)
+	var a, b giftsJSON
+	if first.Code != http.StatusCreated || again.Code != http.StatusOK || json.Unmarshal(first.Body.Bytes(), &a) != nil || json.Unmarshal(again.Body.Bytes(), &b) != nil {
+		t.Fatalf("%d %s / %d %s", first.Code, first.Body, again.Code, again.Body)
+	}
+	if len(a.Items) != 2 || len(b.Items) != 2 || a.Items[0].ID != b.Items[0].ID || a.Items[1].Code != b.Items[1].Code || len(st.gifts) != 2 {
+		t.Fatalf("a retry must return the same batch: %+v %+v (gifts: %d)", a, b, len(st.gifts))
+	}
+	// без ключа каждый запрос — новая пачка; другой ключ — тоже
+	send(h, http.MethodPost, "/api/gifts", c, `{"months":3,"count":1}`)
+	send(h, http.MethodPost, "/api/gifts", c, `{"months":3,"count":1,"idempotencyKey":"11111111-2222-3333-4444-555555555555"}`)
+	if len(st.gifts) != 4 {
+		t.Fatalf("gifts = %d", len(st.gifts))
+	}
 }
 
 func TestGiftsCreateListCancel(t *testing.T) {

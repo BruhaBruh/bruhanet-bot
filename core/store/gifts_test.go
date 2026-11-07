@@ -763,3 +763,38 @@ func TestGiftRevokeNotifiesBuyer(t *testing.T) {
 		t.Fatalf("admin gifts must not notify: %d", len(cancelled()))
 	}
 }
+
+// Пачка подарков с ключом создаётся один раз; повтор (в том числе параллельный) возвращает её же.
+func TestCreateAdminGiftsOnce(t *testing.T) {
+	f := newGiftFixture(t)
+	ctx := t.Context()
+	key := uuid.New()
+	first, created, err := f.s.CreateAdminGiftsOnce(ctx, key, 3, 2, f.now)
+	if err != nil || !created || len(first) != 2 {
+		t.Fatalf("first: %v created=%v n=%d", err, created, len(first))
+	}
+	again, created, err := f.s.CreateAdminGiftsOnce(ctx, key, 12, 5, f.now) // месяцы и число из повтора игнорируются
+	if err != nil || created || len(again) != 2 || again[0].Code != first[0].Code || again[1].Code != first[1].Code || again[0].Months != 3 {
+		t.Fatalf("repeat: %v created=%v %+v", err, created, again)
+	}
+	// без ключа — всегда новая пачка
+	if _, created, err = f.s.CreateAdminGiftsOnce(ctx, uuid.Nil, 1, 1, f.now); err != nil || !created {
+		t.Fatalf("nil key: %v %v", created, err)
+	}
+	// гонка: восемь одинаковых запросов дают одну пачку
+	race := uuid.New()
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, _, err := f.s.CreateAdminGiftsOnce(ctx, race, 1, 3, f.now); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := f.count(t, `SELECT count(*) FROM gifts WHERE batch_key = $1`, race); n != 3 {
+		t.Fatalf("race: %d gifts for one key", n)
+	}
+}

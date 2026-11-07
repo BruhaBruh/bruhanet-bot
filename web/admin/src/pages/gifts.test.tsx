@@ -153,7 +153,7 @@ describe('Gifts create', () => {
     replies['POST /api/gifts'] = json(201, { items: [gift(1, { months: 6 }), gift(2, { months: 6 })] })
     fireEvent.click(dialog.getByRole('button', { name: 'Создать' }))
     await flush()
-    expect(posts().map((c) => c.body)).toEqual([{ months: 6, count: 2 }])
+    expect(posts().map((c) => c.body)).toEqual([{ months: 6, count: 2, idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/) }])
     const links = within(screen.getByRole('alertdialog'))
     expect(links.getByText('https://t.me/bruhabot?start=gift_CODE1xxxxxxxxxxxxxxxxx')).toBeTruthy()
     expect(links.getByText('https://t.me/bruhabot?start=gift_CODE2xxxxxxxxxxxxxxxxx')).toBeTruthy()
@@ -162,6 +162,24 @@ describe('Gifts create', () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://t.me/bruhabot?start=gift_CODE2xxxxxxxxxxxxxxxxx')
     fireEvent.click(links.getByRole('button', { name: 'Готово' }))
     expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('a retry of the same request keeps the idempotency key, a changed request gets a new one', async () => {
+    await open()
+    const dialog = within(screen.getByRole('alertdialog'))
+    fireEvent.change(dialog.getByLabelText('Срок подарка'), { target: { value: '6' } })
+    replies['POST /api/gifts'] = json(500) // ответ потерян: форма остаётся, юзер жмёт ещё раз
+    fireEvent.click(dialog.getByRole('button', { name: 'Создать' }))
+    await flush()
+    fireEvent.click(dialog.getByRole('button', { name: 'Создать' }))
+    await flush()
+    fireEvent.change(dialog.getByLabelText('Срок подарка'), { target: { value: '12' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Создать' }))
+    await flush()
+    const keys = posts().map((c) => (c.body as { idempotencyKey: string }).idempotencyKey)
+    expect(keys).toHaveLength(3)
+    expect(keys[0]).toBe(keys[1])
+    expect(keys[2]).not.toBe(keys[0])
   })
 
   it('does not post invalid months or count', async () => {

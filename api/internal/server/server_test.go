@@ -79,6 +79,7 @@ type fakeStore struct {
 
 	panelWrites []panelWrite
 	grants      []model.Grant
+	giftBatches map[uuid.UUID][]model.Gift
 	gifts       []model.Gift // по возрастанию id
 }
 
