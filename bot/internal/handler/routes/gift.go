@@ -3,9 +3,11 @@ package routes
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -32,6 +34,12 @@ var (
 )
 
 // giftCodeRe — допустимая форма кода из ссылки (crypto/rand, base64url): мусор отсекается без обращения к БД.
+// Защита от перебора кодов: не больше giftFailLimit неудачных активаций за giftFailWindow на юзера.
+const (
+	giftFailLimit  = 10
+	giftFailWindow = time.Hour
+)
+
 var giftCodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{16,64}$`)
 
 // giftLink — ссылка t.me/<бот>?start=gift_<код>.
@@ -116,6 +124,15 @@ func (h *handlers) redeemGift(ctx context.Context, b *bot.Bot, u *models.Update,
 		h.giftUnavailable(ctx, b, u)
 		return
 	}
+	failKey := fmt.Sprintf("giftfail:%d", from.ID)
+	if h.fails != nil {
+		// перебор кодов: после giftFailLimit неудач за окно отвечаем так же, как на неверный код, не трогая БД
+		if n, err := h.fails.Fails(ctx, failKey); err == nil && n >= giftFailLimit {
+			stlog.Warn(ctx, "gift attempts limited", "telegram_id", from.ID)
+			h.giftUnavailable(ctx, b, u)
+			return
+		}
+	}
 	h.leavePromo(ctx, from.ID)
 	_, _, err := payflow.RedeemGift(ctx, h.pay, h.rw, payflow.GiftRedeem{
 		Code: code, TelegramID: from.ID, Username: from.Username, At: h.now(), Squad: h.cfg.Remnawave.InternalSquadId,
@@ -127,6 +144,11 @@ func (h *handlers) redeemGift(ctx context.Context, b *bot.Bot, u *models.Update,
 	})
 	switch {
 	case errors.Is(err, model.ErrGiftUnavailable):
+		if h.fails != nil {
+			if ferr := h.fails.Fail(ctx, failKey, giftFailWindow); ferr != nil {
+				stlog.Warn(ctx, "failed to count a gift attempt", "error", ferr)
+			}
+		}
 		h.giftUnavailable(ctx, b, u)
 	case err != nil:
 		stlog.Error(ctx, "failed to redeem gift", "error", err)

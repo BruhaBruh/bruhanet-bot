@@ -88,6 +88,14 @@ type Deps struct {
 	Content *content.Provider
 	// Now — источник времени; nil = time.Now.
 	Now func() time.Time
+	// Fails — счётчик неудач для защиты от перебора (коды подарка); nil — без лимита.
+	Fails FailCounter
+}
+
+// FailCounter — неудачные попытки по ключу в окне: Fail записывает (ключ живёт window с первой), Fails читает.
+type FailCounter interface {
+	Fails(ctx context.Context, key string) (int, error)
+	Fail(ctx context.Context, key string, window time.Duration) error
 }
 
 type handlers struct {
@@ -97,6 +105,8 @@ type handlers struct {
 	fsm fsm.Storage
 	c   *content.Provider
 	now func() time.Time
+	// fails — счётчик неудач; nil — без лимита.
+	fails FailCounter
 
 	// me — username бота из getMe (botUsername).
 	meMu sync.Mutex
@@ -109,7 +119,7 @@ func Register(r *router.Router, d Deps) {
 	if now == nil {
 		now = time.Now
 	}
-	h := &handlers{cfg: d.Config, fsm: d.FSM, rw: writeThrough{d.Remnawave, d.Payments}, pay: d.Payments, c: d.Content, now: now}
+	h := &handlers{cfg: d.Config, fsm: d.FSM, rw: writeThrough{d.Remnawave, d.Payments}, pay: d.Payments, c: d.Content, now: now, fails: d.Fails}
 	r.Callback(routeMenu, h.start)
 	r.Callback(routeInfo, h.info)
 	r.Callback(routePay, h.tariffs)

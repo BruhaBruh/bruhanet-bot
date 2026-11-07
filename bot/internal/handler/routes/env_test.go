@@ -2,6 +2,7 @@ package routes_test
 
 import (
 	"bytes"
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -37,6 +38,16 @@ type env struct {
 	src *tgtest.Source
 	c   *content.Provider
 	log *bytes.Buffer
+	// fails — счётчик неудач по кодам подарка в памяти
+	fails *memFails
+}
+
+type memFails struct{ n map[string]int }
+
+func (m *memFails) Fails(_ context.Context, key string) (int, error) { return m.n[key], nil }
+func (m *memFails) Fail(_ context.Context, key string, _ time.Duration) error {
+	m.n[key]++
+	return nil
 }
 
 func newEnv(t *testing.T) *env {
@@ -51,12 +62,13 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 	t.Helper()
 	logger, buf := tgtest.Logger()
 	e := &env{
-		srv: tgtest.NewServer(t),
-		rw:  tgtest.NewRemnawave(func() time.Time { return now }),
-		fsm: store,
-		pay: tgtest.NewPayments(),
-		src: &tgtest.Source{},
-		log: buf,
+		srv:   tgtest.NewServer(t),
+		rw:    tgtest.NewRemnawave(func() time.Time { return now }),
+		fsm:   store,
+		fails: &memFails{n: map[string]int{}},
+		pay:   tgtest.NewPayments(),
+		src:   &tgtest.Source{},
+		log:   buf,
 	}
 	cfg := &config.Config{
 		Telegram: coreconfig.TelegramConfig{Token: tgtest.Token, AdminID: adminID},
@@ -90,6 +102,7 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 		Payments:  e.pay,
 		Content:   e.c,
 		Now:       func() time.Time { return now },
+		Fails:     e.fails,
 	}, e.srv.Options()...)
 	if err != nil {
 		t.Fatalf("handler.New: %v", err)

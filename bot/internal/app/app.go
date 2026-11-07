@@ -26,6 +26,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/names"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
+	"github.com/bruhabruh/bruhanet/bot/internal/ratelimit"
 	"github.com/bruhabruh/bruhanet/bot/internal/referral"
 	"github.com/bruhabruh/bruhanet/bot/internal/reminder"
 	"github.com/bruhabruh/bruhanet/core/model"
@@ -108,7 +109,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		logger.Warn(cronWarning)
 	}
 	cnt := content.New(st, defaults, contentTTL, nil)
-	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight, Remnawave: rwObs, Payments: st, Content: cnt})
+	b, err := handler.New(logger, config, handler.Deps{FSM: fsm.NewRedis(rdb), InFlight: &inflight, Remnawave: rwObs, Payments: st, Content: cnt, Fails: ratelimit.New(rdb)})
 	if err != nil {
 		return nil, errors.Join(
 			errors.New("failed to create telegram bot"),

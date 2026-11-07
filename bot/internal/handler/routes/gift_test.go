@@ -2,6 +2,7 @@ package routes_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -228,5 +229,34 @@ func TestGiftCancelledNotice(t *testing.T) {
 	text, kb := routes.GiftNotice(t.Context(), e.c, e.rw, "bot", model.OutboxMessage{ChatID: userID, TextKey: "gift.cancelled", Months: 6})
 	if !strings.Contains(text, "Подарок отозван") || !strings.Contains(text, "6 месяцев") || kb == nil {
 		t.Fatalf("text = %q kb = %v", text, kb)
+	}
+}
+
+// Перебор кодов: после 10 неудач за окно даже верная ссылка отвечает как неверная и не трогает подарок; другой юзер не страдает.
+func TestGiftRedeemAttemptsAreLimited(t *testing.T) {
+	e := newEnv(t)
+	good := "AbCdEfGhIjKlMnOpQrStUv"
+	for range 10 {
+		e.process(t, tgtest.Message(userID, "/start gift_ZZZZZZZZZZZZZZZZZZZZZZ"))
+	}
+	if n := e.fails.n[fmt.Sprintf("giftfail:%d", userID)]; n != 10 {
+		t.Fatalf("fails = %d", n)
+	}
+	calls := e.srv.Calls("sendMessage")
+	e.pay.SeedGift(good, 3, 5, model.GiftReady)
+	e.process(t, tgtest.Message(userID, "/start gift_"+good))
+	if g := e.pay.Gifts(); g[0].Status != model.GiftReady {
+		t.Fatalf("limited user redeemed: %+v", g[0])
+	}
+	if got := e.srv.Calls("sendMessage"); len(got) != len(calls)+1 || !strings.Contains(got[len(got)-1].Params.Get("text"), "Этот подарок недоступен") {
+		t.Fatalf("limited reply: %v", got)
+	}
+	if n := e.fails.n[fmt.Sprintf("giftfail:%d", userID)]; n != 10 { // заблокированные попытки не копят счёт дальше
+		t.Fatalf("fails after the limit = %d", n)
+	}
+	// другой юзер с тем же кодом активирует
+	e.process(t, tgtest.Message(77, "/start gift_"+good))
+	if g := e.pay.Gifts(); g[0].Status != model.GiftRedeemed {
+		t.Fatalf("other user must not be limited: %+v", g[0])
 	}
 }

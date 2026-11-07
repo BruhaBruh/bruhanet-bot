@@ -27,6 +27,8 @@ type Deps struct {
 	Content   *content.Provider
 	// Now — источник времени; nil = time.Now (подменяется в тестах).
 	Now func() time.Time
+	// Fails — защита от перебора кодов подарка; nil — без лимита.
+	Fails routes.FailCounter
 }
 
 func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option) (*bot.Bot, error) {
@@ -38,7 +40,7 @@ func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option)
 		now = time.Now
 	}
 	r := router.New()
-	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Payments: deps.Payments, Content: deps.Content, Now: deps.Now})
+	routes.Register(r, routes.Deps{Config: cfg, FSM: deps.FSM, Remnawave: deps.Remnawave, Payments: deps.Payments, Content: deps.Content, Now: deps.Now, Fails: deps.Fails})
 
 	options := append([]bot.Option{
 		// pollTimeout и Timeout клиента — как у go-telegram по умолчанию (1 минута)
