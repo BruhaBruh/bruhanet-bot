@@ -25,6 +25,7 @@ const (
 	maxSupportURL        = 256 // texts: Max общей переменной supportUrl
 	maxVars              = 50
 	maxReminderTimes     = 6
+	maxDeviceOptions     = 6
 )
 
 var (
@@ -47,6 +48,9 @@ type Settings struct {
 
 	DevicesBase int `json:"devicesBase"` // устройств в подписке без доплаты, 1..100
 	DevicePrice int `json:"devicePrice"` // ₽ за каждое доп. устройство в месяц; 0 — продажа устройств выключена
+	// DeviceOptions — варианты числа устройств на экране докупки: 1..maxDeviceOptions по возрастанию, каждый ≤ DeviceMax.
+	DeviceOptions []int `json:"deviceOptions"`
+	DeviceMax     int   `json:"deviceMax"` // наибольшее число устройств за одну докупку, в том числе «своим числом», 1..100
 
 	TrialDays    int `json:"trialDays"`    // дней пробного периода; 0 — пробный выключен, 0..30
 	TrialDevices int `json:"trialDevices"` // устройств на пробном периоде, 1..100
@@ -79,8 +83,10 @@ func Defaults(prices map[int]int, phone, bank, supportURL string) Settings {
 		ReminderWeekDays: 7,
 		ReminderDayHours: 24,
 
-		DevicesBase: 5,
-		DevicePrice: 0,
+		DevicesBase:   5,
+		DevicePrice:   0,
+		DeviceOptions: []int{1, 2, 3, 5},
+		DeviceMax:     10,
 
 		TrialDays:    0,
 		TrialDevices: 2,
@@ -228,6 +234,15 @@ func Merge(def Settings, raw map[string][]byte) (Settings, error) {
 	apply("reminderDayHours", num(&def.ReminderDayHours))
 	apply("devicesBase", num(&def.DevicesBase))
 	apply("devicePrice", num(&def.DevicePrice))
+	apply("deviceMax", num(&def.DeviceMax))
+	apply("deviceOptions", func(b []byte) error {
+		var v []int
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		def.DeviceOptions = v
+		return nil
+	})
 	apply("trialDays", num(&def.TrialDays))
 	apply("trialDevices", num(&def.TrialDevices))
 	apply("referralDays", num(&def.ReferralDays))
@@ -293,6 +308,20 @@ func (s Settings) Validate() error {
 	}
 	if s.DevicePrice < 0 || s.DevicePrice > 100_000 {
 		p = append(p, "цена доп. устройства должна быть от 0 до 100 000 ₽ в месяц")
+	}
+	if s.DeviceMax < 1 || s.DeviceMax > 100 {
+		p = append(p, "наибольшее число устройств за раз должно быть от 1 до 100")
+	}
+	if n := len(s.DeviceOptions); n < 1 || n > maxDeviceOptions {
+		p = append(p, fmt.Sprintf("вариантов числа устройств должно быть от 1 до %d", maxDeviceOptions))
+	}
+	for i, o := range s.DeviceOptions {
+		switch {
+		case o < 1 || o > s.DeviceMax:
+			p = append(p, fmt.Sprintf("вариант числа устройств %d должен быть от 1 до %d (наибольшее за раз)", o, s.DeviceMax))
+		case i > 0 && o <= s.DeviceOptions[i-1]:
+			p = append(p, "варианты числа устройств должны идти по возрастанию без повторов")
+		}
 	}
 	if s.TrialDays < 0 || s.TrialDays > 30 {
 		p = append(p, "дней пробного периода должно быть от 0 до 30")

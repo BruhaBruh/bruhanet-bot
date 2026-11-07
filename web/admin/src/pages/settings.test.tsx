@@ -23,6 +23,8 @@ const s = {
   reminderDayHours: 24,
   devicesBase: 5,
   devicePrice: 0,
+  deviceOptions: [1, 2, 3, 5],
+  deviceMax: 10,
   trialDays: 3,
   trialDevices: 2,
   referralDays: 7,
@@ -238,6 +240,26 @@ describe('Settings', () => {
     await flush()
     expect(puts()).toHaveLength(1)
     expect(puts()[0].body).toMatchObject({ devicesBase: 4, devicePrice: 60 })
+  })
+
+  it('device purchase options: parsed and saved; unsorted or over the maximum is rejected before sending', async () => {
+    await open()
+    expect(field('Варианты в меню докупки').value).toBe('1, 2, 3, 5')
+    expect(field('Наибольшее число за раз').value).toBe('10')
+    edit(field('Варианты в меню докупки'), '1, 4, 2')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toHaveLength(0)
+    expect(screen.getByRole('alert').textContent).toContain('по возрастанию')
+    edit(field('Варианты в меню докупки'), '2, 20')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toHaveLength(0)
+    edit(field('Варианты в меню докупки'), '1 4,8')
+    edit(field('Наибольшее число за раз'), '8')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()[0].body).toMatchObject({ deviceOptions: [1, 4, 8], deviceMax: 8 })
   })
 
   it('trial days and devices are editable and saved; 0 days is explained as off', async () => {

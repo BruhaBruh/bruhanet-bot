@@ -19,6 +19,8 @@ type Form = {
   reminderDayHours: string
   devicesBase: string
   devicePrice: string
+  deviceOptions: string
+  deviceMax: string
   trialDays: string
   trialDevices: string
   referralDays: string
@@ -40,6 +42,8 @@ const toForm = (s: S): Form => ({
   reminderDayHours: String(s.reminderDayHours),
   devicesBase: String(s.devicesBase),
   devicePrice: String(s.devicePrice),
+  deviceOptions: s.deviceOptions.join(', '),
+  deviceMax: String(s.deviceMax),
   trialDays: String(s.trialDays),
   trialDevices: String(s.trialDevices),
   referralDays: String(s.referralDays),
@@ -58,6 +62,19 @@ function perMonth(t: Tariff, first: Tariff, i: number): string {
 }
 
 // Текст ошибки, если тарифы нельзя отправить.
+/** «1, 2, 3, 5» → [1, 2, 3, 5]; не число остаётся NaN и отклоняется проверкой. */
+const parseOptions = (v: string) => v.split(/[\s,;]+/).filter(Boolean).map(Number)
+
+function optionsError(v: string, max: string): string {
+  const o = parseOptions(v)
+  const m = Number(max)
+  if (!o.length || o.length > 6) return 'Вариантов числа устройств должно быть от 1 до 6'
+  if (o.some((n) => !Number.isInteger(n) || n < 1)) return 'Варианты числа устройств — целые числа от 1'
+  if (o.some((n, i) => i > 0 && n <= o[i - 1])) return 'Варианты числа устройств должны идти по возрастанию без повторов'
+  if (o.some((n) => n > m)) return 'Вариант не может быть больше наибольшего числа устройств за раз'
+  return ''
+}
+
 function tariffsError(tariffs: Tariff[]): string {
   // одинаковые сроки схлопнулись бы в один ключ объекта — ловим до отправки
   const dup = tariffs.map((t) => t.months.trim()).find((m, i, a) => a.indexOf(m) !== i)
@@ -136,7 +153,7 @@ export default function Settings() {
   async function save() {
     if (inFlight.current || !form) return
     setProblems([])
-    const invalid = tariffsError(form.tariffs) || timesError(form.reminderTimes) || varsError(form.vars)
+    const invalid = tariffsError(form.tariffs) || timesError(form.reminderTimes) || varsError(form.vars) || optionsError(form.deviceOptions, form.deviceMax)
     setError(invalid)
     if (invalid) return
     const body: S = {
@@ -152,6 +169,8 @@ export default function Settings() {
       reminderDayHours: Number(form.reminderDayHours),
       devicesBase: Number(form.devicesBase),
       devicePrice: Number(form.devicePrice),
+      deviceOptions: parseOptions(form.deviceOptions),
+      deviceMax: Number(form.deviceMax),
       trialDays: Number(form.trialDays),
       trialDevices: Number(form.trialDevices),
       referralDays: Number(form.referralDays),
@@ -253,6 +272,26 @@ export default function Settings() {
             value={form.devicePrice}
             onChange={(e) => patch({ devicePrice: e.target.value })}
             hint="0 — продажа устройств выключена: кнопки в боте нет, купленные устройства сохраняются"
+          />
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Input
+            className="min-w-0 grow basis-60"
+            label="Варианты в меню докупки"
+            value={form.deviceOptions}
+            onChange={(e) => patch({ deviceOptions: e.target.value })}
+            hint="Числа через запятую по возрастанию, до 6 штук: на этих кнопках юзер выбирает, сколько добавить"
+          />
+          <Input
+            className="min-w-0 grow basis-60"
+            label="Наибольшее число за раз"
+            type="number"
+            min={1}
+            max={100}
+            after="шт."
+            value={form.deviceMax}
+            onChange={(e) => patch({ deviceMax: e.target.value })}
+            hint="Потолок и для «Своё число»: больше этого юзер ввести не сможет"
           />
         </div>
       </Card>

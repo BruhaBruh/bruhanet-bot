@@ -201,6 +201,8 @@ export interface Settings {
   reminderDayHours: number
   devicesBase: number
   devicePrice: number
+  deviceOptions: number[]
+  deviceMax: number
   trialDays: number
   trialDevices: number
   referralDays: number
