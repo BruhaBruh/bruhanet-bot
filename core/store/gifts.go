@@ -97,13 +97,45 @@ func (s *Store) CancelGift(ctx context.Context, id int64) error {
 	})
 }
 
-// ListGifts — страница подарков, новые первыми, и общее число. Код pending-подарка не отдаётся.
+// DeleteGift удаляет подарок в статусе ready (отзыв и удаление одним шагом) или cancelled. Подарок админа
+// (payment_id пуст) стирается физически; купленный остаётся строкой со статусом cancelled и deleted_at — след денег
+// и связь с платежом. pending (ждёт оплаты) и redeemed (история, grants) — ErrNotDeletable. Строка FOR UPDATE,
+// как у RedeemGift: параллельная активация либо выиграла (тогда отказ), либо увидит отозванный подарок.
+// Повтор на удалённом — без ошибки; нет подарка — ErrNotFound.
+func (s *Store) DeleteGift(ctx context.Context, id int64) error {
+	return s.tx(ctx, func(tx pgx.Tx) error {
+		var (
+			st      model.GiftStatus
+			paid    bool
+			deleted bool
+		)
+		if err := tx.QueryRow(ctx, `SELECT status, payment_id IS NOT NULL, deleted_at IS NOT NULL FROM gifts WHERE id = $1 FOR UPDATE`, id).
+			Scan(&st, &paid, &deleted); errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		switch {
+		case deleted:
+			return nil
+		case st != model.GiftReady && st != model.GiftCancelled:
+			return ErrNotDeletable
+		case paid:
+			_, err := tx.Exec(ctx, `UPDATE gifts SET status = 'cancelled', deleted_at = now() WHERE id = $1`, id)
+			return err
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM gifts WHERE id = $1`, id)
+		return err
+	})
+}
+
+// ListGifts — страница (удалённые скрыты) подарков, новые первыми, и общее число. Код pending-подарка не отдаётся.
 func (s *Store) ListGifts(ctx context.Context, f model.GiftFilter) ([]model.Gift, int, error) {
 	var total int
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM gifts WHERE $1 = '' OR status = $1`, string(f.Status)).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM gifts WHERE deleted_at IS NULL AND ($1 = '' OR status = $1)`, string(f.Status)).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT `+giftCols+giftFrom+` WHERE $1 = '' OR g.status = $1 ORDER BY g.id DESC LIMIT $2 OFFSET $3`,
+	rows, err := s.pool.Query(ctx, `SELECT `+giftCols+giftFrom+` WHERE g.deleted_at IS NULL AND ($1 = '' OR g.status = $1) ORDER BY g.id DESC LIMIT $2 OFFSET $3`,
 		string(f.Status), f.Limit, f.Offset)
 	if err != nil {
 		return nil, 0, err

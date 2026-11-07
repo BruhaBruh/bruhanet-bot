@@ -502,3 +502,121 @@ func TestActivateDaysPromoStartsAt(t *testing.T) {
 		t.Fatal("starts_at == expires_at accepted by the db")
 	}
 }
+
+func TestDeletePromo(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	now := time.Now()
+	fresh := mustPromo(t, s, model.Promo{Code: "FRESH", Kind: promo.KindDays, Value: 1})
+	usedA := mustPromo(t, s, model.Promo{Code: "USEDA", Kind: promo.KindDays, Value: 1})
+	if err := s.ActivateDaysPromo(ctx, usedA.ID, 1, now, func(model.Promo) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	// платёж со скидкой без активации тоже история
+	viaPay := mustPromo(t, s, model.Promo{Code: "VIAPAY", Kind: promo.KindPercent, Value: 10})
+	if _, _, err := s.CreatePayment(ctx, model.Payment{TelegramID: 5, Username: "u", Month: 1, Price: 90, BasePrice: ptr(100), PromoID: &viaPay.ID, PrevExpireAt: now}, noRollback, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeletePromo(ctx, 99999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown: %v", err)
+	}
+	// без истории — физически, код можно создать заново
+	if err := s.DeletePromo(ctx, fresh.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PromoByID(ctx, fresh.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("fresh stays: %v", err)
+	}
+	mustPromo(t, s, model.Promo{Code: "FRESH", Kind: promo.KindDays, Value: 2})
+
+	for _, p := range []model.Promo{usedA, viaPay} {
+		for range 2 { // повтор безвреден
+			if err := s.DeletePromo(ctx, p.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := s.PromoByID(ctx, p.ID)
+		if err != nil || !got.Deleted {
+			t.Fatalf("%s: %+v err=%v", p.Code, got, err)
+		}
+		// бот: как неизвестный; код остаётся занятым
+		if _, err = s.PromoByCode(ctx, p.Code); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("by code: %v", err)
+		}
+		if _, err = s.CreatePromo(ctx, model.Promo{Code: p.Code, Kind: promo.KindDays, Value: 1}); !errors.Is(err, ErrPromoExists) {
+			t.Fatalf("recreate: %v", err)
+		}
+		if err = s.EnablePromo(ctx, p.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("enable deleted: %v", err)
+		}
+		if err = s.ActivateDaysPromo(ctx, p.ID, 2, now, func(model.Promo) error { return nil }); !errors.Is(err, promo.ErrNotFound) {
+			t.Fatalf("activate deleted: %v", err)
+		}
+	}
+	// история цела: активация и код в платеже
+	if acts, err := s.PromoActivations(ctx, usedA.ID); err != nil || len(acts) != 1 {
+		t.Fatalf("activations %v err=%v", acts, err)
+	}
+	if n := countRows(t, s, `SELECT count(*) FROM payments WHERE promo_id = $1`, viaPay.ID); n != 1 {
+		t.Fatalf("payment lost promo: %d", n)
+	}
+
+	// фильтры: удалённые только в status=deleted; used не меняется
+	for st, want := range map[string][]string{"": {"FRESH"}, model.PromoStatusActive: {"FRESH"}, model.PromoStatusDisabled: nil, model.PromoStatusDeleted: {"VIAPAY", "USEDA"}} {
+		list, err := s.ListPromos(ctx, model.PromoFilter{Status: st}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		codes := make([]string, 0, len(list))
+		for _, p := range list {
+			codes = append(codes, p.Code)
+			if st == model.PromoStatusDeleted && p.Code == "USEDA" && p.Used != 1 {
+				t.Fatalf("used = %d", p.Used)
+			}
+		}
+		if !slices.Equal(codes, want) {
+			t.Fatalf("status %q: %v, want %v", st, codes, want)
+		}
+	}
+}
+
+// Активация и удаление кода параллельно: активация либо успела (тогда код «использован» и удалён мягко), либо отказана.
+func TestDeletePromoRacesActivation(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	for i := range 15 {
+		p := mustPromo(t, s, model.Promo{Code: "RACE" + string(rune('A'+i)), Kind: promo.KindDays, Value: 1})
+		var delErr, actErr error
+		var wg sync.WaitGroup
+		wg.Go(func() { delErr = s.DeletePromo(ctx, p.ID) })
+		wg.Go(func() {
+			actErr = s.ActivateDaysPromo(ctx, p.ID, int64(700+i), time.Now(), func(model.Promo) error { return nil })
+		})
+		wg.Wait()
+		if delErr != nil {
+			t.Fatalf("iter %d: delete %v", i, delErr)
+		}
+		got, err := s.PromoByID(ctx, p.ID)
+		switch {
+		case actErr == nil: // успела: след активации сохранён, код скрыт
+			if err != nil || !got.Deleted || countRows(t, s, `SELECT count(*) FROM promo_activations WHERE promo_id = $1`, p.ID) != 1 {
+				t.Fatalf("iter %d: activated but %+v err=%v", i, got, err)
+			}
+		case errors.Is(actErr, promo.ErrNotFound): // удаление первым, без истории — строки нет
+			if !errors.Is(err, ErrNotFound) {
+				t.Fatalf("iter %d: refused but row %+v", i, got)
+			}
+		default:
+			t.Fatalf("iter %d: activate %v", i, actErr)
+		}
+	}
+}
+
+func countRows(t *testing.T, s *Store, q string, args ...any) (n int) {
+	t.Helper()
+	if err := s.pool.QueryRow(t.Context(), q, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}

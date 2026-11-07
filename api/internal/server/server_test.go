@@ -695,6 +695,20 @@ func (f *fakeStore) CancelBroadcast(_ context.Context, id uuid.UUID) (model.Broa
 	return f.broadcasts[i].b, nil
 }
 
+func (f *fakeStore) DeleteBroadcast(_ context.Context, id uuid.UUID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	i := f.bcIndex(id)
+	if i < 0 {
+		return store.ErrNotFound
+	}
+	if st := f.broadcasts[i].b.Status; st == broadcast.StatusSending || st == broadcast.StatusSent {
+		return store.ErrNotDeletable
+	}
+	f.broadcasts = slices.Delete(f.broadcasts, i, i+1)
+	return nil
+}
+
 func (f *fakeStore) Broadcast(_ context.Context, id uuid.UUID) (model.Broadcast, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

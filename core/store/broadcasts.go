@@ -250,6 +250,26 @@ func (s *Store) CancelBroadcast(ctx context.Context, id uuid.UUID) (model.Broadc
 	return b, err
 }
 
+// DeleteBroadcast удаляет черновик, запланированную или отменённую рассылку. Строка берётся FOR UPDATE (ждёт
+// ClaimDue, который уже стартует её) и статус проверяется заново: стартовавшая (sending|sent) — история со
+// счётчиками и доставками, ErrNotDeletable. Нет рассылки — ErrNotFound. Строк outbox у таких рассылок нет; картинку
+// без ссылок позже уберёт суточная чистка (DeleteStalePhotos).
+func (s *Store) DeleteBroadcast(ctx context.Context, id uuid.UUID) error {
+	return s.tx(ctx, func(tx pgx.Tx) error {
+		var st string
+		if err := tx.QueryRow(ctx, `SELECT status FROM broadcasts WHERE id = $1 FOR UPDATE`, id).Scan(&st); errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if st == broadcast.StatusSending || st == broadcast.StatusSent {
+			return ErrNotDeletable
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM broadcasts WHERE id = $1`, id)
+		return err
+	})
+}
+
 // maxClaimFails — сколько раз подряд не удавшийся запуск рассылки терпим, прежде чем отменить её.
 const maxClaimFails = 3
 

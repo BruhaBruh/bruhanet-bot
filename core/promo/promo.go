@@ -84,7 +84,7 @@ func ValidateNew(p model.Promo) error {
 // ErrNotFound вызывающий отдаёт сам (кода нет в базе).
 func Check(p model.Promo, used int, telegramID int64, hasConfirmed, alreadyActivated bool, place Place, now time.Time) error {
 	switch {
-	case p.Disabled:
+	case p.Disabled || p.Deleted:
 		return ErrDisabled
 	case p.StartsAt != nil && now.Before(*p.StartsAt):
 		return ErrNotStarted

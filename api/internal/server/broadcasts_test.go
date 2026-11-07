@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -640,4 +641,35 @@ func TestBroadcastListPeriod(t *testing.T) {
 			t.Errorf("%s: %d", q, code)
 		}
 	}
+}
+
+func TestDeleteBroadcast(t *testing.T) {
+	h, st, c := bcServer(t, &fakePanel{})
+	_, sched := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "v1", "scheduledAt": "2026-11-03T10:00"})
+	_, sent := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "now"})
+	del := func(id any) *httptest.ResponseRecorder {
+		return send(h, http.MethodDelete, "/api/broadcasts/"+fmt.Sprint(id), c, "")
+	}
+	if w := del(sent.ID); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "not_deletable") {
+		t.Fatalf("sent: %d %s", w.Code, w.Body)
+	}
+	if del(uuid.New()).Code != http.StatusNotFound || del("nope").Code != http.StatusBadRequest {
+		t.Fatal("unknown / garbage")
+	}
+	if w := del(sched.ID); w.Code != http.StatusNoContent {
+		t.Fatalf("scheduled: %d", w.Code)
+	}
+	if w := del(sched.ID); w.Code != http.StatusNotFound {
+		t.Fatalf("repeat: %d", w.Code)
+	}
+	if w := send(h, http.MethodGet, "/api/broadcasts/"+sched.ID.String(), c, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("still there: %d", w.Code)
+	}
+	if w := send(h, http.MethodDelete, "/api/broadcasts/"+sent.ID.String(), "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", w.Code)
+	}
+	if w := do(h, http.MethodDelete, "/api/broadcasts/"+sent.ID.String(), c, "text/plain"); w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("not json: %d", w.Code)
+	}
+	_ = st
 }

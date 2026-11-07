@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -38,6 +40,22 @@ func (f *fakeStore) CancelGift(_ context.Context, id int64) error {
 				return store.ErrGiftNotActive
 			}
 			f.gifts[i].Status = model.GiftCancelled
+			return nil
+		}
+	}
+	return store.ErrNotFound
+}
+
+// DeleteGift повторяет правило допустимых статусов; удалённый исчезает из списка (физически или нет — проверено в store).
+func (f *fakeStore) DeleteGift(_ context.Context, id int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.gifts {
+		if f.gifts[i].ID == id {
+			if st := f.gifts[i].Status; st != model.GiftReady && st != model.GiftCancelled {
+				return store.ErrNotDeletable
+			}
+			f.gifts = slices.Delete(f.gifts, i, i+1)
 			return nil
 		}
 	}
@@ -178,3 +196,34 @@ func TestResolveGiftPaymentFromPanel(t *testing.T) {
 }
 
 func itoa(i int64) string { return strconv.FormatInt(i, 10) }
+
+func TestDeleteGift(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	st.gifts = []model.Gift{
+		{ID: 1, Months: 1, Status: model.GiftReady},
+		{ID: 2, Months: 1, Status: model.GiftCancelled},
+		{ID: 3, Months: 1, Status: model.GiftRedeemed},
+		{ID: 4, Months: 1, Status: model.GiftPending},
+	}
+	del := func(id string) *httptest.ResponseRecorder { return send(h, http.MethodDelete, "/api/gifts/"+id, c, "") }
+	for _, id := range []string{"1", "2"} {
+		if w := del(id); w.Code != http.StatusNoContent {
+			t.Fatalf("delete %s: %d", id, w.Code)
+		}
+	}
+	for _, id := range []string{"3", "4"} {
+		if w := del(id); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "not_deletable") {
+			t.Fatalf("delete %s: %d %s", id, w.Code, w.Body)
+		}
+	}
+	if del("999").Code != http.StatusNotFound || del("abc").Code != http.StatusBadRequest {
+		t.Fatal("unknown / garbage")
+	}
+	if w := send(h, http.MethodDelete, "/api/gifts/3", "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", w.Code)
+	}
+	if w := do(h, http.MethodDelete, "/api/gifts/3", c, "text/plain"); w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("not json: %d", w.Code)
+	}
+}

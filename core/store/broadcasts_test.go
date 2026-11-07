@@ -663,3 +663,115 @@ func TestClaimDueSkipsPoisoned(t *testing.T) {
 		t.Fatalf("after cancel n=%d err=%v", n, err)
 	}
 }
+
+func TestDeleteBroadcast(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	seedUser(t, s, 1, nil)
+	photo, err := s.SavePhoto(ctx, []byte("IMG"), "image/jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// черновик с картинкой, запланированная, отменённая: удаляются, outbox не трогается
+	dd := draft("draft")
+	dd.PhotoID = &photo
+	dr, err := s.SaveDraft(ctx, uuid.New(), dd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ds := draft("later")
+	ds.ScheduledAt = after(time.Hour)
+	sc, _, _ := s.SendBroadcast(ctx, ds, 9, bt0)
+	dc := draft("cancelled")
+	dc.ScheduledAt = after(time.Hour)
+	ca, _, _ := s.SendBroadcast(ctx, dc, 9, bt0)
+	if _, err = s.CancelBroadcast(ctx, ca.ID); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := s.OutboxCount(ctx)
+	for _, b := range []model.Broadcast{dr, sc, ca} {
+		if err = s.DeleteBroadcast(ctx, b.ID); err != nil {
+			t.Fatalf("delete %s: %v", b.Status, err)
+		}
+		if _, err = s.Broadcast(ctx, b.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("still there: %v", err)
+		}
+		if err = s.DeleteBroadcast(ctx, b.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("repeat: %v", err)
+		}
+	}
+	if after, _ := s.OutboxCount(ctx); after != before {
+		t.Fatalf("outbox changed %d -> %d", before, after)
+	}
+	// картинка осталась без ссылок: суточная чистка заберёт
+	if n, err := s.DeleteStalePhotos(ctx, time.Now().Add(time.Second)); err != nil || n != 1 {
+		t.Fatalf("stale photos removed %d, %v", n, err)
+	}
+
+	// стартовавшая и завершённая — история
+	for _, finish := range []bool{false, true} {
+		d := draft("go")
+		d.ScheduledAt = after(time.Minute)
+		b, _, _ := s.SendBroadcast(ctx, d, 9, bt0)
+		if n, _ := s.ClaimDue(ctx, 9, bt0.Add(time.Hour)); n != 1 {
+			t.Fatal("must start")
+		}
+		if finish {
+			if _, err = s.FinishBroadcast(ctx, b.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err = s.DeleteBroadcast(ctx, b.ID); !errors.Is(err, ErrNotDeletable) {
+			t.Fatalf("finish=%v: %v", finish, err)
+		}
+		if _, err = s.Broadcast(ctx, b.ID); err != nil {
+			t.Fatalf("history lost: %v", err)
+		}
+	}
+}
+
+// Удаление и старт идут параллельно: исход ровно один — удалена без следа либо стартовала и удалить нельзя.
+func TestDeleteRacesClaim(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	seedUser(t, s, 1, nil)
+	for i := range 20 {
+		d := draft("v")
+		d.ScheduledAt = after(time.Minute)
+		b, _, err := s.SendBroadcast(ctx, d, 9, bt0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var (
+			wg     sync.WaitGroup
+			delErr error
+		)
+		wg.Go(func() { delErr = s.DeleteBroadcast(ctx, b.ID) })
+		wg.Go(func() { _, _ = s.ClaimDue(ctx, 9, bt0.Add(time.Hour)) })
+		wg.Wait()
+		_, _ = s.ClaimDue(ctx, 9, bt0.Add(time.Hour)) // пропущенную удалением строки уже нет
+		got, getErr := s.Broadcast(ctx, b.ID)
+		batch, _ := s.OutboxBatch(ctx, 1000)
+		sent := 0
+		for _, m := range batch {
+			if m.Broadcast == b.ID.String() {
+				sent++
+			}
+		}
+		switch {
+		case delErr == nil:
+			if !errors.Is(getErr, ErrNotFound) || sent != 0 {
+				t.Fatalf("iter %d: deleted but row err=%v outbox=%d", i, getErr, sent)
+			}
+		case errors.Is(delErr, ErrNotDeletable):
+			if getErr != nil || got.Status != broadcast.StatusSending || sent == 0 {
+				t.Fatalf("iter %d: refused but %+v err=%v outbox=%d", i, got, getErr, sent)
+			}
+		default:
+			t.Fatalf("iter %d: %v", i, delErr)
+		}
+		for _, m := range batch {
+			_ = s.DeleteOutbox(ctx, m.ID)
+		}
+	}
+}

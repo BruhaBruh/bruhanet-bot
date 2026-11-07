@@ -56,6 +56,7 @@ type Store interface {
 	SaveDraft(ctx context.Context, id uuid.UUID, d model.BroadcastDraft) (model.Broadcast, error)
 	UpdateScheduled(ctx context.Context, id uuid.UUID, d model.BroadcastDraft) (model.Broadcast, error)
 	CancelBroadcast(ctx context.Context, id uuid.UUID) (model.Broadcast, error)
+	DeleteBroadcast(ctx context.Context, id uuid.UUID) error
 	Broadcast(ctx context.Context, id uuid.UUID) (model.Broadcast, error)
 	ListBroadcasts(ctx context.Context, f model.BroadcastFilter) ([]model.Broadcast, int, error)
 	AudienceCounts(ctx context.Context, now time.Time, days int) (model.AudienceCounts, error)
@@ -69,6 +70,7 @@ type Store interface {
 	PromoByID(ctx context.Context, id int64) (model.Promo, error)
 	ListPromos(ctx context.Context, f model.PromoFilter, now time.Time) ([]model.PromoWithUsage, error)
 	DisablePromo(ctx context.Context, id int64) error
+	DeletePromo(ctx context.Context, id int64) error
 	EnablePromo(ctx context.Context, id int64) error
 	UserGrowth(ctx context.Context, prevFrom, weekFrom, to time.Time) (total, week, prev int, err error)
 	CountPromoActivations(ctx context.Context, from, to time.Time) (int, error)
@@ -79,6 +81,7 @@ type Store interface {
 	// Подарки: выдача админом, отмена готового, список со страницами.
 	CreateAdminGifts(ctx context.Context, months, count int, at time.Time) ([]model.Gift, error)
 	CancelGift(ctx context.Context, id int64) error
+	DeleteGift(ctx context.Context, id int64) error
 	ListGifts(ctx context.Context, f model.GiftFilter) ([]model.Gift, int, error)
 }
 
@@ -164,6 +167,7 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("GET /api/broadcasts/{id}", s.broadcast)
 	apiMux.HandleFunc("PUT /api/broadcasts/{id}", s.updateBroadcast)
 	apiMux.HandleFunc("POST /api/broadcasts/{id}/cancel", s.cancelBroadcast)
+	apiMux.HandleFunc("DELETE /api/broadcasts/{id}", s.deleteBroadcast)
 	apiMux.HandleFunc("POST /api/users/{id}/messages", s.directMessage)
 	apiMux.HandleFunc("POST /api/users/{id}/grant", s.grantDays)
 	apiMux.HandleFunc("POST /api/users/{id}/block", s.setBlocked(true))
@@ -172,10 +176,12 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/promos", s.createPromo)
 	apiMux.HandleFunc("POST /api/promos/{id}/enable", s.enablePromo)
 	apiMux.HandleFunc("POST /api/promos/{id}/disable", s.disablePromo)
+	apiMux.HandleFunc("DELETE /api/promos/{id}", s.deletePromo)
 	apiMux.HandleFunc("GET /api/promos/{id}/activations", s.promoActivations)
 	apiMux.HandleFunc("GET /api/gifts", s.gifts)
 	apiMux.HandleFunc("POST /api/gifts", s.createGifts)
 	apiMux.HandleFunc("POST /api/gifts/{id}/cancel", s.cancelGift)
+	apiMux.HandleFunc("DELETE /api/gifts/{id}", s.deleteGift)
 	apiMux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})

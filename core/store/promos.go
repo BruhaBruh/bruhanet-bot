@@ -14,13 +14,13 @@ import (
 	"github.com/bruhabruh/bruhanet/core/promo"
 )
 
-const promoCols = `id, code, kind, value, max_activations, starts_at, expires_at, only_new, telegram_id, disabled, created_at`
+const promoCols = `id, code, kind, value, max_activations, starts_at, expires_at, only_new, telegram_id, disabled, deleted_at IS NOT NULL, created_at`
 
 func scanPromo(row pgx.Row, extra ...any) (model.Promo, error) {
 	var p model.Promo
 	err := row.Scan(append([]any{
 		&p.ID, &p.Code, &p.Kind, &p.Value, &p.MaxActivations, &p.StartsAt, &p.ExpiresAt,
-		&p.OnlyNew, &p.TelegramID, &p.Disabled, &p.CreatedAt,
+		&p.OnlyNew, &p.TelegramID, &p.Disabled, &p.Deleted, &p.CreatedAt,
 	}, extra...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound
@@ -41,9 +41,9 @@ func (s *Store) CreatePromo(ctx context.Context, p model.Promo) (model.Promo, er
 	return created, err
 }
 
-// PromoByCode ищет без учёта регистра и пробелов по краям.
+// PromoByCode ищет (удалённый код — ErrNotFound, как неизвестный) без учёта регистра и пробелов по краям.
 func (s *Store) PromoByCode(ctx context.Context, code string) (model.Promo, error) {
-	return scanPromo(s.pool.QueryRow(ctx, `SELECT `+promoCols+` FROM promo_codes WHERE code = $1`, promo.Normalize(code)))
+	return scanPromo(s.pool.QueryRow(ctx, `SELECT `+promoCols+` FROM promo_codes WHERE code = $1 AND deleted_at IS NULL`, promo.Normalize(code)))
 }
 
 func (s *Store) PromoByID(ctx context.Context, id int64) (model.Promo, error) {
@@ -58,6 +58,11 @@ func (s *Store) ListPromos(ctx context.Context, f model.PromoFilter, now time.Ti
 	arg := func(v any) string { // позиционный параметр: незанятый $N Postgres не принимает
 		args = append(args, v)
 		return "$" + strconv.Itoa(len(args))
+	}
+	if f.Status == model.PromoStatusDeleted {
+		where = append(where, `deleted_at IS NOT NULL`)
+	} else {
+		where = append(where, `deleted_at IS NULL`)
 	}
 	switch f.Status {
 	case model.PromoStatusActive:
@@ -103,12 +108,41 @@ func (s *Store) ListPromos(ctx context.Context, f model.PromoFilter, now time.Ti
 
 // DisablePromo выключает код; неизвестный — ErrNotFound.
 func (s *Store) DisablePromo(ctx context.Context, id int64) error {
-	return affected(s.pool.Exec(ctx, `UPDATE promo_codes SET disabled = true WHERE id = $1`, id))
+	return affected(s.pool.Exec(ctx, `UPDATE promo_codes SET disabled = true WHERE id = $1 AND deleted_at IS NULL`, id))
 }
 
 // EnablePromo снимает флаг disabled; уже включённый — без изменений; неизвестный — ErrNotFound.
 func (s *Store) EnablePromo(ctx context.Context, id int64) error {
-	return affected(s.pool.Exec(ctx, `UPDATE promo_codes SET disabled = false WHERE id = $1`, id))
+	return affected(s.pool.Exec(ctx, `UPDATE promo_codes SET disabled = false WHERE id = $1 AND deleted_at IS NULL`, id))
+}
+
+// DeletePromo удаляет код. Без истории (ни активаций, ни платежей с ним) — физически, код можно создать снова.
+// Иначе помечает deleted_at: код не действует, скрыт из списков, остаётся занятым, история цела. Строка берётся
+// FOR UPDATE, как у активации и создания платежа: параллельная активация либо успела (тогда «использован»), либо
+// увидит удалённый код. Повтор на удалённом — без ошибки; нет кода — ErrNotFound.
+func (s *Store) DeletePromo(ctx context.Context, id int64) error {
+	return s.tx(ctx, func(tx pgx.Tx) error {
+		var deleted bool
+		if err := tx.QueryRow(ctx, `SELECT deleted_at IS NOT NULL FROM promo_codes WHERE id = $1 FOR UPDATE`, id).Scan(&deleted); errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if deleted {
+			return nil
+		}
+		var used bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM promo_activations WHERE promo_id = $1)
+			OR EXISTS (SELECT 1 FROM payments WHERE promo_id = $1)`, id).Scan(&used); err != nil {
+			return err
+		}
+		if used {
+			_, err := tx.Exec(ctx, `UPDATE promo_codes SET deleted_at = now() WHERE id = $1`, id)
+			return err
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM promo_codes WHERE id = $1`, id)
+		return err
+	})
 }
 
 // PromoActivations — кто и когда активировал код, новые первыми.
@@ -170,6 +204,9 @@ func checkPromoLocked(
 	}
 	if err != nil {
 		return p, err
+	}
+	if p.Deleted { // для юзера удалённый код — «такого нет»
+		return p, errors.Join(promo.ErrNotFound, ErrNotFound)
 	}
 	// Ручная блокировка: первой причиной, чтобы не раскрывать её другими отказами. Чтение без FOR SHARE:
 	// блокировка строки юзера в порядке «платёж → юзер» встала бы в дедлок с CreatePayment (юзер → платёж).

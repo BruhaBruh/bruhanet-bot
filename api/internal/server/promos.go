@@ -57,7 +57,7 @@ func (s *server) promos(w http.ResponseWriter, r *http.Request) {
 		name string
 		ok   []string
 	}{
-		{&f.Status, "status", []string{"active", "expired", "disabled"}},
+		{&f.Status, "status", []string{"active", "expired", "disabled", "deleted"}},
 		{&f.Kind, "kind", []string{"percent", "rub", "days"}},
 		{&f.Target, "target", []string{"new", "user", "all"}},
 	} {
@@ -210,6 +210,23 @@ func (s *server) disablePromo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	case err != nil:
 		internal(w, r, "disable promo", err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// deletePromo: без истории код стирается, с историей скрывается (см. Store.DeletePromo); повтор — 204.
+func (s *server) deletePromo(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	switch err := s.Store.DeletePromo(r.Context(), id); {
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+	case err != nil:
+		internal(w, r, "delete promo", err)
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}

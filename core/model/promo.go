@@ -22,6 +22,7 @@ type Promo struct {
 	OnlyNew        bool       `json:"onlyNew"`
 	TelegramID     *int64     `json:"telegramId"`
 	Disabled       bool       `json:"disabled"`
+	Deleted        bool       `json:"deleted"`
 	CreatedAt      time.Time  `json:"createdAt"`
 }
 
@@ -30,13 +31,14 @@ const (
 	PromoStatusActive   = "active"
 	PromoStatusExpired  = "expired"
 	PromoStatusDisabled = "disabled"
+	PromoStatusDeleted  = "deleted"
 
 	PromoTargetAll  = "all"
 	PromoTargetNew  = "new"
 	PromoTargetUser = "user"
 )
 
-// PromoFilter — фильтры списка кодов: Status active|expired|disabled, Kind — PromoKind, Target all|new|user.
+// PromoFilter — фильтры списка кодов: Status active|expired|disabled|deleted (без него удалённые скрыты), Kind — PromoKind, Target all|new|user.
 type PromoFilter struct{ Status, Kind, Target string }
 
 // PromoWithUsage — промокод со счётчиком активаций.

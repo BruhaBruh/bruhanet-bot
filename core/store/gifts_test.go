@@ -606,3 +606,96 @@ func TestBlockedBuyerCanPayForGift(t *testing.T) {
 		t.Fatalf("a friend redeems: %v", err)
 	}
 }
+
+func TestDeleteGiftPaths(t *testing.T) {
+	f := newGiftFixture(t)
+	ctx := t.Context()
+	gs, _ := f.s.CreateAdminGifts(ctx, 1, 3, f.now) // 0: ready, удаляем; 1: cancelled; 2: redeemed
+	if err := f.s.CancelGift(ctx, gs[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.redeem(ctx, gs[2].Code, 9); err != nil {
+		t.Fatal(err)
+	}
+	// подарок админа стирается физически (ready — одним шагом, cancelled — как есть); повтор — 404
+	for _, g := range gs[:2] {
+		if err := f.s.DeleteGift(ctx, g.ID); err != nil {
+			t.Fatal(err)
+		}
+		if n := f.count(t, `SELECT count(*) FROM gifts WHERE id = $1`, g.ID); n != 0 {
+			t.Fatalf("admin gift %d stays", g.ID)
+		}
+		if err := f.s.DeleteGift(ctx, g.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("repeat: %v", err)
+		}
+	}
+	// использованный — история
+	if err := f.s.DeleteGift(ctx, gs[2].ID); !errors.Is(err, ErrNotDeletable) {
+		t.Fatalf("redeemed: %v", err)
+	}
+
+	// купленный: ожидает оплаты нельзя; оплаченный ready — мягко, платёж и деньги на месте
+	f.touch(t, 1)
+	pend := f.buy(t, 1, 2)
+	var pendID int64
+	_ = f.s.pool.QueryRow(ctx, `SELECT id FROM gifts WHERE payment_id = $1`, pend.ID).Scan(&pendID)
+	if err := f.s.DeleteGift(ctx, pendID); !errors.Is(err, ErrNotDeletable) {
+		t.Fatalf("pending: %v", err)
+	}
+	if _, err := f.resolve(ctx, pend.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.DeleteGift(ctx, pendID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.DeleteGift(ctx, pendID); err != nil {
+		t.Fatalf("repeat soft: %v", err)
+	}
+	code := f.code(t, pend.ID)
+	if f.status(t, code) != model.GiftCancelled || f.count(t, `SELECT count(*) FROM gifts WHERE id = $1 AND deleted_at IS NOT NULL`, pendID) != 1 ||
+		f.count(t, `SELECT count(*) FROM payments WHERE id = $1 AND status = 'confirmed'`, pend.ID) != 1 {
+		t.Fatal("bought gift must stay as a cancelled row")
+	}
+	// активация по ссылке удалённого подарка — тот же нейтральный отказ
+	if _, _, err := f.redeem(ctx, code, 10); !errors.Is(err, ErrGiftUnavailable) {
+		t.Fatalf("redeem deleted: %v", err)
+	}
+	// из списков исчез, в счёт не входит
+	for _, st := range []model.GiftStatus{"", model.GiftCancelled} {
+		list, total, err := f.s.ListGifts(ctx, model.GiftFilter{Status: st, Limit: 10})
+		for _, g := range list {
+			if g.ID == pendID {
+				t.Fatalf("deleted in list %q", st)
+			}
+		}
+		if err != nil || total != len(list) {
+			t.Fatalf("status %q: total=%d len=%d err=%v", st, total, len(list), err)
+		}
+	}
+}
+
+// Удаление и активация готового подарка идут параллельно: либо активировали (удалить нельзя), либо удалили (активация отказана).
+func TestDeleteGiftRacesRedeem(t *testing.T) {
+	f := newGiftFixture(t)
+	ctx := t.Context()
+	for i := range 15 {
+		g, _ := f.s.CreateAdminGifts(ctx, 1, 1, f.now)
+		var delErr, redErr error
+		var wg sync.WaitGroup
+		wg.Go(func() { delErr = f.s.DeleteGift(ctx, g[0].ID) })
+		wg.Go(func() { _, _, redErr = f.redeem(ctx, g[0].Code, int64(500+i)) })
+		wg.Wait()
+		switch {
+		case delErr == nil && errors.Is(redErr, ErrGiftUnavailable):
+			if f.count(t, `SELECT count(*) FROM gifts WHERE id = $1`, g[0].ID) != 0 {
+				t.Fatalf("iter %d: deleted but row stays", i)
+			}
+		case errors.Is(delErr, ErrNotDeletable) && redErr == nil:
+			if f.count(t, `SELECT count(*) FROM gifts WHERE id = $1 AND status = 'redeemed'`, g[0].ID) != 1 {
+				t.Fatalf("iter %d: redeem lost", i)
+			}
+		default:
+			t.Fatalf("iter %d: delete=%v redeem=%v", i, delErr, redErr)
+		}
+	}
+}

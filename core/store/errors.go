@@ -13,6 +13,7 @@ var (
 	ErrTokenInvalid    = errors.New("login token is invalid, used or expired")
 	ErrPromoExists     = errors.New("promo code already exists")
 	ErrBroadcastLocked = errors.New("broadcast has already started or is cancelled")
+	ErrNotDeletable    = errors.New("row is history and cannot be deleted")
 	ErrSyncRunning     = errors.New("panel sync is already running")
 	ErrPendingExists   = errors.New("user already has a pending payment")
 	ErrBlocked         = errors.New("user is blocked by admin: no free grants")

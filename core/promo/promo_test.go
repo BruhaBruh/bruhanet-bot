@@ -110,6 +110,7 @@ func TestCheck(t *testing.T) {
 		{"ok discount at payment", in{p: base, place: PlacePayment}, nil},
 		{"ok days in menu", in{p: model.Promo{Kind: KindDays, Value: 3}, place: PlaceMenu}, nil},
 		{"disabled", in{p: model.Promo{Kind: KindPercent, Disabled: true}, place: PlacePayment}, ErrDisabled},
+		{"deleted", in{p: model.Promo{Kind: KindPercent, Deleted: true}, place: PlacePayment}, ErrDisabled},
 		{"disabled beats expired", in{p: model.Promo{Kind: KindPercent, Disabled: true, ExpiresAt: ptr(now.Add(-time.Hour))}, place: PlacePayment}, ErrDisabled},
 		{"not started", in{p: model.Promo{Kind: KindPercent, StartsAt: ptr(now.Add(time.Second))}, place: PlacePayment}, ErrNotStarted},
 		{"starts exactly now", in{p: model.Promo{Kind: KindPercent, StartsAt: ptr(now)}, place: PlacePayment}, nil},

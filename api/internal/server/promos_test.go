@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -55,7 +56,8 @@ func (f *fakeStore) ListPromos(_ context.Context, fl model.PromoFilter, at time.
 		expired := p.ExpiresAt != nil && !p.ExpiresAt.After(at)
 		active := !p.Disabled && !expired && (p.MaxActivations == nil || p.Used < *p.MaxActivations)
 		switch {
-		case fl.Status == "active" && !active,
+		case fl.Status == "deleted" && !p.Deleted, fl.Status != "deleted" && p.Deleted,
+			fl.Status == "active" && !active,
 			fl.Status == "expired" && (p.Disabled || !expired),
 			fl.Status == "disabled" && !p.Disabled,
 			fl.Kind != "" && string(p.Kind) != fl.Kind,
@@ -73,6 +75,21 @@ func (f *fakeStore) EnablePromo(_ context.Context, id int64) error {
 	for i := range f.promos {
 		if f.promos[i].ID == id {
 			f.promos[i].Disabled = false
+			return nil
+		}
+	}
+	return store.ErrNotFound
+}
+
+// DeletePromo повторяет правило: без использований — стереть, иначе пометить (реальный SQL проверен в store-тестах).
+func (f *fakeStore) DeletePromo(_ context.Context, id int64) error {
+	for i := range f.promos {
+		if f.promos[i].ID == id {
+			if f.promos[i].Used == 0 {
+				f.promos = slices.Delete(f.promos, i, i+1)
+			} else {
+				f.promos[i].Deleted = true
+			}
 			return nil
 		}
 	}
@@ -114,6 +131,7 @@ type promoJSON struct {
 	TelegramID     *int64     `json:"telegramId"`
 	Username       *string    `json:"username"`
 	Disabled       bool       `json:"disabled"`
+	Deleted        bool       `json:"deleted"`
 }
 
 func promoServer(t *testing.T) (http.Handler, *fakeStore, string) {
@@ -378,3 +396,43 @@ func TestPromosRequireSession(t *testing.T) {
 }
 
 func ptrI64(v int64) *int64 { return &v }
+
+func TestDeletePromo(t *testing.T) {
+	h, st, c := promoServer(t)
+	st.promos = []model.PromoWithUsage{
+		{Promo: model.Promo{ID: 1, Code: "FRESH", Kind: model.PromoDays, Value: 1}},
+		{Promo: model.Promo{ID: 2, Code: "USED", Kind: model.PromoDays, Value: 1}, Used: 3},
+	}
+	del := func(path string) int { return send(h, http.MethodDelete, path, c, "").Code }
+	if code := del("/api/promos/1"); code != http.StatusNoContent {
+		t.Fatalf("unused: %d", code)
+	}
+	if code := del("/api/promos/1"); code != http.StatusNotFound {
+		t.Fatalf("again after erase: %d", code)
+	}
+	for range 2 { // мягкое удаление идемпотентно
+		if code := del("/api/promos/2"); code != http.StatusNoContent {
+			t.Fatalf("used: %d", code)
+		}
+	}
+	if del("/api/promos/999") != http.StatusNotFound || del("/api/promos/x") != http.StatusBadRequest {
+		t.Fatal("unknown / garbage")
+	}
+	list := func(q string) string { return send(h, http.MethodGet, "/api/promos"+q, c, "").Body.String() }
+	if strings.Contains(list(""), "USED") || strings.Contains(list("?status=all"), "USED") || !strings.Contains(list("?status=deleted"), `"deleted":true`) {
+		t.Fatal("deleted visible only in the deleted tab")
+	}
+	if w := send(h, http.MethodGet, "/api/promos?status=bogus", c, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("bogus: %d", w.Code)
+	}
+}
+
+func TestDeletePromoSessionAndJSON(t *testing.T) {
+	h, _, c := promoServer(t)
+	if w := send(h, http.MethodDelete, "/api/promos/1", "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", w.Code)
+	}
+	if w := do(h, http.MethodDelete, "/api/promos/1", c, "text/plain"); w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("not json: %d", w.Code)
+	}
+}

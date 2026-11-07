@@ -67,7 +67,7 @@ func (s *server) createGifts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"items": items})
 }
 
-// cancelGift отменяет готовый подарок; активированный или уже отменённый — 409.
+// cancelGift отзывает готовый подарок (в панели «Отозвать»; срок получателя не меняется); активированный или уже отменённый — 409.
 func (s *server) cancelGift(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -81,6 +81,26 @@ func (s *server) cancelGift(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "not_active", "message": "Подарок уже использован или отменён"})
 	case err != nil:
 		internal(w, r, "cancel gift", err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// deleteGift удаляет готовый (отзыв и удаление одним шагом) или отозванный подарок; ожидающий оплаты и
+// активированный — 409 not_deletable. Повтор на удалённом — 204.
+func (s *server) deleteGift(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeBadRequest(w)
+		return
+	}
+	switch err := s.Store.DeleteGift(r.Context(), id); {
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, store.ErrNotDeletable):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "not_deletable", "message": "Подарок ждёт оплаты или уже использован: его не удалить"})
+	case err != nil:
+		internal(w, r, "delete gift", err)
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}

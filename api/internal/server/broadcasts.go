@@ -316,6 +316,8 @@ func broadcastError(w http.ResponseWriter, r *http.Request, msg string, err erro
 	switch {
 	case errors.Is(err, store.ErrBroadcastLocked):
 		writeError(w, http.StatusConflict, "locked")
+	case errors.Is(err, store.ErrNotDeletable):
+		writeError(w, http.StatusConflict, "not_deletable")
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
 	default:
@@ -397,6 +399,20 @@ func (s *server) cancelBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]model.Broadcast{"broadcast": b})
+}
+
+// deleteBroadcast стирает черновик, запланированную или отменённую рассылку; стартовавшая и отправленная — 409
+// not_deletable (история со счётчиками), не стартовавшая, но занятая стартом — 409 locked.
+func (s *server) deleteBroadcast(w http.ResponseWriter, r *http.Request) {
+	id, ok := broadcastID(w, r)
+	if !ok {
+		return
+	}
+	if err := s.Store.DeleteBroadcast(r.Context(), id); err != nil {
+		broadcastError(w, r, "delete broadcast", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) broadcast(w http.ResponseWriter, r *http.Request) {
