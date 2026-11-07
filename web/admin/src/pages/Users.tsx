@@ -75,7 +75,7 @@ const columns: DataTableColumn<UserSummary>[] = [
       </span>
     ),
   },
-  { key: 'expire', title: 'Подписка до', width: 140, render: (u) => (u.expireAt ? formatFullDay(u.expireAt) : DASH) },
+  { key: 'expire', title: 'Подписка до', sortable: true, sortValue: (u) => (u.expireAt ? Date.parse(u.expireAt) : -1), width: 140, render: (u) => (u.expireAt ? formatFullDay(u.expireAt) : DASH) },
   { key: 'confirmed', title: 'Платежей', numeric: true, sortable: true, width: 110, render: (u) => formatCount(u.confirmed) },
   { key: 'confirmedSum', title: 'Оплачено всего', numeric: true, sortable: true, width: 150, render: (u) => formatRub(u.confirmedSum) },
   { key: 'joined', title: 'С нами с', secondary: true, width: 140, render: (u) => formatFullDay(u.createdAt) },

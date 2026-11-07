@@ -101,6 +101,16 @@ describe('Users', () => {
     expect([second[1], second[5]]).toEqual(['—', '—'])
   })
 
+  it('sorts by the subscription end date, users without one go last when descending', async () => {
+    stub({ '/api/users?': () => json(200, page([user(1, 'none'), user(2, 'early', 0, { expireAt: '2026-11-01T10:00:00Z' }), user(3, 'late', 0, { expireAt: '2027-03-01T10:00:00Z' })])) })
+    await renderAt('/users')
+    const order = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((r) => r.textContent?.match(/@(none|early|late)/)?.[0])
+    fireEvent.click(screen.getByRole('button', { name: /Подписка до/ }))
+    expect(order()).toEqual(['@none', '@early', '@late'])
+    fireEvent.click(screen.getByRole('button', { name: /Подписка до/ }))
+    expect(order()).toEqual(['@late', '@early', '@none'])
+  })
+
   it('opens the card on row click and from more', async () => {
     stub({ '/api/users?': () => json(200, page([user(1, 'ann')])), '/api/users/1': () => new Promise(() => {}) })
     await renderAt('/users')
