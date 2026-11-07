@@ -6,6 +6,7 @@ import { formatCount, formatShortDate, plural } from '../format'
 import { giftLink } from '../gift'
 import { useMe } from '../me'
 import { userLabel } from '../promo'
+import { UserChip } from './user-chip'
 import { DeleteDialog } from './delete-dialog'
 import type { Gift, GiftStatus, Settings } from '../types'
 
@@ -41,7 +42,9 @@ const statusTag = (g: Gift) => {
 }
 
 const monthsLabel = (n: number) => `${n}\u00a0${plural(n, ['месяц', 'месяца', 'месяцев'])}`
-const source = (g: Gift) => (g.byAdmin ? 'выдан админом' : `куплен ${userLabel({ name: g.buyerName, username: g.buyerUsername, telegramId: g.buyerId ?? 0 })}`)
+const buyerLabel = (g: Gift) => userLabel({ name: g.buyerName, username: g.buyerUsername, telegramId: g.buyerId ?? 0 })
+const source = (g: Gift) => (g.byAdmin ? 'выдан админом' : `куплен ${buyerLabel(g)}`)
+const sourceCell = (g: Gift) => (g.byAdmin || !g.buyerId ? source(g) : <UserChip id={g.buyerId} label={buyerLabel(g)} prefix="куплен" />)
 const redeemer = (g: Gift) => (g.redeemedBy ? userLabel({ name: g.redeemedName, username: g.redeemedUsername, telegramId: g.redeemedBy }) : '')
 const shortCode = (g: Gift) => (g.code ? `${g.code.slice(0, 6)}…` : '—')
 
@@ -221,7 +224,7 @@ export default function Gifts() {
   const columns: DataTableColumn<Gift>[] = [
     { key: 'code', title: 'Код', mono: true, strong: true, width: 130, render: shortCode },
     { key: 'months', title: 'Срок', numeric: true, width: 110, render: (g) => monthsLabel(g.months) },
-    { key: 'source', title: 'Откуда', truncate: true, maxWidth: 220, render: source },
+    { key: 'source', title: 'Откуда', truncate: true, maxWidth: 220, render: sourceCell },
     { key: 'status', title: 'Статус', width: 150, render: statusTag },
     {
       key: 'redeemed',
@@ -231,7 +234,7 @@ export default function Gifts() {
       render: (g) =>
         g.redeemedBy ? (
           <Link to={`/users/${g.redeemedBy}`} className="focus-ring text-inherit" onClick={(e) => e.stopPropagation()}>
-            {redeemer(g)}
+            <UserChip id={g.redeemedBy} label={redeemer(g)} />
           </Link>
         ) : (
           '—'
@@ -249,8 +252,12 @@ export default function Gifts() {
   const expanded = (g: Gift) =>
     openId !== g.id ? null : (
       <div className="admin-table flex flex-col gap-2 bg-[color-mix(in_srgb,var(--page-bg)_55%,var(--surface))] px-5 py-3 whitespace-normal md:hidden">
-        <span>Откуда: {source(g)}</span>
-        {g.redeemedBy && <span>Получатель: {redeemer(g)}</span>}
+        <span>Откуда: {sourceCell(g)}</span>
+        {g.redeemedBy && (
+          <span>
+            Получатель: <UserChip id={g.redeemedBy} label={redeemer(g)} />
+          </span>
+        )}
         <div className="flex flex-wrap gap-2">
           {g.code && (
             <Button variant="gray" size="sm" icon="copy" onClick={() => copyLink(g)}>

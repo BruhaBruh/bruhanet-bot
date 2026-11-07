@@ -5,6 +5,7 @@ import { get, post } from '../api'
 import { formatCount, formatDay, formatShortDate, plural } from '../format'
 import { DeleteDialog } from './delete-dialog'
 import { kindLabels, promoStatus, promoUntil, promoValue, promosQuery, userLabel, type PromoStatus } from '../promo'
+import { UserChip } from './user-chip'
 import type { Promo, PromoActivation } from '../types'
 
 const SEGMENTS = [
@@ -190,7 +191,7 @@ export default function Promos() {
           <ul className="flex flex-col gap-1">
             {acts.map((a) => (
               <li key={a.id} className="break-words">
-                {userLabel(a)} · {formatShortDate(a.createdAt)}
+                <UserChip id={a.telegramId} label={userLabel(a)} /> · {formatShortDate(a.createdAt)}
                 {a.paymentId ? ` · платёж #${a.paymentId}` : ''}
               </li>
             ))}

@@ -6,6 +6,7 @@ import { snippet } from '../editor/serialize'
 import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabels, panelStatusTones } from '../format'
 import { usePageTitle, useSyncKey } from '../layout/page-title'
 import { userLabel, userTagUrl } from '../promo'
+import { UserChip } from './user-chip'
 import type { DirectMessage, UserDetail } from '../types'
 import { copyText } from '../lib/clipboard'
 import { DevicesCard } from './user-devices'
@@ -241,7 +242,7 @@ function UserCardInner({ id }: { id?: string }) {
                   [
                     'Пригласил',
                     <Link key="by" className="focus-ring break-all text-accent-strong" to={`/users/${referral.referredBy}`}>
-                      {userLabel({ name: referral.referredByName, username: referral.referredByUsername, telegramId: referral.referredBy })}
+                      <UserChip id={referral.referredBy} label={userLabel({ name: referral.referredByName, username: referral.referredByUsername, telegramId: referral.referredBy })} />
                     </Link>,
                   ] as [string, ReactNode],
                 ]),

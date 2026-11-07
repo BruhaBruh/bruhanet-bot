@@ -56,7 +56,8 @@ const gift = (id: number, extra: object = {}) => ({
 })
 
 const table = () => within(screen.getByRole('table'))
-const row = (text: string) => table().getByText(text).closest('tr')!
+// текст ячейки может быть разбит на элементы (аватарка и подпись): ищем строку по тексту целиком
+const row = (text: string) => Array.from(table().getAllByRole('row')).find((tr) => tr.textContent?.includes(text))!
 const segment = (name: string) => fireEvent.click(screen.getByRole('radio', { name }))
 const posts = () => calls.filter((c) => c.method === 'POST')
 

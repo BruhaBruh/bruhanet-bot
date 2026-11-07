@@ -184,7 +184,8 @@ describe('Promos list', () => {
     fireEvent.click(row('SUMMER'))
     await flush()
     expect(row('SUMMER').getAttribute('aria-expanded')).toBe('true')
-    expect(table().getByText(/@ann · .* · платёж #12/)).toBeTruthy()
+    // строка активации: аватарка и подпись лежат отдельными элементами, поэтому ищем по тексту всего пункта
+    expect(table().getByText((_, el) => el?.tagName === 'LI' && /@ann · .* · платёж #12/.test(el.textContent ?? ''))).toBeTruthy()
     fireEvent.click(row('SUMMER'))
     expect(table().queryByText(/@ann/)).toBeNull()
   })
