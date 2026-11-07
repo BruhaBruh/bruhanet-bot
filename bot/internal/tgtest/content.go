@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
 // Source — фейковый content.Source: правки текстов и настроек «из админки».
@@ -14,6 +15,20 @@ type Source struct {
 	settings map[string][]byte
 	contacts map[int64]model.UserContact
 	styles   map[string]string
+	layouts  map[string]texts.Layout
+}
+
+// SetLayouts — раскладки клавиатур «из админки».
+func (s *Source) SetLayouts(l map[string]texts.Layout) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.layouts = l
+}
+
+func (s *Source) KeyboardLayouts(context.Context) (map[string]texts.Layout, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.layouts, nil
 }
 
 func (s *Source) SetStyles(styles map[string]string) {

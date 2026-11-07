@@ -14,6 +14,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/settings"
+	"github.com/bruhabruh/bruhanet/core/texts"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
 )
@@ -32,6 +33,7 @@ type fakeSource struct {
 	contactErr   error
 	contactCalls int
 	styles       map[string]string
+	layouts      map[string]texts.Layout
 }
 
 func (f *fakeSource) TextOverrides(ctx context.Context) (map[string]string, error) {
@@ -69,6 +71,12 @@ func (f *fakeSource) TextStyles(context.Context) (map[string]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.styles, f.err
+}
+
+func (f *fakeSource) KeyboardLayouts(context.Context) (map[string]texts.Layout, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.layouts, f.err
 }
 
 func (f *fakeSource) set(fn func(f *fakeSource)) {
@@ -404,3 +412,38 @@ func TestButtonSafeGuard(t *testing.T) {
 }
 
 func utf16Len(s string) int { return len(utf16.Encode([]rune(s))) }
+
+func TestLayoutSnapshot(t *testing.T) {
+	good := texts.Layout{Rows: [][]string{{"button.pay", "button.info"}}, Hidden: []string{"button.gift"}}
+	bad := texts.Layout{Rows: [][]string{{"button.nope"}}}
+	src := &fakeSource{layouts: map[string]texts.Layout{"menu": good, "info": bad, "ghost": good}}
+	p, clk, ctx, buf := setup(src)
+
+	if p.Layout(ctx, "menu") == nil || p.Layout(ctx, "menu").Rows[0][0] != "button.pay" {
+		t.Fatalf("menu layout = %+v", p.Layout(ctx, "menu"))
+	}
+	if p.Layout(ctx, "info") != nil || p.Layout(ctx, "ghost") != nil || p.Layout(ctx, "error") != nil {
+		t.Fatal("invalid, unknown or unsaved layout must fall back to the default")
+	}
+	if strings.Count(buf.String(), "using default") != 1 {
+		t.Fatalf("log: %s", buf)
+	}
+	// правка видна после ttl, повторное предупреждение о той же раскладке не печатается
+	clk.t = clk.t.Add(time.Minute)
+	src.set(func(f *fakeSource) { f.layouts = map[string]texts.Layout{"info": bad} })
+	if p.Layout(ctx, "menu") != nil {
+		t.Fatal("reset layout still applied")
+	}
+	if strings.Count(buf.String(), "using default") != 1 {
+		t.Fatalf("warned again: %s", buf)
+	}
+	// сбой БД — остаются последние значения
+	clk.t = clk.t.Add(time.Minute)
+	src.set(func(f *fakeSource) { f.layouts = map[string]texts.Layout{"menu": good}; f.err = errors.New("db down") })
+	_ = p.Layout(ctx, "menu")
+	src.set(func(f *fakeSource) { f.err = nil })
+	clk.t = clk.t.Add(time.Minute)
+	if p.Layout(ctx, "menu") == nil {
+		t.Fatal("layout not loaded after recovery")
+	}
+}

@@ -3,6 +3,7 @@ package content
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -25,6 +26,7 @@ type Source interface {
 	SettingsRaw(ctx context.Context) (map[string][]byte, error)
 	UserContact(ctx context.Context, id int64) (model.UserContact, error)
 	TextStyles(ctx context.Context) (map[string]string, error)
+	KeyboardLayouts(ctx context.Context) (map[string]texts.Layout, error)
 }
 
 // recipient — чьи данные подставлять в общие переменные текста; fromUpdate — имя уже известно из апдейта.
@@ -77,7 +79,8 @@ func FormatTime(t time.Time) string {
 type snapshot struct {
 	texts    map[string]string // только прошедшие texts.Validate
 	settings settings.Settings
-	styles   map[string]string // сохранённые стили кнопок, только из texts.Styles
+	styles   map[string]string       // сохранённые стили кнопок, только из texts.Styles
+	layouts  map[string]texts.Layout // сохранённые раскладки клавиатур, только прошедшие ValidateLayout
 }
 
 // defaultRefreshTimeout — сколько ждать БД при обновлении кеша.
@@ -97,6 +100,7 @@ type Provider struct {
 	loadedAt   time.Time
 	refreshing bool
 	warned     map[string]string // key → тело, о невалидности которого уже предупредили; трогает только refresh
+	warnedKb   map[string]string // id клавиатуры → раскладка (json), о невалидности которой уже предупредили; трогает только refresh
 	fitWarned  sync.Map          // key → struct{}: о подписи, не влезшей в лимит, предупредили
 }
 
@@ -218,6 +222,15 @@ func (p *Provider) Style(ctx context.Context, key string, fallback keyboard.Styl
 	return fallback
 }
 
+// Layout — сохранённая раскладка клавиатуры id; nil — админ её не менял (или она не проходит проверку): расположение
+// по умолчанию из texts.Keyboard.
+func (p *Provider) Layout(ctx context.Context, id string) *texts.Layout {
+	if l, ok := p.current(ctx).layouts[id]; ok {
+		return &l
+	}
+	return nil
+}
+
 func (p *Provider) Settings(ctx context.Context) settings.Settings {
 	return p.current(ctx).settings
 }
@@ -271,7 +284,36 @@ func (p *Provider) refresh(ctx context.Context) {
 			}
 		}
 	}
+	if stored, err := p.src.KeyboardLayouts(ctx); err != nil {
+		stlog.Warn(ctx, "failed to load keyboard layouts, using cached", "error", err)
+	} else {
+		next.layouts = p.validLayouts(ctx, stored)
+	}
 	p.snap.Store(&next)
+}
+
+// validLayouts отбрасывает раскладки, не прошедшие texts.Keyboard.ValidateLayout (бот работает на расположении по
+// умолчанию); warn — один раз на пару (клавиатура, раскладка).
+func (p *Provider) validLayouts(ctx context.Context, stored map[string]texts.Layout) map[string]texts.Layout {
+	out := make(map[string]texts.Layout, len(stored))
+	warned := map[string]string{}
+	for id, l := range stored {
+		k, ok := texts.LookupKeyboard(id)
+		if !ok {
+			continue
+		}
+		if err := k.ValidateLayout(l); err != nil {
+			raw, _ := json.Marshal(l)
+			if prev, ok := p.warnedKb[id]; !ok || prev != string(raw) {
+				stlog.Warn(ctx, "invalid keyboard layout, using default", "keyboard", id, "error", err)
+			}
+			warned[id] = string(raw)
+			continue
+		}
+		out[id] = l
+	}
+	p.warnedKb = warned
+	return out
 }
 
 func (p *Provider) mergeSettings(ctx context.Context, raw map[string][]byte) settings.Settings {
