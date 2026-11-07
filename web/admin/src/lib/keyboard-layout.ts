@@ -26,7 +26,7 @@ const without = (rows: string[][], id: string) => rows.map((r) => r.filter((x) =
 
 /**
  * Переносит кнопку id. В ряд кладёт, только если там одна обычная кнопка (до 2 в ряду, блок всегда один);
- * иначе — в новый ряд до/после. Нельзя (то же место, больше MAX_ROWS) — возвращает тот же l.
+ * иначе — в новый ряд до/после. Нельзя (то же место, рост сверх MAX_ROWS) — возвращает тот же l.
  */
 function plan(l: Layout, id: string, target: Target, blocks: string[]): { layout: Layout; side?: 'left' | 'right' | 'top' | 'bottom' } {
   const from = l.rows.findIndex((r) => r.includes(id))
@@ -56,7 +56,8 @@ function plan(l: Layout, id: string, target: Target, blocks: string[]): { layout
       side = after ? 'bottom' : 'top'
     }
   }
-  if (next.length > MAX_ROWS || JSON.stringify(next) === JSON.stringify(l.rows)) return { layout: l }
+  // лимит рядов — на рост: раскладка из старых данных (больше MAX_ROWS) должна уметь сжиматься
+  if ((next.length > MAX_ROWS && next.length > l.rows.length) || JSON.stringify(next) === JSON.stringify(l.rows)) return { layout: l }
   return { layout: { ...l, rows: next }, side }
 }
 

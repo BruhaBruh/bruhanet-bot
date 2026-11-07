@@ -42,4 +42,12 @@ describe('moveSlot', () => {
     expect(moveSlot(full, 'p', { kind: 'gap', index: 0 }, [])).toBe(full)
     expect(moveSlot(full, '0', cell('p', 'right', 'top'), []).rows).toHaveLength(8)
   })
+
+  it('an over-limit layout (old data) can still shrink, but never grow', () => {
+    const big = L(Array.from({ length: 10 }, (_, i) => [String(i)]))
+    expect(moveSlot(big, '9', cell('0', 'right'), []).rows).toHaveLength(9) // склейка уменьшает число рядов
+    expect(moveSlot(big, '9', { kind: 'gap', index: 0 }, []).rows).toHaveLength(10) // перестановка без роста — можно
+    const pair = L([...Array.from({ length: 9 }, (_, i) => [String(i)]), ['p', 'q']])
+    expect(moveSlot(pair, 'q', { kind: 'gap', index: 0 }, [])).toBe(pair) // разделить пару — рост до 11
+  })
 })
