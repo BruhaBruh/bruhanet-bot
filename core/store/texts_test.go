@@ -1,7 +1,10 @@
 package store
 
 import (
+	"reflect"
 	"testing"
+
+	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
 func TestTextOverrides(t *testing.T) {
@@ -117,5 +120,37 @@ func TestSetSettingsAtomic(t *testing.T) {
 	m, err := s.SettingsRaw(ctx)
 	if err != nil || string(m["phone"]) != `"a"` || len(m) != 2 {
 		t.Fatalf("rolled back: %v %v", m, err)
+	}
+}
+
+func TestKeyboardLayouts(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	if m, err := s.KeyboardLayouts(ctx); err != nil || len(m) != 0 {
+		t.Fatalf("empty: %v %v", m, err)
+	}
+	l := texts.Layout{Rows: [][]string{{"button.pay", "button.info"}}, Hidden: []string{"button.gift"}}
+	if err := s.SaveKeyboardLayout(ctx, "menu", l); err != nil {
+		t.Fatal(err)
+	}
+	l2 := texts.Layout{Rows: [][]string{{"button.info"}}} // nil Hidden сохраняется как []
+	if err := s.SaveKeyboardLayout(ctx, "menu", l2); err != nil { // upsert
+		t.Fatal(err)
+	}
+	if err := s.SaveKeyboardLayout(ctx, "info", l); err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.KeyboardLayouts(ctx)
+	if err != nil || len(m) != 2 || !reflect.DeepEqual(m["info"], l) || !reflect.DeepEqual(m["menu"].Rows, l2.Rows) || len(m["menu"].Hidden) != 0 {
+		t.Fatalf("got %+v %v", m, err)
+	}
+	if err = s.DeleteKeyboardLayout(ctx, "menu"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DeleteKeyboardLayout(ctx, "menu"); err != nil { // идемпотентно
+		t.Fatal(err)
+	}
+	if m, _ = s.KeyboardLayouts(ctx); len(m) != 1 || m["info"].Rows == nil {
+		t.Fatalf("after delete: %+v", m)
 	}
 }
