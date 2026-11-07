@@ -15,12 +15,14 @@ const MAX_COUNT = 20
 
 const SEGMENTS = [
   { value: 'all', label: 'Все' },
+  { value: 'pending', label: 'Ждут оплаты' },
   { value: 'ready', label: 'Активные' },
   { value: 'redeemed', label: 'Использованные' },
   { value: 'cancelled', label: 'Отозванные' },
 ]
 const EMPTY: Record<string, string> = {
   all: 'Подарков ещё нет',
+  pending: 'Подарков, ждущих оплаты, нет',
   ready: 'Активных подарков нет',
   redeemed: 'Использованных подарков нет',
   cancelled: 'Отозванных подарков нет',

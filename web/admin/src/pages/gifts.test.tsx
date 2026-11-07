@@ -88,11 +88,15 @@ describe('Gifts list', () => {
     replies['GET /api/gifts?status=ready&page=1'] = json(200, { total: 1, items: [gift(1)] })
     replies['GET /api/gifts?status=redeemed&page=1'] = json(200, { total: 0, items: [] })
     replies['GET /api/gifts?status=cancelled&page=1'] = json(200, { total: 0, items: [] })
+    replies['GET /api/gifts?status=pending&page=1'] = json(200, { total: 0, items: [] })
     await show()
     fireEvent.click(screen.getByRole('button', { name: /След/ }))
     await flush()
     segment('Активные')
     await flush()
+    segment('Ждут оплаты')
+    await flush()
+    expect(screen.getAllByText('Подарков, ждущих оплаты, нет').length).toBeGreaterThan(0)
     segment('Использованные')
     await flush()
     expect(screen.getAllByText('Использованных подарков нет').length).toBeGreaterThan(0)
@@ -103,6 +107,7 @@ describe('Gifts list', () => {
       '/api/gifts?status=all&page=1',
       '/api/gifts?status=all&page=2',
       '/api/gifts?status=ready&page=1',
+      '/api/gifts?status=pending&page=1',
       '/api/gifts?status=redeemed&page=1',
       '/api/gifts?status=cancelled&page=1',
     ])
