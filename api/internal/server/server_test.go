@@ -64,6 +64,7 @@ type fakeStore struct {
 	lastBF       model.BroadcastFilter
 	styles       map[string]string
 	layouts      map[string]texts.Layout
+	msgKbs       map[string]texts.MsgLayout
 	directs      []model.DirectMessage
 	photos       map[uuid.UUID]fakePhoto
 
@@ -245,6 +246,31 @@ func (f *fakeStore) DeleteKeyboardLayout(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.layouts, id)
+	return nil
+}
+
+func (f *fakeStore) MessageKeyboards(context.Context) (map[string]texts.MsgLayout, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]texts.MsgLayout{}
+	maps.Copy(out, f.msgKbs)
+	return out, nil
+}
+
+func (f *fakeStore) SaveMessageKeyboard(_ context.Context, key string, l texts.MsgLayout) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.msgKbs == nil {
+		f.msgKbs = map[string]texts.MsgLayout{}
+	}
+	f.msgKbs[key] = l
+	return nil
+}
+
+func (f *fakeStore) DeleteMessageKeyboard(_ context.Context, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.msgKbs, key)
 	return nil
 }
 

@@ -53,6 +53,9 @@ type Store interface {
 	KeyboardLayouts(ctx context.Context) (map[string]texts.Layout, error)
 	SaveKeyboardLayout(ctx context.Context, id string, l texts.Layout) error
 	DeleteKeyboardLayout(ctx context.Context, id string) error
+	MessageKeyboards(ctx context.Context) (map[string]texts.MsgLayout, error)
+	SaveMessageKeyboard(ctx context.Context, key string, l texts.MsgLayout) error
+	DeleteMessageKeyboard(ctx context.Context, key string) error
 	SettingsRaw(ctx context.Context) (map[string][]byte, error)
 	SetSettings(ctx context.Context, values map[string][]byte) error
 	Enqueue(ctx context.Context, m model.OutboxMessage) error
@@ -168,6 +171,8 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/texts/{key}/test", s.testText)
 	apiMux.HandleFunc("PUT /api/keyboards/{id}", s.putKeyboard)
 	apiMux.HandleFunc("DELETE /api/keyboards/{id}", s.deleteKeyboard)
+	apiMux.HandleFunc("PUT /api/texts/{key}/keyboard", s.putMessageKeyboard)
+	apiMux.HandleFunc("DELETE /api/texts/{key}/keyboard", s.deleteMessageKeyboard)
 	apiMux.HandleFunc("GET /api/settings", s.settings)
 	apiMux.HandleFunc("PUT /api/settings", s.putSettings)
 	apiMux.HandleFunc("POST /api/broadcasts/preview-send", s.previewBroadcast)
