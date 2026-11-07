@@ -12,13 +12,14 @@ export function promoValue(p: Pick<Promo, 'kind' | 'value'>): string {
   return `+${p.value}\u00a0дн.`
 }
 
-export type PromoStatus = 'active' | 'upcoming' | 'expired' | 'limit' | 'disabled'
+export type PromoStatus = 'active' | 'upcoming' | 'expired' | 'limit' | 'disabled' | 'deleted'
 
 // Порядок причин как у promo.Check на сервере; validFrom/validUntil — включительные даты МСК.
 export function promoStatus(
-  p: Pick<Promo, 'disabled' | 'validUntil' | 'used' | 'maxActivations'> & { validFrom?: string | null },
+  p: Pick<Promo, 'disabled' | 'validUntil' | 'used' | 'maxActivations'> & { validFrom?: string | null; deleted?: boolean },
   now = new Date(),
 ): PromoStatus {
+  if (p.deleted) return 'deleted'
   if (p.disabled) return 'disabled'
   if (p.validFrom && p.validFrom > mskDate(now)) return 'upcoming'
   if (p.validUntil && p.validUntil < mskDate(now)) return 'expired'

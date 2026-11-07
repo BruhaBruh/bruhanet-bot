@@ -53,6 +53,7 @@ const promo = (id: number, code: string, extra: object = {}) => ({
   telegramId: null,
   username: null,
   disabled: false,
+  deleted: false,
   createdAt: '2026-11-01T10:00:00Z',
   ...extra,
 })
@@ -430,5 +431,53 @@ describe('PromoNew', () => {
     fireEvent.click(create())
     await flush()
     expect(posts()[0].body).toMatchObject({ user: '42', onlyNew: false })
+  })
+})
+
+describe('Promos delete', () => {
+  const dels = () => calls.filter((c) => c.method === 'DELETE')
+
+  it('an unused code: «без следа» text, one DELETE on a double click, toast and reload', async () => {
+    replies['GET /api/promos?status=all'] = json(200, { items: [promo(1, 'FRESH')] })
+    replies['DELETE /api/promos/1'] = json(204)
+    await show()
+    await openMenu('FRESH')
+    // выключение остаётся рядом с удалением
+    expect(screen.getByRole('menuitem', { name: 'Выключить' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }))
+    const d = screen.getByRole('alertdialog')
+    expect(d.textContent).toContain('Удалить промокод?')
+    expect(d.textContent).toContain('будет удалён без следа')
+    const ok = within(d).getByRole('button', { name: 'Удалить' })
+    fireEvent.click(ok)
+    fireEvent.click(ok)
+    await flush()
+    expect(dels().map((c) => c.url)).toEqual(['/api/promos/1'])
+    expect(screen.getByRole('status').textContent).toContain('Промокод удалён')
+    expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2)
+  })
+
+  it('a used code: dialog shows the usage count and says the history stays', async () => {
+    replies['GET /api/promos?status=all'] = json(200, { items: [promo(1, 'USED', { used: 3 })] })
+    await show()
+    await openMenu('USED')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }))
+    const text = screen.getByRole('alertdialog').textContent ?? ''
+    expect(text).toContain('Использован 3\u00a0раза')
+    expect(text).toContain('история сохранится')
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Назад' }))
+    await flush()
+    expect(dels()).toHaveLength(0)
+  })
+
+  it('«Удалённые» tab asks status=deleted and rows have no actions menu', async () => {
+    replies['GET /api/promos?status=all'] = json(200, { items: [] })
+    replies['GET /api/promos?status=deleted'] = json(200, { items: [promo(1, 'OLD', { used: 2, deleted: true, disabled: true })] })
+    await show()
+    segment('Удалённые')
+    await flush()
+    expect(calls.at(-1)!.url).toBe('/api/promos?status=deleted')
+    expect(within(row('OLD')).getByText('Удалён')).toBeTruthy()
+    expect(within(row('OLD')).queryByRole('button', { name: 'Действия с промокодом' })).toBeNull()
   })
 })

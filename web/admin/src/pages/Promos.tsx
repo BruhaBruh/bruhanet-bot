@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, DataTable, Dialog, RowAction, RowMenu, SegmentedControl, Spinner, StatusTag, toast, type DataTableColumn, type Tone } from '@/ui'
 import { get, post } from '../api'
-import { formatCount, formatDay, formatShortDate } from '../format'
+import { formatCount, formatDay, formatShortDate, plural } from '../format'
+import { DeleteDialog } from './delete-dialog'
 import { kindLabels, promoStatus, promoUntil, promoValue, promosQuery, userLabel, type PromoStatus } from '../promo'
 import type { Promo, PromoActivation } from '../types'
 
@@ -10,11 +11,13 @@ const SEGMENTS = [
   { value: 'all', label: 'Все' },
   { value: 'active', label: 'Активные' },
   { value: 'expired', label: 'Истёкшие' },
+  { value: 'deleted', label: 'Удалённые' },
 ]
 const EMPTY: Record<string, string> = {
   all: 'Промокодов ещё нет',
   active: 'Активных промокодов нет',
   expired: 'Истёкших промокодов нет',
+  deleted: 'Удалённых промокодов нет',
 }
 
 const STATUS: Record<PromoStatus, [Tone, string]> = {
@@ -23,12 +26,19 @@ const STATUS: Record<PromoStatus, [Tone, string]> = {
   expired: ['neutral', 'Истёк'],
   limit: ['warning', 'Лимит исчерпан'],
   disabled: ['neutral', 'Выключен'],
+  deleted: ['neutral', 'Удалён'],
 }
 
 const statusTag = (p: Promo) => {
   const [tone, label] = STATUS[promoStatus(p)]
   return <StatusTag tone={tone}>{label}</StatusTag>
 }
+
+/** Текст подтверждения: с историей код скрывается, без неё стирается без следа. */
+const deleteMessage = (p: Promo) =>
+  p.used > 0
+    ? `Использован ${p.used}\u00a0${plural(p.used, ['раз', 'раза', 'раз'])}: код ${p.code} перестанет действовать и скроется из списка, история сохранится.`
+    : `Код ${p.code} будет удалён без следа, потом его можно создать снова.`
 
 const KIND_FILTER = [{ value: 'any', label: 'Любой' }, ...(['percent', 'rub', 'days'] as const).map((value) => ({ value, label: kindLabels[value] }))]
 const TARGET_FILTER = [
@@ -120,6 +130,7 @@ export default function Promos() {
   }
 
   const [confirming, setConfirming] = useState<Promo>()
+  const [deleting, setDeleting] = useState<Promo>()
   const toggling = useRef(false)
   async function setEnabled(p: Promo, enable: boolean) {
     setConfirming(undefined)
@@ -151,13 +162,19 @@ export default function Promos() {
             <Button variant="gray" size="sm" icon="copy" onClick={() => void copyCode(p.code)}>
               Скопировать код
             </Button>
-            {p.disabled ? (
-              <Button variant="gray" size="sm" onClick={() => void setEnabled(p, true)}>
-                Включить
-              </Button>
-            ) : (
-              <Button variant="destructive" size="sm" onClick={() => setConfirming(p)}>
-                Выключить
+            {!p.deleted &&
+              (p.disabled ? (
+                <Button variant="gray" size="sm" onClick={() => void setEnabled(p, true)}>
+                  Включить
+                </Button>
+              ) : (
+                <Button variant="destructive" size="sm" onClick={() => setConfirming(p)}>
+                  Выключить
+                </Button>
+              ))}
+            {!p.deleted && (
+              <Button variant="destructive" size="sm" onClick={() => setDeleting(p)}>
+                Удалить
               </Button>
             )}
           </div>
@@ -220,14 +237,17 @@ export default function Promos() {
           rowActions={(p) => (
             <span className="inline-flex gap-0.5">
               <RowAction icon="copy" label="Скопировать код" onClick={() => void copyCode(p.code)} />
-              <RowMenu
-                label="Действия с промокодом"
-                items={[
-                  p.disabled
-                    ? { label: 'Включить', onSelect: () => void setEnabled(p, true) }
-                    : { label: 'Выключить', destructive: true, onSelect: () => setConfirming(p) },
-                ]}
-              />
+              {!p.deleted && (
+                <RowMenu
+                  label="Действия с промокодом"
+                  items={[
+                    p.disabled
+                      ? { label: 'Включить', onSelect: () => void setEnabled(p, true) }
+                      : { label: 'Выключить', destructive: true, onSelect: () => setConfirming(p) },
+                    { label: 'Удалить', destructive: true, onSelect: () => setDeleting(p) },
+                  ]}
+                />
+              )}
             </span>
           )}
           mobileRow={(p) => ({
@@ -246,6 +266,23 @@ export default function Promos() {
             { label: 'Отмена', style: 'cancel', onClick: () => setConfirming(undefined) },
             { label: 'Выключить', style: 'destructive', onClick: () => void setEnabled(confirming, false) },
           ]}
+        />
+      )}
+      {deleting && (
+        <DeleteDialog
+          title="Удалить промокод?"
+          message={deleteMessage(deleting)}
+          url={`/api/promos/${deleting.id}`}
+          done="Промокод удалён"
+          conflict="Не удалось удалить промокод"
+          onClose={() => setDeleting(undefined)}
+          onDeleted={() => {
+            if (openRef.current === deleting.id) {
+              openRef.current = null
+              setOpen(null)
+            }
+            setReloads((n) => n + 1)
+          }}
         />
       )}
     </>

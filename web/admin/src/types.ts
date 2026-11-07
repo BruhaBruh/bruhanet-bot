@@ -184,6 +184,7 @@ export interface Promo {
   telegramId: number | null
   username: string | null
   disabled: boolean
+  deleted: boolean // скрыт из списков, виден во вкладке «Удалённые»
   createdAt: string
 }
 
