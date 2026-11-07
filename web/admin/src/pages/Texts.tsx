@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Dialog, Input, MessageBubble, SearchField, Spinner, StyleSelect, StatusTag, toast } from '@/ui'
+import { Button, Card, Dialog, Input, MessageBubble, RowAction, SearchField, Spinner, StyleSelect, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
@@ -11,7 +11,7 @@ import { previewStyle } from '../lib/button-rows'
 import type { KeyboardInfo, KeyboardSlot, TextItem, TextVar } from '../types'
 import { KeyboardCard, type SlotView } from './keyboard-editor'
 import { SystemButtons } from './system-buttons'
-import { sameLayout, type Layout } from './keyboard-layout'
+import { sameLayout, type Layout } from '../lib/keyboard-layout'
 
 const path = (c: TextItem) => `/api/texts/${encodeURIComponent(c.key)}`
 
@@ -260,10 +260,10 @@ export default function Texts() {
         />
       )}
       <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-(--spacing(12)))]">
-        <Button variant="gray" icon="gear" disabled={!system.length} onClick={() => setSysOpen(true)}>
-          Системные кнопки
-        </Button>
-        <SearchField placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
+        <div className="flex items-center gap-1">
+          <SearchField className="min-w-0 grow" placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
+          <RowAction icon="gear" label="Системные кнопки" disabled={!system.length} onClick={() => setSysOpen(true)} />
+        </div>
         {/* Длинный список прокручивается сам: не отодвигает редактор и на компьютере закреплён рядом с ним. */}
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-lg:max-h-72">
           {!groups.size && <p className="admin-body px-1 text-text-secondary">Ничего не найдено</p>}

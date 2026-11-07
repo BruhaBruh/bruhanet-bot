@@ -1,3 +1,5 @@
+import type { Layout } from './keyboard-layout'
+
 // Кнопки рассылки → строки: inline — в строку предыдущей (как core/broadcast.Rows), иначе новая строка.
 export function buttonRows<T extends { inline?: boolean }>(items: T[]): { item: T; index: number }[][] {
   const rows: { item: T; index: number }[][] = []
@@ -11,12 +13,18 @@ export function buttonRows<T extends { inline?: boolean }>(items: T[]): { item: 
 
 export const previewStyle = (s: string) => (s || 'default') as 'default' | 'primary' | 'success' | 'danger'
 
-// Можно ли включить «в строке с предыдущей»: не первая, и в строке предыдущей ещё нет двух (выключить можно всегда).
-export function canInline(items: { inline?: boolean }[], i: number): boolean {
-  if (i === 0) return false
-  if (items[i].inline) return true
-  const prev = buttonRows(items.slice(0, i)).at(-1)
-  return !!prev && prev.length < 2
+// Кнопки рассылки ↔ раскладка для перетаскивания: id ячейки — индекс кнопки в списке.
+export const toLayout = (items: { inline?: boolean }[]): Layout => ({ rows: buttonRows(items).map((r) => r.map((x) => String(x.index))), hidden: [] })
+
+export function fromLayout<T extends { inline?: boolean }>(items: T[], l: Layout): T[] {
+  return l.rows.flatMap((row) =>
+    row.map((id, i) => {
+      const b = { ...items[Number(id)] }
+      if (i > 0) b.inline = true
+      else delete b.inline
+      return b
+    }),
+  )
 }
 
 // Инварианты сервера: первая кнопка не inline, в строке не больше двух; false не храним.

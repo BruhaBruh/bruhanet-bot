@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { TgAvatar, Button, Card, Dialog, Icon, Input, MessageBubble, Radio, RadioGroup, StyleSelect, Switch, toast } from '@/ui'
+import { TgAvatar, Button, Card, Dialog, Icon, Input, MessageBubble, DragHandle, LayoutGrid, Radio, RadioGroup, StyleSelect, Switch, toast } from '@/ui'
 import { ApiError, get, post, put } from '../api'
 import { previewHtml, renderPreview, varLabel, visibleText, worstLen } from '../editor/serialize'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { formatCount, plural } from '../format'
 import { useMe } from '../me'
-import { buttonRows, canInline, normalizeInline, previewStyle } from '../lib/button-rows'
+import { buttonRows, fromLayout, normalizeInline, previewStyle, toLayout } from '../lib/button-rows'
 import type { Audience, Broadcast, BroadcastButton, DirectMessage, TextVar } from '../types'
 import { AUDIENCES, audienceLabel, daysValid, DEFAULT_DAYS, MAX_DAYS, MIN_DAYS } from './audience'
 import { PhotoPicker } from './PhotoPicker'
@@ -475,11 +475,23 @@ export function Composer(props: ComposerProps) {
           {chips}
         </Card>
 
-        <Card title="Кнопки под сообщением" aside="до 6 кнопок · по 2 в строке">
-          {buttonRows(buttons).map((row) => (
-            <div key={row[0].index} className="grid gap-3 md:grid-cols-2">
-              {row.map(({ item: b, index: i }) => (
-                <div key={i} className="flex min-w-0 flex-col gap-2 rounded-md bg-fill-tertiary p-3">
+        <Card title="Кнопки под сообщением" aside="до 6 кнопок · по 2 в строке · перетащите ручку">
+          <LayoutGrid
+            layout={toLayout(buttons)}
+            blocks={[]}
+            disabled={busy}
+            name={(id) => `Кнопка ${Number(id) + 1}`}
+            onChange={(l) => changeButtons(fromLayout(buttons, l))}
+            renderCell={(id) => {
+              const i = Number(id)
+              const b = buttons[i]
+              return (
+                <div className="flex min-w-0 flex-col gap-2 rounded-md bg-fill-tertiary p-3">
+                  <div className="flex items-center gap-1.5">
+                    <DragHandle />
+                    <span className="admin-label grow text-text-secondary">Кнопка {i + 1}</span>
+                    <Button variant="gray" size="sm" icon="trash" aria-label={`Удалить кнопку ${i + 1}`} disabled={busy} onClick={() => changeButtons(buttons.filter((_, j) => j !== i))} />
+                  </div>
                   <Input
                     placeholder="https://"
                     aria-label={`Ссылка кнопки ${i + 1}`}
@@ -500,20 +512,10 @@ export function Composer(props: ComposerProps) {
                     />
                     <StyleSelect aria-label={`Стиль кнопки ${i + 1}`} disabled={busy} value={b.style} onChange={(v) => changeButton(i, { style: v as BroadcastButton['style'] })} />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      aria-label={`Кнопка ${i + 1} в строке с предыдущей`}
-                      checked={!!b.inline}
-                      disabled={busy || !canInline(buttons, i)}
-                      onChange={(v) => changeButton(i, { inline: v || undefined })}
-                    />
-                    <span className="footnote grow text-text-secondary">В строке с предыдущей</span>
-                    <Button variant="gray" icon="trash" aria-label={`Удалить кнопку ${i + 1}`} disabled={busy} onClick={() => changeButtons(buttons.filter((_, j) => j !== i))} />
-                  </div>
                 </div>
-              ))}
-            </div>
-          ))}
+              )
+            }}
+          />
           {buttonsIssue && (
             <p role="alert" className={buttonsIssue.warn ? note : cn(note, 'text-destructive-strong')}>
               {buttonsIssue.text}

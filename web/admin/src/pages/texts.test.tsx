@@ -302,25 +302,13 @@ describe('Texts', () => {
       expect(save().disabled).toBe(true)
     })
 
-    it('moves rows and cells; edges are disabled; the preview follows', async () => {
+    it('every cell has a drag handle (not for arrows); no move or split buttons remain', async () => {
       await open('/texts?key=withKb')
-      expect((screen.getByRole('button', { name: 'Выше: Оплатить' }) as HTMLButtonElement).disabled).toBe(true)
-      await click('Ниже: Помощь'.replace('Помощь', 'тарифы (из настроек)'))
-      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'Помощь', 'тарифы (из настроек)'])
-      await click('Правее: Оплатить')
-      expect(kbButtons().slice(0, 2)).toEqual(['Инфо', 'Оплатить'])
-      expect(save().disabled).toBe(false)
-    })
-
-    it('two per row: join is disabled when the row above is full, split gives its own row', async () => {
-      await open('/texts?key=withKb')
-      expect(screen.queryByRole('button', { name: /^В строку с предыдущей: тарифы/ })).toBeNull() // блок всегда один
-      expect((screen.getByRole('button', { name: 'В строку с предыдущей: Помощь' }) as HTMLButtonElement).disabled).toBe(true) // выше блок
-      await click('В отдельную строку: Информация')
-      const rows = within(preview()).getAllByRole('button').map((b) => b.parentElement)
-      expect(new Set(rows).size).toBe(4)
-      await click('В строку с предыдущей: Информация')
-      expect(new Set(within(preview()).getAllByRole('button').map((b) => b.parentElement)).size).toBe(3)
+      for (const n of ['Оплатить', 'Информация', 'Помощь', 'тарифы (из настроек)']) {
+        expect(screen.getByRole('button', { name: `Перетащить: ${n}` })).toBeTruthy()
+      }
+      expect(screen.queryByRole('button', { name: /^(Выше|Ниже|Левее|Правее|В отдельную строку|В строку с предыдущей)/ })).toBeNull()
+      expect(screen.queryByText('Новый ряд')).toBeNull() // зона «новый ряд» показывается только при перетаскивании
     })
 
     it('hide only removable buttons; locked one has a tooltip hint; chips bring them back', async () => {
@@ -356,7 +344,7 @@ describe('Texts', () => {
     it('save error is shown next to the keyboard; reset needs confirmation', async () => {
       replies['PUT /api/keyboards/menu'] = json(400, { error: 'invalid', message: 'в ряду не больше 2 кнопок' })
       await open('/texts?key=withKb')
-      await click('Ниже: Оплатить')
+      await click('Скрыть: Информация')
       fireEvent.click(save())
       await wait(10)
       expect(screen.getByRole('alert').textContent).toBe('в ряду не больше 2 кнопок')

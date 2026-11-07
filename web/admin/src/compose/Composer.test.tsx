@@ -116,6 +116,9 @@ const pickStyle = async (name: string, label: string) => {
   await new Promise((r) => setTimeout(r, 0))
 }
 
+// dnd-kit держит свой role=status для диктора: тост ищем по тексту
+const toastEl = () => screen.getAllByRole('status').find((e) => e.textContent?.startsWith('Тестовое'))!
+
 describe('Composer', () => {
   it('limit is 1024 with photo, 4096 without', async () => {
     const { r, setText, setPhoto, btn, count, countText } = await setup()
@@ -427,7 +430,7 @@ describe('Composer', () => {
     })
     await flush()
     expect(calls.filter((c) => c.url === '/api/broadcasts/preview-send')).toHaveLength(1)
-    expect(screen.getByRole('status').textContent).toContain('Тестовое сообщение отправлено вам')
+    expect(toastEl().textContent).toContain('Тестовое сообщение отправлено вам')
   })
 
   it('the test-send toast names the admin from /api/me, and nobody when unknown', async () => {
@@ -436,13 +439,13 @@ describe('Composer', () => {
     const first = await setup()
     await first.setText('hi')
     await first.click(TEST)
-    expect(screen.getByRole('status').textContent).toBe('Тестовое сообщение отправлено вам, @owner_nick')
+    expect(toastEl().textContent).toBe('Тестовое сообщение отправлено вам, @owner_nick')
     first.r.unmount()
     me = NO_ME
     const second = await setup()
     await second.setText('hi')
     await second.click(TEST)
-    expect(screen.getByRole('status').textContent).toBe('Тестовое сообщение отправлено вам')
+    expect(toastEl().textContent).toBe('Тестовое сообщение отправлено вам')
   })
 
   describe('send later (МСК)', () => {
@@ -711,18 +714,22 @@ describe('Composer', () => {
       expect(screen.queryByRole('radiogroup', { name: 'Стиль кнопки 1' })).toBeNull()
     })
 
-    it('inline switch: off for the first, max two per row, groups the preview and the payload', async () => {
+    it('buttons come in rows by inline: preview groups them, payload keeps inline, every card has a drag handle', async () => {
       replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
-      const { r, setText, click } = await setup()
-      await setText('hi')
-      for (const n of ['a', 'b', 'c']) await addButton(n, 'https://e.com')
-      const sw = (n: number) => screen.getByRole('switch', { name: `Кнопка ${n} в строке с предыдущей` }) as HTMLButtonElement
-      expect(sw(1).disabled).toBe(true)
-      fireEvent.click(sw(2))
-      await flush()
-      // в строке a+b уже две: третья не может встать рядом
-      expect(sw(2).getAttribute('aria-checked')).toBe('true')
-      expect(sw(3).disabled).toBe(true)
+      const url = 'https://e.com'
+      const { r, click } = await setup({
+        mode: 'broadcast',
+        initial: {
+          text: 'hi',
+          buttons: [
+            { text: 'a', url, style: '' },
+            { text: 'b', url, style: '', inline: true },
+            { text: 'c', url, style: '' },
+          ],
+        },
+      })
+      for (const n of [1, 2, 3]) expect(screen.getByRole('button', { name: `Перетащить: Кнопка ${n}` })).toBeTruthy()
+      expect(screen.queryByRole('switch', { name: /в строке с предыдущей/ })).toBeNull()
       const aside = within(r.container).getByRole('complementary', { name: 'Превью сообщения' })
       const rows = Array.from(aside.querySelectorAll('button')).filter((b) => ['a', 'b', 'c'].includes(b.textContent ?? ''))
       expect(rows[0].parentElement).toBe(rows[1].parentElement)
@@ -731,22 +738,22 @@ describe('Composer', () => {
       await click(CONFIRM)
       expect(posts()[0].body).toMatchObject({
         buttons: [
-          { text: 'a', url: 'https://e.com', style: '' },
-          { text: 'b', url: 'https://e.com', style: '', inline: true },
-          { text: 'c', url: 'https://e.com', style: '' },
+          { text: 'a', url, style: '' },
+          { text: 'b', url, style: '', inline: true },
+          { text: 'c', url, style: '' },
         ],
       })
       expect((posts()[0].body as { buttons: { inline?: boolean }[] }).buttons[0].inline).toBeUndefined()
     })
 
     it('deleting the first button of a pair clears the orphan inline flag', async () => {
-      await setup()
-      for (const n of ['a', 'b']) await addButton(n, 'https://e.com')
-      fireEvent.click(screen.getByRole('switch', { name: 'Кнопка 2 в строке с предыдущей' }))
+      const url = 'https://e.com'
+      await setup({ mode: 'broadcast', initial: { text: 'hi', buttons: [{ text: 'a', url, style: '' }, { text: 'b', url, style: '', inline: true }] } })
       fireEvent.click(screen.getByRole('button', { name: 'Удалить кнопку 1' }))
       await flush()
-      const first = screen.getByRole('switch', { name: 'Кнопка 1 в строке с предыдущей' })
-      expect(first.getAttribute('aria-checked')).toBe('false')
+      expect(screen.getAllByRole('textbox', { name: /^Текст кнопки/ })).toHaveLength(1)
+      // оставшаяся кнопка — первая в ряду: в payload её inline нет (нормализация), а превью — одна строка
+      expect(screen.getByRole('button', { name: 'Перетащить: Кнопка 1' })).toBeTruthy()
     })
 
     it('changing buttons or silent renews the idempotency key', async () => {
