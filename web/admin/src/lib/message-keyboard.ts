@@ -46,15 +46,17 @@ export const addButton = (rows: KbCellOut[][]): KbCellOut[][] => [
   [{ id: freeId(rows), label: 'Кнопка', action: 'route:menu', conditions: [], locked: false, template: false, effective: { label: 'Кнопка', preview: 'Кнопка', style: '' } }],
 ]
 
-/** Шаблон встаёт отдельным рядом; id шаблона = id его действия (`template:<id>`). */
+/** Имя шаблона ячейки (`template:tariffs` → `tariffs`). */
+export const tplName = (c: KbCellOut) => c.action.replace(/^template:/, '')
+
+/** Шаблон встаёт отдельным рядом; id ячейки по соглашению сервера — `tpl_<имя>`. */
 export const addTemplate = (rows: KbCellOut[][], t: KbTemplate): KbCellOut[][] => [
   ...rows,
-  [{ id: `@${t.id}`, action: `template:${t.id}`, conditions: [], locked: false, template: true }],
+  [{ id: `tpl_${t.id}`, action: `template:${t.id}`, conditions: [], locked: false, template: true }],
 ]
 
 export const templatesLeft = (rows: KbCellOut[][], all: KbTemplate[]) => {
-  const used = taken(rows)
-  return all.filter((t) => !used.has(`@${t.id}`) && !rows.flat().some((c) => c.action === `template:${t.id}`))
+  return all.filter((t) => !rows.flat().some((c) => c.action === `template:${t.id}`))
 }
 
 /** Кнопка видна при фейк-условиях `on`: все условия выполнены (с учётом НЕ) и встроенное условие действия тоже. */

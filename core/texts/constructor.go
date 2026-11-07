@@ -104,14 +104,18 @@ func LookupAction(id string) (Action, bool) {
 }
 
 // Template — шаблон: блок кнопок, раскрываемый кодом (action "template:<id>").
-type Template struct{ ID, Title string }
+// Key — текст кнопки реестра, которым подписана каждая кнопка блока (правится отдельно от клавиатуры).
+type Template struct{ ID, Title, Key string }
+
+var templateKeys = map[string]string{"tariffs": "button.tariff", "gift_tariffs": "button.tariff", "devices": "button.devices_add"}
 
 // Templates — шаблоны, которые бот умеет раскрывать.
 func Templates() []Template {
 	var out []Template
 	for _, a := range actions {
 		if a.Kind == ActionTemplate {
-			out = append(out, Template{ID: strings.TrimPrefix(a.ID, "template:"), Title: a.Title})
+			id := strings.TrimPrefix(a.ID, "template:")
+			out = append(out, Template{ID: id, Title: a.Title, Key: templateKeys[id]})
 		}
 	}
 	return out

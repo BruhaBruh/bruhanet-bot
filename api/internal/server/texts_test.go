@@ -257,6 +257,41 @@ func TestPutTextSaveAndReset(t *testing.T) {
 	}
 }
 
+func TestTextTestKeyboard(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	path := "/api/texts/menu.greeting/test"
+
+	ok := `{"body":"Хай","keyboard":[[{"text":"Купить","style":"success"}],[{"text":"A","style":""},{"text":"B","style":"danger"}]]}`
+	if w := send(h, http.MethodPost, path, c, ok); w.Code != http.StatusNoContent {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	kb := st.outbox[0].Keyboard
+	if kb == nil || len(kb.InlineKeyboard) != 2 || len(kb.InlineKeyboard[1]) != 2 || kb.InlineKeyboard[0][0].Text != "Купить" || kb.InlineKeyboard[0][0].Style != "success" || kb.InlineKeyboard[0][0].CallbackData == "" {
+		t.Fatalf("keyboard = %+v", kb)
+	}
+
+	// без клавиатуры — без неё
+	if w := send(h, http.MethodPost, path, c, `{"body":"Хай"}`); w.Code != http.StatusNoContent || st.outbox[1].Keyboard != nil {
+		t.Fatalf("%d %+v", w.Code, st.outbox[1])
+	}
+
+	// мусор: три в ряду, пустая подпись, неизвестный стиль, пустой ряд — 400, в outbox ничего нового
+	for _, bad := range []string{
+		`[[{"text":"a","style":""},{"text":"b","style":""},{"text":"c","style":""}]]`,
+		`[[{"text":"","style":""}]]`,
+		`[[{"text":"a","style":"pink"}]]`,
+		`[[]]`,
+	} {
+		if w := send(h, http.MethodPost, path, c, `{"body":"Хай","keyboard":`+bad+`}`); w.Code != http.StatusBadRequest {
+			t.Errorf("keyboard %s: %d", bad, w.Code)
+		}
+	}
+	if len(st.outbox) != 2 {
+		t.Fatalf("outbox = %d", len(st.outbox))
+	}
+}
+
 func TestTextTest(t *testing.T) {
 	h, st := newServer(t, "http://localhost:5173")
 	c := st.addSession(t, adminID, now.Add(time.Hour))

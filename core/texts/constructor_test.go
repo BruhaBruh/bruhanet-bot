@@ -231,6 +231,11 @@ func TestCatalogs(t *testing.T) {
 	if len(texts.Templates()) != 3 {
 		t.Errorf("templates = %v", texts.Templates())
 	}
+	for _, tpl := range texts.Templates() {
+		if d, ok := texts.Lookup(tpl.Key); !ok || d.Kind != texts.KindButton {
+			t.Errorf("template %s: key %q is not a registered button text", tpl.ID, tpl.Key)
+		}
+	}
 }
 
 func TestLegacyToLayout(t *testing.T) {

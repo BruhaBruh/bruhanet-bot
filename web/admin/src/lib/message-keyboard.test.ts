@@ -26,9 +26,9 @@ describe('message keyboard', () => {
     const rows = addButton(addButton([]))
     expect(rows.flat().map((x) => x.id)).toEqual(['btn_1', 'btn_2'])
     expect(freeId(rows)).toBe('btn_3')
-    const t = { id: 'tariffs', title: 'Тарифы' }
+    const t = { id: 'tariffs', title: 'Тарифы', key: 'button.tariff' }
     const withT = addTemplate(rows, t)
-    expect(withT.at(-1)![0]).toMatchObject({ id: '@tariffs', action: 'template:tariffs', template: true })
+    expect(withT.at(-1)![0]).toMatchObject({ id: 'tpl_tariffs', action: 'template:tariffs', template: true })
     expect(templatesLeft(withT, [t])).toEqual([])
     expect(templatesLeft(rows, [t])).toEqual([t])
   })

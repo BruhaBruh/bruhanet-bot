@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button, Card, Checkbox, DragHandle, Icon, Input, LayoutGrid, Select, Sheet, StyleSelect } from '@/ui'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/primitives/tooltip'
-import { fromLayout, MAX_CELLS, countCells, patchCell, removeCell, templatesLeft, toLayout, addButton, addTemplate } from '../lib/message-keyboard'
+import { fromLayout, MAX_CELLS, countCells, patchCell, removeCell, templatesLeft, tplName, toLayout, addButton, addTemplate } from '../lib/message-keyboard'
 import type { CondRef, KbCatalogs, KbCellOut, MessageKeyboard } from '../types'
 
 const BUTTON_LIMIT = 64
@@ -100,6 +100,14 @@ function ConditionsSheet({ c, cat, onApply, onClose }: { c: KbCellOut; cat: KbCa
   )
 }
 
+/** Текст кнопки, которой подписан каждый элемент шаблона: правится рядом с шаблоном, а не в клавиатуре. */
+export interface TplText {
+  label: string
+  style: string
+  /** Переменные текста через запятую, для подсказки. */
+  vars: string
+}
+
 interface Props {
   kb: MessageKeyboard
   cat: KbCatalogs
@@ -107,17 +115,20 @@ interface Props {
   busy: boolean
   dirty: boolean
   saving: boolean
+  tplText(key: string): TplText | undefined
+  onTplText(key: string, change: { label?: string; style?: string }): void
   onRows(r: KbCellOut[][]): void
   onSave(): void
   onCancel(): void
   onReset(): void
 }
 
-export function MessageKeyboardCard({ kb, cat, rows, busy, dirty, saving, onRows, onSave, onCancel, onReset }: Props) {
+export function MessageKeyboardCard({ kb, cat, rows, busy, dirty, saving, tplText, onTplText, onRows, onSave, onCancel, onReset }: Props) {
   const [modal, setModal] = useState<{ id: string; kind: 'action' | 'cond' }>()
   const cells = rows.flat()
   const byId = (id: string) => cells.find((c) => c.id === id)
-  const name = (c: KbCellOut) => (c.template ? (cat.templates.find((t) => `@${t.id}` === c.id)?.title ?? c.id) : c.label || c.effective?.preview || c.id)
+  const tplOf = (c: KbCellOut) => cat.templates.find((t) => t.id === tplName(c))
+  const name = (c: KbCellOut) => (c.template ? (tplOf(c)?.title ?? c.id) : c.label || c.effective?.preview || c.id)
   const blocks = cells.filter((c) => c.template).map((c) => c.id)
   const edit = (id: string, fn: (c: KbCellOut) => KbCellOut) => onRows(patchCell(rows, id, fn))
   const free = templatesLeft(rows, cat.templates)
@@ -165,17 +176,38 @@ export function MessageKeyboardCard({ kb, cat, rows, busy, dirty, saving, onRows
                 <Icon name="close" size={14} strokeWidth={2.4} />
               </button>
             )
-            if (c.template)
+            if (c.template) {
+              const key = tplOf(c)?.key
+              const t = key ? tplText(key) : undefined
               return (
-                <div className={`${cell} border border-dashed border-separator bg-transparent`}>
+                <div className={`${cell} border border-dashed border-separator`}>
                   <div className="flex items-center gap-1.5">
                     <DragHandle />
                     <code className={`${mono} grow`}>{c.action}</code>
                     {trail}
                   </div>
                   <span className="admin-body text-text-secondary">Шаблон: {n}</span>
+                  {key && t && (
+                    <>
+                      <div className="flex items-start gap-2">
+                        <Input
+                          className="min-w-0 grow"
+                          aria-label={`Текст кнопок шаблона ${n}`}
+                          maxLength={BUTTON_LIMIT}
+                          disabled={busy}
+                          value={t.label}
+                          onChange={(e) => onTplText(key, { label: e.target.value })}
+                        />
+                        <StyleSelect aria-label={`Стиль кнопок шаблона ${n}`} disabled={busy} value={t.style} onChange={(v) => onTplText(key, { style: v })} />
+                      </div>
+                      <span className="footnote text-text-secondary">
+                        Подпись каждой кнопки блока (общая для всех экранов с ней, <code className="font-mono">{key}</code>). Переменные: {t.vars}.
+                      </span>
+                    </>
+                  )}
                 </div>
               )
+            }
             const cond = conditionLine(cat, c.conditions)
             return (
               <div className={cell}>

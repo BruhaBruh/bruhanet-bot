@@ -53,13 +53,13 @@ const cellOf = (id: string, over: Partial<KbCellOut> = {}): KbCellOut => ({
   effective: { label: id, preview: id, style: '' },
   ...over,
 })
-const tplCell = (id: string): KbCellOut => ({ id: `@${id}`, action: `template:${id}`, conditions: [], locked: true, template: true })
+const tplCell = (id: string): KbCellOut => ({ id: `tpl_${id}`, action: `template:${id}`, conditions: [], locked: true, template: true })
 const rowsOf = (): KbCellOut[][] => [
   [cellOf('pay', { locked: true, effective: { label: 'Оплатить', preview: 'Оплатить', style: 'success' } }), cellOf('info', { effective: { label: 'Инфо', preview: 'Инфо', style: '' } })],
   [tplCell('tariffs')],
   [cellOf('trial', { conditions: [{ id: 'trial_available' }], effective: { label: 'Пробный', preview: 'Пробный', style: '' } })],
 ]
-const menuKb = (over: Partial<MessageKeyboard> = {}): MessageKeyboard => ({ rows: rowsOf(), default: rowsOf(), overridden: false, locked: ['pay', '@tariffs'], ...over })
+const menuKb = (over: Partial<MessageKeyboard> = {}): MessageKeyboard => ({ rows: rowsOf(), default: rowsOf(), overridden: false, locked: ['pay', 'tpl_tariffs'], ...over })
 const catalogs = {
   conditions: [
     { id: 'in_panel', title: 'Юзер есть в панели', description: 'описание 1' },
@@ -73,8 +73,8 @@ const catalogs = {
     { id: 'template:tariffs', title: 'Тарифы', kind: 'template', bound: true },
   ],
   templates: [
-    { id: 'tariffs', title: 'Тарифы' },
-    { id: 'devices', title: 'Устройства' },
+    { id: 'tariffs', title: 'Тарифы', key: 'button.tariff' },
+    { id: 'devices', title: 'Устройства', key: 'button.devices_add' },
   ],
 }
 beforeEach(() => {
@@ -86,6 +86,7 @@ beforeEach(() => {
     calls.push({ url, method, body: init.body ? JSON.parse(String(init.body)) : undefined })
     return (replies[`${method} ${url}`] ?? json(500))()
   })
+  replies['GET /api/settings'] = json(200, { prices: { 1: 100, 3: 270 }, devicePrice: 50 })
   replies['GET /api/texts'] = json(200, {
     items: [
       text('a', 'Текст A', 'тело A'),
@@ -97,6 +98,7 @@ beforeEach(() => {
       }),
       text('withKb', 'С клавиатурой', 'тело', { keyboard: menuKb() }),
       text('other', 'Другое', 'иное'),
+      text('button.tariff', 'Тариф в списке', '{{.months}} за {{.price}} ₽', { kind: 'button', group: 'Кнопки', style: '', vars: [{ name: 'months', description: 'Срок', sample: '1 месяц', raw: false, max: 12 }, { name: 'price', description: 'Цена', sample: '100', raw: false, max: 8 }] }),
       text('loose', 'Без раскладки', 'тело'),
     ],
     globals: [{ name: 'name', description: 'Имя', sample: 'Иван', raw: false, max: 64 }],
@@ -218,6 +220,28 @@ describe('Texts', () => {
     expect(calls.filter((c) => c.method === 'POST')).toEqual([{ url: '/api/texts/a/test', method: 'POST', body: { body: 'черновик' } }])
   })
 
+  it('«Отправить себе» sends the keyboard exactly as the preview shows it', async () => {
+    replies['POST /api/texts/withKb/test'] = json(204)
+    await open('/texts?key=withKb')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Пробный доступен' }))
+    fireEvent.click(btn('Отправить себе'))
+    await flush()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([
+      {
+        url: '/api/texts/withKb/test',
+        method: 'POST',
+        body: {
+          body: 'тело',
+          keyboard: [
+            [{ text: 'Оплатить', style: 'success' }, { text: 'Инфо', style: '' }],
+            [{ text: '1 месяц за 100 ₽', style: '' }, { text: '3 месяца за 270 ₽', style: '' }],
+            [{ text: 'Пробный', style: '' }],
+          ],
+        },
+      },
+    ])
+  })
+
   it('variables: chip inserts the token, preview fills samples, table shows used ones', async () => {
     await open('/texts?key=v')
     fireEvent.click(btn('{{.html}}'))
@@ -298,9 +322,9 @@ describe('Texts', () => {
       expect(screen.getByRole('checkbox', { name: 'Пробный доступен' })).toBeTruthy()
       expect(save().disabled).toBe(true)
       // пробный скрыт, пока «Пробный доступен» не отмечено
-      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'Тарифы'])
+      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', '1 месяц за 100 ₽', '3 месяца за 270 ₽'])
       fireEvent.click(screen.getByRole('checkbox', { name: 'Пробный доступен' }))
-      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'Тарифы', 'Пробный'])
+      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', '1 месяц за 100 ₽', '3 месяца за 270 ₽', 'Пробный'])
     })
 
     it('own label and style go to PUT /keyboard, one request per click, list is reloaded', async () => {
@@ -328,10 +352,10 @@ describe('Texts', () => {
       await click('Убрать: Кнопка')
       expect(kbButtons()).not.toContain('Кнопка')
       await click('Убрать: Инфо')
-      expect(kbButtons()).toEqual(['Оплатить', 'Тарифы'])
+      expect(kbButtons()).toEqual(['Оплатить', '1 месяц за 100 ₽', '3 месяца за 270 ₽'])
       expect(save().disabled).toBe(false)
       await click('Отменить')
-      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'Тарифы'])
+      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', '1 месяц за 100 ₽', '3 месяца за 270 ₽'])
     })
 
     it('action modal switches to a link; conditions modal sets НЕ', async () => {
@@ -351,6 +375,27 @@ describe('Texts', () => {
       fireEvent.click(save())
       await flush()
       expect((puts()[0].body as { rows: unknown[][] }).rows[0][1]).toMatchObject({ id: 'info', action: 'url:https://example.com/x', conditions: [{ id: 'in_panel', not: true }] })
+    })
+
+    it('template: own button text is edited in the cell, preview shows the expanded result, saved before the layout', async () => {
+      replies['PUT /api/texts/button.tariff'] = json(204)
+      await open('/texts?key=withKb')
+      edit(screen.getByRole('textbox', { name: 'Текст кнопок шаблона Тарифы' }), '{{.months}} — {{.price}} ₽')
+      expect(kbButtons()).toContain('3 месяца — 270 ₽')
+      expect(save().disabled).toBe(false)
+      fireEvent.click(save())
+      await flush()
+      // раскладка не менялась: только текст кнопки
+      expect(puts()).toEqual([{ url: '/api/texts/button.tariff', method: 'PUT', body: { body: '{{.months}} — {{.price}} ₽', style: '' } }])
+    })
+
+    it('template without a loaded button text falls back to its title in the preview', async () => {
+      await open('/texts?key=withKb')
+      fireEvent.keyDown(screen.getByRole('combobox', { name: 'Добавить шаблон' }), { key: 'Enter' })
+      fireEvent.click(await screen.findByRole('option', { name: 'Устройства' }))
+      await flush()
+      // текста button.devices_add нет в фикстуре: блок показывается названием шаблона
+      expect(kbButtons()).toContain('Устройства')
     })
 
     it('template picker adds a template once', async () => {

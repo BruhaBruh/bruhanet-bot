@@ -158,6 +158,8 @@ export interface KbAction {
 export interface KbTemplate {
   id: string
   title: string
+  /** Текст кнопки реестра, которым подписан каждый элемент блока. */
+  key: string
 }
 
 export interface KbCatalogs {

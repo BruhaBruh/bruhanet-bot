@@ -8,6 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"unicode/utf8"
+
+	"github.com/go-telegram/bot/models"
 
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/texts"
@@ -204,8 +207,18 @@ func (s *server) testText(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Body *string `json:"body"`
+		// Keyboard — клавиатура из превью редактора (кнопки без действий): админ получает то же, что видит на экране.
+		Keyboard [][]struct {
+			Text  string `json:"text"`
+			Style string `json:"style"`
+		} `json:"keyboard"`
 	}
 	if !readJSONMax(w, r, &in, maxTextBody, true) {
+		return
+	}
+	kb, ok := previewKeyboard(in.Keyboard)
+	if !ok {
+		writeBadRequest(w)
 		return
 	}
 	body := def.Default
@@ -238,10 +251,46 @@ func (s *server) testText(w http.ResponseWriter, r *http.Request) {
 		out = "Текст: " + html.EscapeString(out)
 	case texts.KindMessage:
 	}
-	err = s.Store.Enqueue(r.Context(), model.OutboxMessage{EventType: "text_test", ChatID: s.AdminID, Text: out, ParseMode: "HTML"})
+	err = s.Store.Enqueue(r.Context(), model.OutboxMessage{EventType: "text_test", ChatID: s.AdminID, Text: out, ParseMode: "HTML", Keyboard: kb})
 	if err != nil {
 		internal(w, r, "enqueue text test", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+const (
+	maxPreviewRows    = 20
+	previewRowButtons = 2
+	maxPreviewText    = 64 // как у подписи кнопки Telegram в реестре
+)
+
+// previewKeyboard строит inline-клавиатуру из строк превью: callback_data общий и ни к чему не ведёт.
+// Не прошло проверку — ok=false; пусто — nil.
+func previewKeyboard(rows [][]struct {
+	Text  string `json:"text"`
+	Style string `json:"style"`
+},
+) (*models.InlineKeyboardMarkup, bool) {
+	if len(rows) == 0 {
+		return nil, true
+	}
+	if len(rows) > maxPreviewRows {
+		return nil, false
+	}
+	out := make([][]models.InlineKeyboardButton, 0, len(rows))
+	for _, r := range rows {
+		if len(r) == 0 || len(r) > previewRowButtons {
+			return nil, false
+		}
+		row := make([]models.InlineKeyboardButton, 0, len(r))
+		for _, b := range r {
+			if b.Text == "" || utf8.RuneCountInString(b.Text) > maxPreviewText || !slices.Contains(texts.Styles, b.Style) {
+				return nil, false
+			}
+			row = append(row, models.InlineKeyboardButton{Text: b.Text, CallbackData: "preview", Style: b.Style})
+		}
+		out = append(out, row)
+	}
+	return &models.InlineKeyboardMarkup{InlineKeyboard: out}, true
 }

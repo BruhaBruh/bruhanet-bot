@@ -6,11 +6,12 @@ import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { previewHtml, renderPlain, renderPreview, varLabel, visibleLen } from '../editor/serialize'
-import { formatCount } from '../format'
+import { formatCount, plural } from '../format'
 import { previewStyle } from '../lib/button-rows'
 import { payload, sameKb, usedConditions, visibleRows } from '../lib/message-keyboard'
-import type { KbCatalogs, KbCellOut, TextItem, TextVar } from '../types'
-import { MessageKeyboardCard } from './message-keyboard'
+import type { KbCatalogs, KbCellOut, Settings, TextItem, TextVar } from '../types'
+import { tplName } from '../lib/message-keyboard'
+import { MessageKeyboardCard, type TplText } from './message-keyboard'
 
 interface TextsReply {
   items: TextItem[]
@@ -43,6 +44,10 @@ export default function Texts() {
   const [q, setQ] = useState('')
   // черновики по ключу: переключение между текстами не теряет правки, но и не переносит их
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  // подписи кнопок шаблонов (button.tariff…) — стиль; текст лежит в drafts
+  const [styleDrafts, setStyleDrafts] = useState<Record<string, string>>({})
+  // тарифы и цена устройства для примера в превью; не загрузились — подставятся примеры переменных
+  const [settings, setSettings] = useState<Settings>()
   const [cat, setCat] = useState<KbCatalogs>({ conditions: [], actions: [], templates: [] })
   // черновики клавиатур по ключу сообщения
   const [kbDrafts, setKbDrafts] = useState<Record<string, KbCellOut[][]>>({})
@@ -64,6 +69,9 @@ export default function Texts() {
       },
       () => setLoadError(true),
     )
+  }, [])
+  useEffect(() => {
+    get<Settings>('/api/settings').then(setSettings, () => undefined)
   }, [])
 
   if (loadError)
@@ -97,7 +105,17 @@ export default function Texts() {
       },
       () => undefined,
     )
-  const patch = (key: string, body: string) => setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default, inactive: false, problem: undefined } : i)))
+  const patch = (key: string, body: string, style?: string) =>
+    setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default, inactive: false, problem: undefined, style: style ?? i.style } : i)))
+  const byKey = (key: string) => items.find((i) => i.key === key)
+  const tplText = (key: string): TplText | undefined => {
+    const i = byKey(key)
+    return i && { label: draftOf(i), style: styleDrafts[key] ?? i.style, vars: i.vars.map((v) => varLabel(v.name)).join(', ') }
+  }
+  const tplDirty = (key: string) => {
+    const i = byKey(key)
+    return !!i && (draftOf(i) !== i.body || (styleDrafts[key] ?? i.style) !== i.style)
+  }
 
   const own = cur?.vars ?? []
   const vars = [...globals, ...own]
@@ -106,22 +124,47 @@ export default function Texts() {
 
   const kb = cur?.kind === 'message' ? cur.keyboard : undefined
   const kbRows = kb ? (kbDrafts[cur.key] ?? kb.rows) : []
-  const kbDirty = !!kb && !sameKb(kbRows, kb.rows)
-  const dropKbDraft = (key: string) =>
+  const tplKeys = [...new Set(kbRows.flat().flatMap((c) => (c.template ? (cat.templates.find((t) => t.id === tplName(c))?.key ?? []) : [])))]
+  const layoutDirty = !!kb && !sameKb(kbRows, kb.rows)
+  const kbDirty = layoutDirty || tplKeys.some(tplDirty)
+  const dropKbDraft = (key: string) => {
     setKbDrafts((d) => {
       const rest = { ...d }
       delete rest[key]
       return rest
     })
+    tplKeys.forEach((k) => {
+      dropDraft(k)
+      setStyleDrafts((d) => {
+        const rest = { ...d }
+        delete rest[k]
+        return rest
+      })
+    })
+  }
   const condIds = kb ? usedConditions(kbRows, cat.actions) : []
   const fakeSet = new Set(fake)
-  const previewRows = visibleRows(kbRows, fakeSet, cat.actions).map((row) =>
-    row.map((c) => ({
-      text: c.template
-        ? (cat.templates.find((t) => `@${t.id}` === c.id)?.title ?? c.id)
-        : (c.label ? renderPlain(c.label, samples) : c.effective?.preview) || c.id,
-      style: previewStyle(c.template ? '' : c.style || c.effective?.style || ''),
-    })),
+  // Результат шаблона на примере: тарифы из настроек, число устройств с ценой за штуку.
+  const expand = (c: KbCellOut) => {
+    const t = cat.templates.find((x) => x.id === tplName(c))
+    const txt = t && tplText(t.key)
+    if (!t || !txt) return [[{ text: t?.title ?? c.id, style: previewStyle('') }]]
+    const style = previewStyle(txt.style)
+    const sample = (name: string) => byKey(t.key)?.vars.find((v) => v.name === name)?.sample ?? ''
+    const items =
+      t.id === 'devices'
+        ? [1, 2, 3, 5].map((n) => ({ count: String(n), price: String(settings ? settings.devicePrice * n : Number(sample('price')) * n) }))
+        : Object.entries(settings?.prices ?? { 1: Number(sample('price')) || 100 })
+            .map(([m, p]) => ({ n: Number(m), p }))
+            .sort((a, b) => a.n - b.n)
+            .map(({ n, p }) => ({ months: `${n} ${plural(n, ['месяц', 'месяца', 'месяцев'])}`, price: String(p) }))
+    const buttons = items.map((v) => ({ text: renderPlain(txt.label, { ...samples, ...v }) || t.title, style }))
+    return Array.from({ length: Math.ceil(buttons.length / 2) }, (_, i) => buttons.slice(i * 2, i * 2 + 2))
+  }
+  const previewRows = visibleRows(kbRows, fakeSet, cat.actions).flatMap((row) =>
+    row[0]?.template
+      ? expand(row[0])
+      : [row.map((c) => ({ text: (c.label ? renderPlain(c.label, samples) : c.effective?.preview) || c.id, style: previewStyle(c.style || c.effective?.style || '') }))],
   )
 
   const s = q.trim().toLowerCase()
@@ -174,7 +217,15 @@ export default function Texts() {
       'save',
       c,
       async () => {
-        await put(`${path(c)}/keyboard`, payload(kbRows))
+        for (const key of tplKeys) {
+          const b = byKey(key)
+          if (!b || !tplDirty(key)) continue
+          const body = draftOf(b)
+          const style = styleDrafts[key] ?? b.style
+          await put(path(b), { body, style })
+          patch(key, body, style)
+        }
+        if (layoutDirty) await put(`${path(c)}/keyboard`, payload(kbRows))
         dropKbDraft(c.key)
         toast('Клавиатура сохранена', { icon: 'check' })
         await refresh()
@@ -195,7 +246,8 @@ export default function Texts() {
     )
   const sendTest = (c: TextItem, body: string) =>
     run('test', c, async () => {
-      await post(`${path(c)}/test`, { body })
+      // клавиатура — ровно та, что в превью (с отмеченными условиями и раскрытыми шаблонами)
+      await post(`${path(c)}/test`, previewRows.length ? { body, keyboard: previewRows.map((r) => r.map((b) => ({ text: b.text, style: b.style === 'default' ? '' : b.style }))) } : { body })
       toast('Сообщение отправлено вам в Telegram', { icon: 'check' })
     })
   const reset = (c: TextItem) =>
@@ -359,6 +411,11 @@ export default function Texts() {
                 busy={!!busy}
                 saving={busy === 'save'}
                 dirty={kbDirty}
+                tplText={tplText}
+                onTplText={(key, ch) => {
+                  if (ch.label !== undefined) setDrafts((d) => ({ ...d, [key]: ch.label as string }))
+                  if (ch.style !== undefined) setStyleDrafts((d) => ({ ...d, [key]: ch.style as string }))
+                }}
                 onRows={(r) => setKbDrafts((d) => ({ ...d, [cur.key]: r }))}
                 onSave={() => saveKeyboard(cur)}
                 onCancel={() => {
@@ -380,6 +437,16 @@ export default function Texts() {
       {cur && (
         <aside aria-label="Превью сообщения" className="sticky top-6 flex min-w-0 grow basis-80 flex-col gap-2">
           <h2 className="admin-label px-1 text-text-secondary">Превью с примером данных</h2>
+          <div className="flex min-h-80 flex-col justify-end overflow-hidden rounded-lg bg-chat-bg px-3 py-4 shadow-card">
+            <MessageBubble time="14:30" keyboard={previewRows}>
+              {cur.kind === 'message' ? (
+                // только разрешённые теги после sanitize
+                <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: previewHtml(renderPreview(draft, samples, raw)) }} />
+              ) : (
+                <span className="whitespace-pre-wrap">{renderPlain(draft, samples)}</span>
+              )}
+            </MessageBubble>
+          </div>
           {kb && condIds.length > 0 && (
             <div role="group" aria-label="Условия для превью" className="flex flex-col gap-2 rounded-lg bg-surface px-4 py-3 shadow-card">
               <span className="admin-label text-text-secondary">Условия для превью</span>
@@ -393,16 +460,6 @@ export default function Texts() {
               ))}
             </div>
           )}
-          <div className="flex min-h-80 flex-col justify-end overflow-hidden rounded-lg bg-chat-bg px-3 py-4 shadow-card">
-            <MessageBubble time="14:30" keyboard={previewRows}>
-              {cur.kind === 'message' ? (
-                // только разрешённые теги после sanitize
-                <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: previewHtml(renderPreview(draft, samples, raw)) }} />
-              ) : (
-                <span className="whitespace-pre-wrap">{renderPlain(draft, samples)}</span>
-              )}
-            </MessageBubble>
-          </div>
           {shownVars.length > 0 && (
             <div className="rounded-lg bg-surface px-4 py-2 shadow-card">
               {shownVars.map((v) => (

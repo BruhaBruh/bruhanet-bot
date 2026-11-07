@@ -49,6 +49,7 @@ type conditionOut struct {
 type templateOut struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
+	Key   string `json:"key"` // текст кнопки реестра, которым подписан каждый элемент блока
 }
 
 type catalogs struct {
@@ -66,7 +67,7 @@ func buildCatalogs() catalogs {
 		c.Actions = append(c.Actions, actionOut{ID: a.ID, Title: a.Title, Kind: string(a.Kind), Guard: a.Guard, Bound: a.Bound})
 	}
 	for _, x := range texts.Templates() {
-		c.Templates = append(c.Templates, templateOut{x.ID, x.Title})
+		c.Templates = append(c.Templates, templateOut{x.ID, x.Title, x.Key})
 	}
 	return c
 }
