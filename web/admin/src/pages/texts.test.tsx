@@ -412,17 +412,24 @@ describe('Texts', () => {
       expect(puts()).toEqual([{ url: '/api/texts/btn', method: 'PUT', body: { body: 'Платить', style: 'danger' } }])
     })
 
-    it('buttons outside any layout keep a simple card; no card for plain messages', async () => {
+    it('button texts are not in the list; system buttons live in a modal with only unplaced buttons', async () => {
       replies['PUT /api/texts/btn'] = json(204)
-      await open('/texts?key=loose')
-      edit(screen.getByRole('textbox', { name: 'Текст кнопки Кнопка' }), 'Платить')
-      fireEvent.click(btn('Сохранить кнопки'))
+      replies['DELETE /api/texts/btn'] = json(204)
+      await open('/texts?key=a')
+      expect(list().queryByText('Кнопка')).toBeNull()
+      expect(list().queryByText('Информация')).toBeNull()
+      fireEvent.click(btn('Системные кнопки'))
+      await flush()
+      const sheet = within(screen.getByRole('dialog'))
+      expect(sheet.getByRole('textbox', { name: 'Текст кнопки Кнопка' })).toBeTruthy()
+      expect(sheet.queryByRole('textbox', { name: 'Текст кнопки Оплатить' })).toBeNull() // стоит в раскладке
+      edit(sheet.getByRole('textbox', { name: 'Текст кнопки Кнопка' }), 'Платить')
+      const save = sheet.getByRole('button', { name: 'Сохранить кнопку Кнопка' })
+      fireEvent.click(save)
+      fireEvent.click(save)
       await flush()
       expect(puts()).toEqual([{ url: '/api/texts/btn', method: 'PUT', body: { body: 'Платить', style: 'success' } }])
-      fireEvent.click(list().getByText('Текст A'))
-      await flush()
       expect(screen.queryByText('Сохранить кнопки')).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Сохранить клавиатуру' })).toBeNull()
     })
   })
 

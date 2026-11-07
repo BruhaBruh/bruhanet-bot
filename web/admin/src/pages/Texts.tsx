@@ -9,7 +9,8 @@ import { previewHtml, renderPlain, renderPreview, varLabel, visibleLen } from '.
 import { formatCount } from '../format'
 import { previewStyle } from '../lib/button-rows'
 import type { KeyboardInfo, KeyboardSlot, TextItem, TextVar } from '../types'
-import { ButtonFields, KeyboardCard, type SlotView } from './keyboard-editor'
+import { KeyboardCard, type SlotView } from './keyboard-editor'
+import { SystemButtons } from './system-buttons'
 import { sameLayout, type Layout } from './keyboard-layout'
 
 const path = (c: TextItem) => `/api/texts/${encodeURIComponent(c.key)}`
@@ -38,6 +39,7 @@ export default function Texts() {
   const [layouts, setLayouts] = useState<Record<string, Layout>>({})
   const [previewKb, setPreviewKb] = useState<string>()
   const [resetKb, setResetKb] = useState<string>()
+  const [sysOpen, setSysOpen] = useState(false)
   const [failure, setFailure] = useState<{ key: string; scope: string; message: string }>()
   const [busy, setBusy] = useState<Action>()
   const inFlight = useRef(false)
@@ -100,8 +102,9 @@ export default function Texts() {
   const layoutDirty = (kb: KeyboardInfo) => !sameLayout(layoutOf(kb), kb)
   const buttonKeys = (kb: KeyboardInfo) => kb.slots.filter((x) => x.kind === 'button').map((x) => x.id)
   const kbDirty = (kb: KeyboardInfo) => layoutDirty(kb) || buttonKeys(kb).some(buttonDirty)
-  // Кнопки сообщения, которых нет ни в одной раскладке (одиночная «Назад» и т. п.): только подпись и стиль.
-  const loose = !cur || cur.kind !== 'message' ? [] : cur.buttons.filter((k) => byKey(k) && !keyboards.some((kb) => kb.slots.some((x) => x.id === k)))
+  // Кнопки, которых нет ни в одной раскладке (одиночная «Назад», сервисные): правятся окном «Системные кнопки».
+  const placed = new Set(items.flatMap((i) => (i.keyboards ?? []).flatMap((kb) => kb.slots.map((x) => x.id))))
+  const system = items.filter((i) => i.kind === 'button' && !placed.has(i.key))
   const sampleMap = (it?: TextItem) => Object.fromEntries([...globals, ...(it?.vars ?? [])].map((v) => [v.name, v.sample]))
   const viewOf = (slot: KeyboardSlot): SlotView => {
     const it = byKey(slot.id)
@@ -125,6 +128,7 @@ export default function Texts() {
   const s = q.trim().toLowerCase()
   const groups = new Map<string, TextItem[]>()
   for (const i of items) {
+    if (i.kind === 'button') continue
     if (s && ![i.title, i.key, draftOf(i)].some((v) => v.toLowerCase().includes(s))) continue
     groups.set(i.group, [...(groups.get(i.group) ?? []), i])
   }
@@ -209,11 +213,6 @@ export default function Texts() {
       },
       kb.id,
     )
-  const saveLoose = () =>
-    run('save', cur, async () => {
-      await putButtons(loose)
-      toast('Кнопки сохранены', { icon: 'check' })
-    }, 'loose')
   const resetKeyboard = (kb: KeyboardInfo) =>
     run(
       'reset',
@@ -241,6 +240,7 @@ export default function Texts() {
 
   return (
     <div className="flex flex-wrap items-start gap-6">
+      {sysOpen && <SystemButtons items={system} onClose={() => setSysOpen(false)} onChanged={refresh} />}
       {resetKb && (
         <Dialog
           title="Вернуть клавиатуру как в коде?"
@@ -260,6 +260,9 @@ export default function Texts() {
         />
       )}
       <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-(--spacing(12)))]">
+        <Button variant="gray" icon="gear" disabled={!system.length} onClick={() => setSysOpen(true)}>
+          Системные кнопки
+        </Button>
         <SearchField placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
         {/* Длинный список прокручивается сам: не отодвигает редактор и на компьютере закреплён рядом с ним. */}
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-lg:max-h-72">
@@ -420,36 +423,6 @@ export default function Texts() {
               )}
             </div>
           ))}
-
-          {loose.length > 0 && (
-            <Card title="Кнопки" className="gap-3">
-              {loose.map((k) => {
-                const b = byKey(k)!
-                return (
-                  <div key={k} className="flex min-w-0 flex-col gap-2 rounded-md bg-fill-tertiary p-3">
-                    <ButtonFields
-                      id={k}
-                      view={{ title: b.title, label: draftOf(b), style: styleOf(b), route: b.route }}
-                      busy={!!busy}
-                      onLabel={(v) => setDrafts((d) => ({ ...d, [k]: v }))}
-                      onStyle={(v) => setStyleDrafts((d) => ({ ...d, [k]: v }))}
-                    />
-                  </div>
-                )
-              })}
-              <span className="footnote text-text-secondary">Действие кнопки задаётся в коде бота. Подпись и стиль общие для всех сообщений с этой кнопкой.</span>
-              {failure?.key === cur.key && failure.scope === 'loose' && (
-                <p role="alert" className="admin-body text-destructive-strong">
-                  {failure.message}
-                </p>
-              )}
-              <div className="flex justify-end">
-                <Button loading={busy === 'save'} disabled={!!busy || !loose.some(buttonDirty)} onClick={saveLoose}>
-                  Сохранить кнопки
-                </Button>
-              </div>
-            </Card>
-          )}
         </div>
       )}
 
