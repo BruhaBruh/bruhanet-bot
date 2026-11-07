@@ -1,10 +1,12 @@
 package routes_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bruhabruh/bruhanet/bot/internal/handler/routes"
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
 	"github.com/bruhabruh/bruhanet/core/model"
 )
@@ -349,5 +351,30 @@ func TestDevicesAtTheCap(t *testing.T) {
 	e.process(t, tgtest.Callback(userID, "devc"))
 	if !strings.Contains(e.text(t), "максимум устройств") {
 		t.Fatalf("custom at the cap: %s", e.text(t))
+	}
+}
+
+// Лимит нового юзера: временный сбой панели повторяется (до 3 попыток), потом лишь предупреждение — платёж не страдает.
+func TestNewUserDeviceLimitIsRetried(t *testing.T) {
+	t.Cleanup(routes.SetDeviceLimitPause(0))
+
+	e := newEnv(t) // юзера в панели нет: «Да» на тарифе заводит его и пишет лимит базы
+	e.rw.FailLimitTimes(2, errors.New("panel blip"))
+	e.process(t, tgtest.Callback(userID, "buy:6"))
+	if w := e.rw.DeviceLimitWrites(); len(w) != 1 || w[0].Limit != 5 {
+		t.Fatalf("limit writes after a blip = %+v", w)
+	}
+
+	e = newEnv(t)
+	e.rw.FailLimitTimes(10, errors.New("panel down"))
+	e.process(t, tgtest.Callback(userID, "buy:6"))
+	if w := e.rw.DeviceLimitWrites(); len(w) != 0 {
+		t.Fatalf("a down panel must not record a limit: %+v", w)
+	}
+	if all := e.pay.All(); len(all) != 1 || all[0].Status != model.PaymentPending {
+		t.Fatalf("the payment must survive a failed limit write: %+v", all)
+	}
+	if !strings.Contains(e.log.String(), "failed to set device limit of a new user") {
+		t.Fatalf("no warning: %s", e.log)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/go-telegram/bot"
@@ -323,9 +324,26 @@ func (h *handlers) ensureUser(ctx context.Context, id int64, username string, ex
 	if err != nil {
 		return nil, err
 	}
-	if _, lerr := h.rw.SetDeviceLimit(ctx, id, h.c.Settings(ctx).DevicesBase+extra); lerr != nil {
-		// юзер создан, лимит дойдёт при первом событии с устройствами; платёж из-за этого не роняем
-		stlog.Warn(ctx, "failed to set device limit of a new user", "error", lerr)
+	// Новому юзеру панельный лимит по умолчанию не годится: пишем базу, при временном сбое повторяем. Не вышло, юзер
+	// создан: лимит дойдёт при первом событии с устройствами, платёж из-за этого не роняем.
+	limit := h.c.Settings(ctx).DevicesBase + extra
+	var lerr error
+	for attempt := range deviceLimitAttempts {
+		if attempt > 0 {
+			select {
+			case <-time.After(deviceLimitPause * time.Duration(attempt)):
+			case <-ctx.Done():
+			}
+		}
+		if _, lerr = h.rw.SetDeviceLimit(ctx, id, limit); lerr == nil {
+			return user, nil
+		}
 	}
+	stlog.Warn(ctx, "failed to set device limit of a new user", "attempts", deviceLimitAttempts, "error", lerr)
 	return user, nil
 }
+
+// Запись лимита нового юзера: до deviceLimitAttempts попыток с нарастающей паузой (в тестах пауза 0).
+const deviceLimitAttempts = 3
+
+var deviceLimitPause = 300 * time.Millisecond

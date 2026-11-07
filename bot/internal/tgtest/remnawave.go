@@ -27,16 +27,18 @@ type DeviceLimitWrite struct {
 
 // Remnawave — фейк панели для тестов хендлеров.
 type Remnawave struct {
-	mu        sync.Mutex
-	now       func() time.Time
-	users     map[int64]api.UserItemInfo
-	updates   []RemnawaveUpdate
-	limits    []DeviceLimitWrite
-	err       error
-	updErr    error
-	limErr    error
-	failAfter int
-	failErr   error
+	mu         sync.Mutex
+	now        func() time.Time
+	users      map[int64]api.UserItemInfo
+	updates    []RemnawaveUpdate
+	limits     []DeviceLimitWrite
+	err        error
+	updErr     error
+	limErr     error
+	limFailErr error
+	limFails   int // сколько ближайших вызовов SetDeviceLimit упадёт с limFailErr, потом успех
+	failAfter  int
+	failErr    error
 }
 
 func NewRemnawave(now func() time.Time) *Remnawave {
@@ -116,6 +118,13 @@ func (r *Remnawave) FailUpdateWith(err error) {
 	r.updErr = err
 }
 
+// FailLimitTimes: ближайшие n вызовов SetDeviceLimit возвращают err, дальше всё проходит (временный сбой панели).
+func (r *Remnawave) FailLimitTimes(n int, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.limFails, r.limFailErr = n, err
+}
+
 // FailLimitWith заставляет возвращать err только SetDeviceLimit; nil — снять.
 func (r *Remnawave) FailLimitWith(err error) {
 	r.mu.Lock()
@@ -154,6 +163,10 @@ func (r *Remnawave) SetDeviceLimit(_ context.Context, telegramID int64, limit in
 	}
 	if r.limErr != nil {
 		return nil, r.limErr
+	}
+	if r.limFails > 0 {
+		r.limFails--
+		return nil, r.limFailErr
 	}
 	u, ok := r.users[telegramID]
 	if !ok {
