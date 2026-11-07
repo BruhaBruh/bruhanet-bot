@@ -699,3 +699,67 @@ func TestDeleteGiftRacesRedeem(t *testing.T) {
 		}
 	}
 }
+
+// Отзыв оплаченного подарка (кнопкой «Отозвать» или «Удалить» у готового) сообщает покупателю в той же транзакции;
+// подарок админа без покупателя, повторный отзыв и удаление уже отозванного ничего не шлют.
+func TestGiftRevokeNotifiesBuyer(t *testing.T) {
+	f := newGiftFixture(t)
+	ctx := t.Context()
+	f.touch(t, 1)
+	cancelled := func() []model.OutboxItem {
+		var out []model.OutboxItem
+		for _, it := range f.outbox(t) {
+			if it.TextKey == "gift.cancelled" {
+				out = append(out, it)
+			}
+		}
+		return out
+	}
+
+	code := f.ready(t, 1, 3)
+	var id int64
+	if err := f.s.pool.QueryRow(ctx, `SELECT id FROM gifts WHERE code = $1`, code).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.CancelGift(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	n := cancelled()
+	if len(n) != 1 || n[0].ChatID != 1 || n[0].Months != 3 || n[0].EventType != "gift_cancelled" {
+		t.Fatalf("notice = %+v", n)
+	}
+	if err := f.s.CancelGift(ctx, id); !errors.Is(err, ErrGiftNotActive) || len(cancelled()) != 1 {
+		t.Fatalf("repeat cancel: %v, notices %d", err, len(cancelled()))
+	}
+	if err := f.s.DeleteGift(ctx, id); err != nil || len(cancelled()) != 1 { // уже отозван: молча
+		t.Fatalf("delete of a cancelled gift: %v, notices %d", err, len(cancelled()))
+	}
+
+	// «Удалить» готовый купленный: отзыв и удаление одним шагом, покупатель узнаёт
+	code2 := f.ready(t, 1, 6)
+	var id2 int64
+	if err := f.s.pool.QueryRow(ctx, `SELECT id FROM gifts WHERE code = $1`, code2).Scan(&id2); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.DeleteGift(ctx, id2); err != nil {
+		t.Fatal(err)
+	}
+	if n := cancelled(); len(n) != 2 || n[1].Months != 6 {
+		t.Fatalf("delete of a ready gift: %+v", n)
+	}
+
+	// подарок админа: покупателя нет, слать некому
+	admin, err := f.s.CreateAdminGifts(ctx, 1, 2, f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.CancelGift(ctx, admin[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.DeleteGift(ctx, admin[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(cancelled()) != 2 {
+		t.Fatalf("admin gifts must not notify: %d", len(cancelled()))
+	}
+}

@@ -83,8 +83,12 @@ const giftJoins = `g LEFT JOIN users b ON b.telegram_id = g.buyer_id LEFT JOIN u
 // другой статус — ErrGiftNotActive (активированный подарок отменить нельзя).
 func (s *Store) CancelGift(ctx context.Context, id int64) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
-		var st model.GiftStatus
-		if err := tx.QueryRow(ctx, `SELECT status FROM gifts WHERE id = $1 FOR UPDATE`, id).Scan(&st); errors.Is(err, pgx.ErrNoRows) {
+		var (
+			st     model.GiftStatus
+			buyer  *int64
+			months int
+		)
+		if err := tx.QueryRow(ctx, `SELECT status, buyer_id, months FROM gifts WHERE id = $1 FOR UPDATE`, id).Scan(&st, &buyer, &months); errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		} else if err != nil {
 			return err
@@ -92,9 +96,20 @@ func (s *Store) CancelGift(ctx context.Context, id int64) error {
 		if st != model.GiftReady {
 			return ErrGiftNotActive
 		}
-		_, err := tx.Exec(ctx, `UPDATE gifts SET status = 'cancelled' WHERE id = $1`, id)
-		return err
+		if _, err := tx.Exec(ctx, `UPDATE gifts SET status = 'cancelled' WHERE id = $1`, id); err != nil {
+			return err
+		}
+		return notifyGiftCancelled(ctx, tx, buyer, months)
 	})
+}
+
+// notifyGiftCancelled кладёт покупателю уведомление об отозванном подарке (текст gift.cancelled, рендерит воркер при
+// доставке). Подарок админа без покупателя ничего не шлёт. Лежит в транзакции отзыва: нет отзыва — нет уведомления.
+func notifyGiftCancelled(ctx context.Context, tx pgx.Tx, buyer *int64, months int) error {
+	if buyer == nil {
+		return nil
+	}
+	return enqueue(ctx, tx, model.OutboxMessage{EventType: "gift_cancelled", ChatID: *buyer, TextKey: "gift.cancelled", Months: months, ParseMode: "HTML"})
 }
 
 // DeleteGift удаляет подарок в статусе ready (отзыв и удаление одним шагом) или cancelled. Подарок админа
@@ -108,9 +123,11 @@ func (s *Store) DeleteGift(ctx context.Context, id int64) error {
 			st      model.GiftStatus
 			paid    bool
 			deleted bool
+			buyer   *int64
+			months  int
 		)
-		if err := tx.QueryRow(ctx, `SELECT status, payment_id IS NOT NULL, deleted_at IS NOT NULL FROM gifts WHERE id = $1 FOR UPDATE`, id).
-			Scan(&st, &paid, &deleted); errors.Is(err, pgx.ErrNoRows) {
+		if err := tx.QueryRow(ctx, `SELECT status, payment_id IS NOT NULL, deleted_at IS NOT NULL, buyer_id, months FROM gifts WHERE id = $1 FOR UPDATE`, id).
+			Scan(&st, &paid, &deleted, &buyer, &months); errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		} else if err != nil {
 			return err
@@ -120,7 +137,14 @@ func (s *Store) DeleteGift(ctx context.Context, id int64) error {
 			return nil
 		case st != model.GiftReady && st != model.GiftCancelled:
 			return ErrNotDeletable
-		case paid:
+		}
+		// ready отзывается этим же шагом: покупатель узнает (уже отозванный подарок ему сообщили при отзыве)
+		if st == model.GiftReady {
+			if err := notifyGiftCancelled(ctx, tx, buyer, months); err != nil {
+				return err
+			}
+		}
+		if paid {
 			_, err := tx.Exec(ctx, `UPDATE gifts SET status = 'cancelled', deleted_at = now() WHERE id = $1`, id)
 			return err
 		}

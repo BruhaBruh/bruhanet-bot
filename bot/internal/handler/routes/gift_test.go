@@ -221,3 +221,12 @@ func TestRedeemGiftPanelFailure(t *testing.T) {
 		t.Fatalf("retry failed: %+v", g[0])
 	}
 }
+
+// Покупателю при отзыве подарка приходит gift.cancelled с главным меню.
+func TestGiftCancelledNotice(t *testing.T) {
+	e := newEnv(t)
+	text, kb := routes.GiftNotice(t.Context(), e.c, e.rw, "bot", model.OutboxMessage{ChatID: userID, TextKey: "gift.cancelled", Months: 6})
+	if !strings.Contains(text, "Подарок отозван") || !strings.Contains(text, "6 месяцев") || kb == nil {
+		t.Fatalf("text = %q kb = %v", text, kb)
+	}
+}

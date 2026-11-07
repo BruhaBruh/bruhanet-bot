@@ -80,6 +80,7 @@ var mapEntries = []MapEntry{
 	}},
 	{ID: "ev_referrer", Kind: "event", Title: "Друг впервые оплатил", When: "Подтверждена первая оплата приглашённого", Targets: tg("referral.referrer_bonus")},
 	{ID: "ev_gift_used", Kind: "event", Title: "Подарок активирован", When: "Кто-то открыл ссылку подарка", Targets: tg("gift.redeemed_buyer")},
+	{ID: "ev_gift_revoked", Kind: "event", Title: "Админ отозвал подарок", When: "Кнопка «Отозвать» или «Удалить» у готового подарка", Targets: tg("gift.cancelled")},
 	{ID: "ev_error", Kind: "event", Title: "Сбой", When: "Панель, база или сохранение не ответили", Targets: tg("error.generic")},
 }
 
