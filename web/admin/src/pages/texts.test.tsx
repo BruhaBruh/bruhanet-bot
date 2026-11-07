@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/ui'
 import type { TgEditorHandle, TgEditorProps } from '../editor/TgEditor'
-import type { KeyboardInfo, TextItem } from '../types'
+import type { KbCellOut, MessageKeyboard, TextItem } from '../types'
 import Texts from './Texts'
 
 // Редактор подменён: тест читает value и правит через onChange.
@@ -39,30 +39,44 @@ const text = (key: string, title: string, body: string, over: Partial<TextItem> 
   when: `Когда ${title.slice(-1)}`,
   buttons: [],
   style: '',
-  keyboards: [],
+  keyboard: null,
   ...over,
 })
 
-const slotOf = (id: string, over = {}) => ({ id, kind: 'button' as const, label: id, removable: true, style: '', ...over })
-const menuKb = (over: Partial<KeyboardInfo> = {}): KeyboardInfo => ({
-  id: 'menu',
-  title: 'Меню',
-  messages: ['withKb', 'other'],
-  slots: [
-    slotOf('button.pay', { label: 'Оплатить', removable: false, style: 'success' }),
-    slotOf('button.info', { label: 'Инфо' }),
-    slotOf('button.help', { label: 'Помощь' }),
-    { id: '@tariffs', kind: 'dynamic' as const, label: 'тарифы (из настроек)' },
+const cellOf = (id: string, over: Partial<KbCellOut> = {}): KbCellOut => ({
+  id,
+  key: `button.${id}`,
+  action: `route:${id}`,
+  conditions: [],
+  locked: false,
+  template: false,
+  effective: { label: id, preview: id, style: '' },
+  ...over,
+})
+const tplCell = (id: string): KbCellOut => ({ id: `@${id}`, action: `template:${id}`, conditions: [], locked: true, template: true })
+const rowsOf = (): KbCellOut[][] => [
+  [cellOf('pay', { locked: true, effective: { label: 'Оплатить', preview: 'Оплатить', style: 'success' } }), cellOf('info', { effective: { label: 'Инфо', preview: 'Инфо', style: '' } })],
+  [tplCell('tariffs')],
+  [cellOf('trial', { conditions: [{ id: 'trial_available' }], effective: { label: 'Пробный', preview: 'Пробный', style: '' } })],
+]
+const menuKb = (over: Partial<MessageKeyboard> = {}): MessageKeyboard => ({ rows: rowsOf(), default: rowsOf(), overridden: false, locked: ['pay', '@tariffs'], ...over })
+const catalogs = {
+  conditions: [
+    { id: 'in_panel', title: 'Юзер есть в панели', description: 'описание 1' },
+    { id: 'trial_available', title: 'Пробный доступен', description: 'описание 2' },
   ],
-  rows: [['button.pay', 'button.info'], ['@tariffs'], ['button.help']],
-  hidden: [],
-  default: [['button.pay', 'button.info'], ['@tariffs'], ['button.help']],
-  overridden: false,
-  ...over,
-})
-const btnText = (key: string, title: string, body: string, over: Partial<TextItem> = {}) =>
-  text(key, title, body, { kind: 'button', group: 'Кнопки', route: key.slice(7), style: '', ...over })
-
+  actions: [
+    { id: 'route:pay', title: 'Оплата', kind: 'route', bound: false },
+    { id: 'route:info', title: 'Информация', kind: 'route', bound: false },
+    { id: 'route:menu', title: 'Меню', kind: 'route', bound: false },
+    { id: 'route:trial', title: 'Пробный период', kind: 'route', guard: 'trial_available', bound: false },
+    { id: 'template:tariffs', title: 'Тарифы', kind: 'template', bound: true },
+  ],
+  templates: [
+    { id: 'tariffs', title: 'Тарифы' },
+    { id: 'devices', title: 'Устройства' },
+  ],
+}
 beforeEach(() => {
   calls = []
   replies = {}
@@ -81,17 +95,12 @@ beforeEach(() => {
       text('v', 'С переменной', 'Привет, {{.name}}! <i>x</i>', {
         vars: [{ name: 'html', description: 'Разметка', sample: '<b>жир</b>', raw: true, max: 100 }],
       }),
-      text('withBtn', 'С кнопкой', 'тело', { buttons: ['btn'] }),
-      text('btn', 'Кнопка', 'Оплатить', { kind: 'button', group: 'Кнопки', route: 'pay', style: 'success' }),
-      text('withKb', 'С клавиатурой', 'тело', { keyboards: [menuKb()], buttons: ['button.pay', 'button.info', 'button.help'] }),
-      text('other', 'Другое', 'иное', { keyboards: [menuKb()] }),
-      text('two', 'Две клавиатуры', 'две', { keyboards: [menuKb({ messages: ['two'] }), menuKb({ id: 'second', title: 'Вторая', messages: ['two'], slots: [slotOf('button.back', { label: 'Назад', removable: false })], rows: [['button.back']], default: [['button.back']] })] }),
-      btnText('button.pay', 'Оплатить', 'Оплатить', { style: 'success' }),
-      btnText('button.info', 'Информация', 'Инфо'),
-      btnText('button.help', 'Помощь', 'Помощь'),
-      text('loose', 'Без раскладки', 'тело', { buttons: ['btn'] }),
+      text('withKb', 'С клавиатурой', 'тело', { keyboard: menuKb() }),
+      text('other', 'Другое', 'иное'),
+      text('loose', 'Без раскладки', 'тело'),
     ],
     globals: [{ name: 'name', description: 'Имя', sample: 'Иван', raw: false, max: 64 }],
+    ...catalogs,
   })
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -230,16 +239,6 @@ describe('Texts', () => {
     expect(preview().querySelector('b')!.textContent).toBe('ok')
   })
 
-  it('button text is a plain input limited to 64 with a counter', async () => {
-    await open('/texts?key=btn')
-    const input = screen.getByRole('textbox', { name: 'Кнопка' }) as HTMLInputElement
-    expect(input.maxLength).toBe(64)
-    expect(input.value).toBe('Оплатить')
-    fireEvent.change(input, { target: { value: 'Купить' } })
-    expect(preview().textContent).toContain('Купить')
-    expect(screen.getByText(/^6 \/ 64$/)).toBeTruthy()
-  })
-
   it('search filters by title, key and text; current item is marked', async () => {
     await open('/texts?key=b')
     expect(list().getByText('Текст B').closest('button')!.getAttribute('aria-current')).toBe('page')
@@ -274,90 +273,108 @@ describe('Texts', () => {
     expect(screen.getByText('Когда B')).toBeTruthy()
   })
 
-  describe('keyboard editor', () => {
-    const preview = () => screen.getByRole('complementary', { name: 'Превью сообщения' })
+  describe('keyboard constructor', () => {
     const kbButtons = () => within(preview()).queryAllByRole('button').map((b) => b.textContent)
     const click = async (name: string | RegExp) => {
       fireEvent.click(screen.getByRole('button', { name }))
       await flush()
     }
     const save = () => screen.getByRole('button', { name: 'Сохранить клавиатуру' }) as HTMLButtonElement
+    const cellBody = (c: Partial<KbCellOut>) => ({ conditions: [], ...c })
 
-    it('renders rows from the API: id above the field, style select, dynamic block placeholder', async () => {
+    it('renders cells: id and action over the field, lock, template block; preview hides conditional buttons', async () => {
       await open('/texts?key=withKb')
-      const input = screen.getByRole('textbox', { name: 'Текст кнопки Оплатить' })
-      const id = screen.getAllByText('button.pay').find((e) => e.tagName === 'CODE')!
+      const input = screen.getByRole('textbox', { name: 'Текст кнопки Оплатить' }) as HTMLInputElement
+      expect(input.placeholder).toBe('Оплатить')
+      expect(input.value).toBe('')
+      const id = screen.getAllByText('pay').find((e) => e.tagName === 'CODE')!
       expect(id.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-      expect(screen.getByText('→ pay')).toBeTruthy()
-      const style = screen.getByRole('combobox', { name: 'Стиль кнопки Оплатить' })
-      expect(style.getAttribute('title')).toBe('Успех')
-      fireEvent.keyDown(style, { key: 'Enter' })
-      expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Обычная', 'Основная', 'Успех', 'Опасная'])
-      fireEvent.keyDown(screen.getAllByRole('option')[0], { key: 'Escape' })
-      expect(screen.queryByRole('radiogroup')).toBeNull()
-      expect(screen.getAllByText('тарифы (из настроек)').length).toBeGreaterThan(0)
-      expect(screen.getByText('Общая для 2 сообщений')).toBeTruthy()
-      expect(screen.getByText('С клавиатурой, Другое')).toBeTruthy()
-      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'тарифы (из настроек)', 'Помощь'])
-      expect(save().disabled).toBe(true)
-    })
-
-    it('every cell has a drag handle (not for arrows); no move or split buttons remain', async () => {
-      await open('/texts?key=withKb')
-      for (const n of ['Оплатить', 'Информация', 'Помощь', 'тарифы (из настроек)']) {
-        expect(screen.getByRole('button', { name: `Перетащить: ${n}` })).toBeTruthy()
-      }
-      expect(screen.queryByRole('button', { name: /^(Выше|Ниже|Левее|Правее|В отдельную строку|В строку с предыдущей)/ })).toBeNull()
-      expect(screen.queryByText('Новый ряд')).toBeNull() // зона «новый ряд» показывается только при перетаскивании
-    })
-
-    it('hide only removable buttons; locked one has a tooltip hint; chips bring them back', async () => {
-      await open('/texts?key=withKb')
-      expect(screen.queryByRole('button', { name: 'Скрыть: Оплатить' })).toBeNull()
+      expect(screen.getAllByText('→ Оплата').length).toBe(1)
+      expect(screen.getByRole('combobox', { name: 'Стиль кнопки Оплатить' }).getAttribute('title')).toBe('Успех')
       expect(screen.getByRole('img', { name: /Нужна для работы бота: Оплатить/ })).toBeTruthy()
-      await click('Скрыть: Информация')
-      expect(kbButtons()).toEqual(['Оплатить', 'тарифы (из настроек)', 'Помощь'])
-      expect(screen.getByText('Скрытые кнопки')).toBeTruthy()
-      await click('Показать: Информация')
-      expect(kbButtons()).toEqual(['Оплатить', 'тарифы (из настроек)', 'Помощь', 'Инфо'])
+      expect(screen.queryByRole('button', { name: 'Убрать: Оплатить' })).toBeNull()
+      expect((screen.getByRole('button', { name: 'Действие: Оплатить' }) as HTMLButtonElement).disabled).toBe(true)
+      expect(screen.getByText('Шаблон: Тарифы')).toBeTruthy()
+      expect(screen.getByRole('checkbox', { name: 'Пробный доступен' })).toBeTruthy()
+      expect(save().disabled).toBe(true)
+      // пробный скрыт, пока «Пробный доступен» не отмечено
+      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'Тарифы'])
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Пробный доступен' }))
+      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'Тарифы', 'Пробный'])
     })
 
-    it('save: button PUTs first, then the layout; one request per click; list is reloaded', async () => {
-      replies['PUT /api/texts/button.info'] = () => new Promise((r) => setTimeout(() => r(json(204)()), 10))
-      replies['PUT /api/keyboards/menu'] = json(204)
+    it('own label and style go to PUT /keyboard, one request per click, list is reloaded', async () => {
+      replies['PUT /api/texts/withKb/keyboard'] = () => new Promise((r) => setTimeout(() => r(json(204)()), 10))
       await open('/texts?key=withKb')
-      edit(screen.getByRole('textbox', { name: 'Текст кнопки Информация' }), 'О боте')
-      await pickStyle('Стиль кнопки Информация', 'Основная')
+      edit(screen.getByRole('textbox', { name: 'Текст кнопки Инфо' }), 'О боте')
+      await pickStyle('Стиль кнопки О боте', 'Основная')
       expect(kbButtons()).toContain('О боте')
-      await click('Скрыть: Помощь')
-      const saveBtn = save()
-      fireEvent.click(saveBtn)
-      fireEvent.click(saveBtn)
+      const b = save()
+      fireEvent.click(b)
+      fireEvent.click(b)
       await wait(40)
-      expect(puts()).toEqual([
-        { url: '/api/texts/button.info', method: 'PUT', body: { body: 'О боте', style: 'primary' } },
-        { url: '/api/keyboards/menu', method: 'PUT', body: { rows: [['button.pay', 'button.info'], ['@tariffs']], hidden: ['button.help'] } },
-      ])
+      const sent = puts()
+      expect(sent).toHaveLength(1)
+      expect(sent[0].url).toBe('/api/texts/withKb/keyboard')
+      expect((sent[0].body as { rows: unknown[][] }).rows[0][1]).toEqual(cellBody({ id: 'info', key: 'button.info', label: 'О боте', style: 'primary', action: 'route:info' }))
       expect(calls.filter((c) => c.url === '/api/texts' && c.method === 'GET')).toHaveLength(2)
     })
 
-    it('save error is shown next to the keyboard; reset needs confirmation', async () => {
-      replies['PUT /api/keyboards/menu'] = json(400, { error: 'invalid', message: 'в ряду не больше 2 кнопок' })
+    it('«+ Кнопка» adds an editable cell; removing works only for non-locked cells', async () => {
       await open('/texts?key=withKb')
-      await click('Скрыть: Информация')
+      await click('+ Кнопка')
+      expect(screen.getByRole('textbox', { name: 'Текст кнопки Кнопка' })).toBeTruthy()
+      expect(kbButtons()).toContain('Кнопка')
+      await click('Убрать: Кнопка')
+      expect(kbButtons()).not.toContain('Кнопка')
+      await click('Убрать: Инфо')
+      expect(kbButtons()).toEqual(['Оплатить', 'Тарифы'])
+      expect(save().disabled).toBe(false)
+      await click('Отменить')
+      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'Тарифы'])
+    })
+
+    it('action modal switches to a link; conditions modal sets НЕ', async () => {
+      replies['PUT /api/texts/withKb/keyboard'] = json(204)
+      await open('/texts?key=withKb')
+      await click('Действие: Инфо')
+      const sheet = () => within(screen.getByRole('dialog'))
+      fireEvent.keyDown(sheet().getByRole('combobox', { name: 'Действие кнопки' }), { key: 'Enter' })
+      fireEvent.click(await screen.findByRole('option', { name: 'Ссылка (https)' }))
+      edit(sheet().getByRole('textbox', { name: 'Адрес ссылки' }), 'https://example.com/x')
+      await click('Готово')
+      await click('Условия: Инфо')
+      fireEvent.click(sheet().getByRole('checkbox', { name: 'Юзер есть в панели' }))
+      fireEvent.click(sheet().getByRole('checkbox', { name: 'НЕ (наоборот)' }))
+      await click('Готово')
+      expect(screen.getByText('НЕ Юзер есть в панели')).toBeTruthy()
+      fireEvent.click(save())
+      await flush()
+      expect((puts()[0].body as { rows: unknown[][] }).rows[0][1]).toMatchObject({ id: 'info', action: 'url:https://example.com/x', conditions: [{ id: 'in_panel', not: true }] })
+    })
+
+    it('template picker adds a template once', async () => {
+      await open('/texts?key=withKb')
+      fireEvent.keyDown(screen.getByRole('combobox', { name: 'Добавить шаблон' }), { key: 'Enter' })
+      expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Тарифы', 'Устройства'].filter((t) => t !== 'Тарифы'))
+      fireEvent.click(screen.getByRole('option', { name: 'Устройства' }))
+      await flush()
+      expect(screen.getByText('Шаблон: Устройства')).toBeTruthy()
+      expect(screen.queryByRole('combobox', { name: 'Добавить шаблон' })).toBeNull()
+    })
+
+    it('save error is shown next to the keyboard', async () => {
+      replies['PUT /api/texts/withKb/keyboard'] = json(400, { error: 'invalid', message: 'в ряду не больше 2 кнопок' })
+      await open('/texts?key=withKb')
+      await click('+ Кнопка')
       fireEvent.click(save())
       await wait(10)
       expect(screen.getByRole('alert').textContent).toBe('в ряду не больше 2 кнопок')
-
-      expect((screen.getByRole('button', { name: 'Вернуть как в коде' }) as HTMLButtonElement).disabled).toBe(true) // не переопределена
     })
 
-    it('reset goes through a dialog and sends DELETE', async () => {
-      replies['DELETE /api/keyboards/menu'] = json(204)
-      replies['GET /api/texts'] = json(200, {
-        items: [text('withKb', 'С клавиатурой', 'тело', { keyboards: [menuKb({ overridden: true, rows: [['button.info'], ['button.pay']] })] })],
-        globals: [],
-      })
+    it('reset goes through a dialog and sends DELETE /keyboard', async () => {
+      replies['DELETE /api/texts/withKb/keyboard'] = json(204)
+      replies['GET /api/texts'] = json(200, { items: [text('withKb', 'С клавиатурой', 'тело', { keyboard: menuKb({ overridden: true }) })], globals: [], ...catalogs })
       await open('/texts?key=withKb')
       await click('Вернуть как в коде')
       expect(screen.getByRole('alertdialog')).toBeTruthy()
@@ -365,59 +382,32 @@ describe('Texts', () => {
       expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
       await click('Вернуть как в коде')
       await click('Вернуть')
-      expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/api/keyboards/menu'])
+      expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/api/texts/withKb/keyboard'])
     })
 
-    it('inactive stored layout is announced', async () => {
+    it('inactive stored keyboard is announced; message without keyboard has no card', async () => {
       replies['GET /api/texts'] = json(200, {
-        items: [text('withKb', 'С клавиатурой', 'тело', { keyboards: [menuKb({ overridden: true, inactive: true, problem: 'кнопку «Оплатить» нельзя убрать' })] })],
+        items: [text('withKb', 'С клавиатурой', 'тело', { keyboard: menuKb({ overridden: true, inactive: true, problem: 'кнопку «Оплатить» нельзя убрать' }) }), text('plain', 'Без кнопок', 'x')],
         globals: [],
+        ...catalogs,
       })
       await open('/texts?key=withKb')
-      expect(screen.getByRole('alert').textContent).toContain('Сохранённая раскладка не применяется')
+      expect(screen.getByRole('alert').textContent).toContain('Сохранённая клавиатура не применяется')
       expect(screen.getByRole('alert').textContent).toContain('нельзя убрать')
+      fireEvent.click(list().getByText('Без кнопок'))
+      await flush()
+      expect(screen.queryByRole('button', { name: 'Сохранить клавиатуру' })).toBeNull()
     })
 
-    it('two keyboards: both cards, preview switches between them', async () => {
-      await open('/texts?key=two')
-      expect(screen.getByText('Клавиатура: Меню')).toBeTruthy()
-      expect(screen.getByText('Клавиатура: Вторая')).toBeTruthy()
-      expect(kbButtons()).toContain('Оплатить')
-      fireEvent.click(within(preview()).getByRole('radio', { name: 'Вторая' }))
-      await flush()
-      expect(kbButtons()).toEqual(['Назад'])
-    })
-
-    it('button text: label input, style select and id above; saved with style', async () => {
-      replies['PUT /api/texts/btn'] = json(204)
-      await open('/texts?key=btn')
-      expect(screen.getAllByText('btn').some((e) => e.tagName === 'CODE')).toBe(true)
-      expect(screen.queryByRole('radiogroup')).toBeNull()
-      await pickStyle('Стиль кнопки', 'Опасная')
-      edit(screen.getByRole('textbox', { name: 'Кнопка' }), 'Платить')
-      fireEvent.click(btn('Сохранить'))
-      await flush()
-      expect(puts()).toEqual([{ url: '/api/texts/btn', method: 'PUT', body: { body: 'Платить', style: 'danger' } }])
-    })
-
-    it('button texts are not in the list; system buttons live in a modal with only unplaced buttons', async () => {
-      replies['PUT /api/texts/btn'] = json(204)
-      replies['DELETE /api/texts/btn'] = json(204)
-      await open('/texts?key=a')
-      expect(list().queryByText('Кнопка')).toBeNull()
-      expect(list().queryByText('Информация')).toBeNull()
-      fireEvent.click(btn('Системные кнопки'))
-      await flush()
-      const sheet = within(screen.getByRole('dialog'))
-      expect(sheet.getByRole('textbox', { name: 'Текст кнопки Кнопка' })).toBeTruthy()
-      expect(sheet.queryByRole('textbox', { name: 'Текст кнопки Оплатить' })).toBeNull() // стоит в раскладке
-      edit(sheet.getByRole('textbox', { name: 'Текст кнопки Кнопка' }), 'Платить')
-      const save = sheet.getByRole('button', { name: 'Сохранить кнопку Кнопка' })
-      fireEvent.click(save)
-      fireEvent.click(save)
-      await flush()
-      expect(puts()).toEqual([{ url: '/api/texts/btn', method: 'PUT', body: { body: 'Платить', style: 'success' } }])
-      expect(screen.queryByText('Сохранить кнопки')).toBeNull()
+    it('button texts are not in the list', async () => {
+      replies['GET /api/texts'] = json(200, {
+        items: [text('a', 'Текст A', 'x'), text('button.pay', 'Оплатить', 'Оплатить', { kind: 'button', group: 'Кнопки' })],
+        globals: [],
+        ...catalogs,
+      })
+      await open('/texts')
+      expect(list().queryByText('Оплатить')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Системные кнопки' })).toBeNull()
     })
   })
 

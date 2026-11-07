@@ -50,9 +50,6 @@ type Store interface {
 	ClearTextBody(ctx context.Context, key string) error
 	TextStyles(ctx context.Context) (map[string]string, error)
 	SetTextStyle(ctx context.Context, key string, style *string) error
-	KeyboardLayouts(ctx context.Context) (map[string]texts.Layout, error)
-	SaveKeyboardLayout(ctx context.Context, id string, l texts.Layout) error
-	DeleteKeyboardLayout(ctx context.Context, id string) error
 	MessageKeyboards(ctx context.Context) (map[string]texts.MsgLayout, error)
 	SaveMessageKeyboard(ctx context.Context, key string, l texts.MsgLayout) error
 	DeleteMessageKeyboard(ctx context.Context, key string) error
@@ -169,8 +166,6 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("PUT /api/texts/{key}", s.putText)
 	apiMux.HandleFunc("DELETE /api/texts/{key}", s.deleteText)
 	apiMux.HandleFunc("POST /api/texts/{key}/test", s.testText)
-	apiMux.HandleFunc("PUT /api/keyboards/{id}", s.putKeyboard)
-	apiMux.HandleFunc("DELETE /api/keyboards/{id}", s.deleteKeyboard)
 	apiMux.HandleFunc("PUT /api/texts/{key}/keyboard", s.putMessageKeyboard)
 	apiMux.HandleFunc("DELETE /api/texts/{key}/keyboard", s.deleteMessageKeyboard)
 	apiMux.HandleFunc("GET /api/settings", s.settings)

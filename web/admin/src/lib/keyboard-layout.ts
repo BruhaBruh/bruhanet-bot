@@ -67,13 +67,3 @@ export const dropSide = (l: Layout, id: string, target: Target, blocks: string[]
   const p = plan(l, id, target, blocks)
   return p.layout === l ? undefined : (p.side ?? 'gap')
 }
-
-export const hide = (l: Layout, id: string): Layout => ({
-  rows: l.rows.map((row) => row.filter((x) => x !== id)).filter((row) => row.length > 0),
-  hidden: [...l.hidden, id],
-})
-
-export const canShow = (l: Layout) => l.rows.length < MAX_ROWS
-
-export const show = (l: Layout, id: string): Layout =>
-  canShow(l) ? { rows: [...l.rows, [id]], hidden: l.hidden.filter((x) => x !== id) } : l

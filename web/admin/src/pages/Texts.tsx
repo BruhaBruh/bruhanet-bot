@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Dialog, Input, MessageBubble, RowAction, SearchField, Spinner, StyleSelect, StatusTag, toast } from '@/ui'
+import { Button, Card, Checkbox, Dialog, Input, MessageBubble, SearchField, Spinner, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { previewHtml, renderPlain, renderPreview, varLabel, visibleLen } from '../editor/serialize'
 import { formatCount } from '../format'
 import { previewStyle } from '../lib/button-rows'
-import type { KeyboardInfo, KeyboardSlot, TextItem, TextVar } from '../types'
-import { KeyboardCard, type SlotView } from './keyboard-editor'
-import { SystemButtons } from './system-buttons'
-import { sameLayout, type Layout } from '../lib/keyboard-layout'
+import { payload, sameKb, usedConditions, visibleRows } from '../lib/message-keyboard'
+import type { KbCatalogs, KbCellOut, TextItem, TextVar } from '../types'
+import { MessageKeyboardCard } from './message-keyboard'
+
+interface TextsReply {
+  items: TextItem[]
+  globals: TextVar[]
+  conditions?: KbCatalogs['conditions']
+  actions?: KbCatalogs['actions']
+  templates?: KbCatalogs['templates']
+}
 
 const path = (c: TextItem) => `/api/texts/${encodeURIComponent(c.key)}`
 
@@ -26,6 +33,7 @@ const counter = (n: number, limit: number) => (
 
 type Action = 'save' | 'test' | 'reset'
 const TEXT_SCOPE = 'text'
+const KB_SCOPE = 'keyboard'
 
 export default function Texts() {
   const [params, setParams] = useSearchParams()
@@ -35,11 +43,12 @@ export default function Texts() {
   const [q, setQ] = useState('')
   // черновики по ключу: переключение между текстами не теряет правки, но и не переносит их
   const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [styleDrafts, setStyleDrafts] = useState<Record<string, string>>({})
-  const [layouts, setLayouts] = useState<Record<string, Layout>>({})
-  const [previewKb, setPreviewKb] = useState<string>()
-  const [resetKb, setResetKb] = useState<string>()
-  const [sysOpen, setSysOpen] = useState(false)
+  const [cat, setCat] = useState<KbCatalogs>({ conditions: [], actions: [], templates: [] })
+  // черновики клавиатур по ключу сообщения
+  const [kbDrafts, setKbDrafts] = useState<Record<string, KbCellOut[][]>>({})
+  // «фейк-условия» превью: какие условия считать выполненными
+  const [fake, setFake] = useState<string[]>([])
+  const [resetKb, setResetKb] = useState(false)
   const [failure, setFailure] = useState<{ key: string; scope: string; message: string }>()
   const [busy, setBusy] = useState<Action>()
   const inFlight = useRef(false)
@@ -47,10 +56,11 @@ export default function Texts() {
   const plain = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    get<{ items: TextItem[]; globals: TextVar[] }>('/api/texts').then(
+    get<TextsReply>('/api/texts').then(
       (r) => {
         setItems(r.items)
         setGlobals(r.globals)
+        setCat({ conditions: r.conditions ?? [], actions: r.actions ?? [], templates: r.templates ?? [] })
       },
       () => setLoadError(true),
     )
@@ -64,8 +74,10 @@ export default function Texts() {
     )
   if (!items) return <Spinner className="self-center p-8" />
 
-  const cur = items.find((i) => i.key === params.get('key')) ?? items[0]
-  const isDirty = (i: TextItem) => (drafts[i.key] !== undefined && drafts[i.key] !== i.body) || (styleDrafts[i.key] !== undefined && styleDrafts[i.key] !== i.style)
+  // кнопки реестра в редакторе не показываются: подпись и стиль задаются в клавиатуре сообщения
+  const editable = items.filter((i) => i.kind !== 'button')
+  const cur = editable.find((i) => i.key === params.get('key')) ?? editable[0]
+  const isDirty = (i: TextItem) => drafts[i.key] !== undefined && drafts[i.key] !== i.body
   const draftOf = (i: TextItem) => drafts[i.key] ?? i.body
   const draft = cur ? draftOf(cur) : ''
   const setDraft = (v: string) => cur && setDrafts((d) => ({ ...d, [cur.key]: v }))
@@ -75,68 +87,50 @@ export default function Texts() {
       delete rest[key]
       return rest
     })
-    setStyleDrafts((d) => {
-      const rest = { ...d }
-      delete rest[key]
-      return rest
-    })
   }
   const refresh = () =>
-    get<{ items: TextItem[]; globals: TextVar[] }>('/api/texts').then(
+    get<TextsReply>('/api/texts').then(
       (r) => {
         setItems(r.items)
         setGlobals(r.globals)
+        setCat({ conditions: r.conditions ?? [], actions: r.actions ?? [], templates: r.templates ?? [] })
       },
       () => undefined,
     )
-  const patch = (key: string, body: string, style?: string) =>
-    setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default, inactive: false, problem: undefined, style: style ?? i.style } : i)))
-  const styleOf = (i: TextItem) => styleDrafts[i.key] ?? i.style
-  const byKey = (key: string) => items.find((i) => i.key === key)
-  const buttonDirty = (key: string) => {
-    const b = byKey(key)
-    return !!b && (draftOf(b) !== b.body || styleOf(b) !== b.style)
-  }
-  const keyboards = cur?.kind === 'message' ? (cur.keyboards ?? []) : []
-  const layoutOf = (kb: KeyboardInfo): Layout => layouts[kb.id] ?? { rows: kb.rows, hidden: kb.hidden }
-  const layoutDirty = (kb: KeyboardInfo) => !sameLayout(layoutOf(kb), kb)
-  const buttonKeys = (kb: KeyboardInfo) => kb.slots.filter((x) => x.kind === 'button').map((x) => x.id)
-  const kbDirty = (kb: KeyboardInfo) => layoutDirty(kb) || buttonKeys(kb).some(buttonDirty)
-  // Кнопки, которых нет ни в одной раскладке (одиночная «Назад», сервисные): правятся окном «Системные кнопки».
-  const placed = new Set(items.flatMap((i) => (i.keyboards ?? []).flatMap((kb) => kb.slots.map((x) => x.id))))
-  const system = items.filter((i) => i.kind === 'button' && !placed.has(i.key))
-  const sampleMap = (it?: TextItem) => Object.fromEntries([...globals, ...(it?.vars ?? [])].map((v) => [v.name, v.sample]))
-  const viewOf = (slot: KeyboardSlot): SlotView => {
-    const it = byKey(slot.id)
-    return it
-      ? { title: it.title, label: draftOf(it), style: styleOf(it), route: it.route }
-      : { title: slot.id, label: slot.label, style: slot.style ?? '' }
-  }
-  const shownKb = keyboards.find((k) => k.id === previewKb) ?? keyboards[0]
-  const previewRows = shownKb
-    ? layoutOf(shownKb).rows.map((row) =>
-        row.flatMap((id) => {
-          const slot = shownKb.slots.find((x) => x.id === id)
-          if (!slot) return []
-          if (slot.kind === 'dynamic') return [{ text: slot.label, style: 'default' as const }]
-          const v = viewOf(slot)
-          return [{ text: renderPlain(v.label, sampleMap(byKey(slot.id))) || slot.id, style: previewStyle(v.style) }]
-        }),
-      )
-    : []
-
-  const s = q.trim().toLowerCase()
-  const groups = new Map<string, TextItem[]>()
-  for (const i of items) {
-    if (i.kind === 'button') continue
-    if (s && ![i.title, i.key, draftOf(i)].some((v) => v.toLowerCase().includes(s))) continue
-    groups.set(i.group, [...(groups.get(i.group) ?? []), i])
-  }
+  const patch = (key: string, body: string) => setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default, inactive: false, problem: undefined } : i)))
 
   const own = cur?.vars ?? []
   const vars = [...globals, ...own]
   const samples = Object.fromEntries(vars.map((v) => [v.name, v.sample]))
   const raw = vars.filter((v) => v.raw).map((v) => v.name)
+
+  const kb = cur?.kind === 'message' ? cur.keyboard : undefined
+  const kbRows = kb ? (kbDrafts[cur.key] ?? kb.rows) : []
+  const kbDirty = !!kb && !sameKb(kbRows, kb.rows)
+  const dropKbDraft = (key: string) =>
+    setKbDrafts((d) => {
+      const rest = { ...d }
+      delete rest[key]
+      return rest
+    })
+  const condIds = kb ? usedConditions(kbRows, cat.actions) : []
+  const fakeSet = new Set(fake)
+  const previewRows = visibleRows(kbRows, fakeSet, cat.actions).map((row) =>
+    row.map((c) => ({
+      text: c.template
+        ? (cat.templates.find((t) => `@${t.id}` === c.id)?.title ?? c.id)
+        : (c.label ? renderPlain(c.label, samples) : c.effective?.preview) || c.id,
+      style: previewStyle(c.template ? '' : c.style || c.effective?.style || ''),
+    })),
+  )
+
+  const s = q.trim().toLowerCase()
+  const groups = new Map<string, TextItem[]>()
+  for (const i of editable) {
+    if (s && ![i.title, i.key, draftOf(i)].some((v) => v.toLowerCase().includes(s))) continue
+    groups.set(i.group, [...(groups.get(i.group) ?? []), i])
+  }
+
   const used = vars.filter((v) => draft.includes(varLabel(v.name)))
   const shownVars = used.length ? used : own.slice(0, 3)
 
@@ -170,60 +164,34 @@ export default function Texts() {
 
   const save = (c: TextItem, body: string) =>
     run('save', c, async () => {
-      const style = c.kind === 'button' ? styleOf(c) : undefined
-      await put(path(c), style === undefined ? { body } : { body, style })
-      patch(c.key, body, style)
+      await put(path(c), { body })
+      patch(c.key, body)
       dropDraft(c.key)
-      toast(c.kind === 'button' ? `Кнопка «${c.title}» сохранена` : `Сообщение «${c.title}» сохранено`, { icon: 'check' })
+      toast(`Сообщение «${c.title}» сохранено`, { icon: 'check' })
     })
-  // Подписи и стили кнопок — по одной (они общие для кнопки на всех экранах), потом раскладка.
-  async function putButtons(keys: string[]) {
-    for (const key of keys) {
-      const b = byKey(key)
-      if (!b || !buttonDirty(key)) continue
-      const body = draftOf(b)
-      const style = styleOf(b)
-      await put(path(b), { body, style })
-      patch(key, body, style)
-      dropDraft(key)
-    }
-  }
-  const dropLayout = (id: string) =>
-    setLayouts((d) => {
-      const rest = { ...d }
-      delete rest[id]
-      return rest
-    })
-  const saveKeyboard = (kb: KeyboardInfo) =>
+  const saveKeyboard = (c: TextItem) =>
     run(
       'save',
-      cur,
+      c,
       async () => {
-        try {
-          await putButtons(buttonKeys(kb))
-          if (layoutDirty(kb)) {
-            const l = layoutOf(kb)
-            await put(`/api/keyboards/${kb.id}`, { rows: l.rows, hidden: l.hidden })
-            dropLayout(kb.id)
-          }
-          toast(`Клавиатура «${kb.title}» сохранена`, { icon: 'check' })
-        } finally {
-          await refresh()
-        }
-      },
-      kb.id,
-    )
-  const resetKeyboard = (kb: KeyboardInfo) =>
-    run(
-      'reset',
-      cur,
-      async () => {
-        await del(`/api/keyboards/${kb.id}`)
-        dropLayout(kb.id)
-        toast('Раскладка возвращена как в коде', { icon: 'check' })
+        await put(`${path(c)}/keyboard`, payload(kbRows))
+        dropKbDraft(c.key)
+        toast('Клавиатура сохранена', { icon: 'check' })
         await refresh()
       },
-      kb.id,
+      KB_SCOPE,
+    )
+  const resetKeyboard = (c: TextItem) =>
+    run(
+      'reset',
+      c,
+      async () => {
+        await del(`${path(c)}/keyboard`)
+        dropKbDraft(c.key)
+        toast('Клавиатура возвращена как в коде', { icon: 'check' })
+        await refresh()
+      },
+      KB_SCOPE,
     )
   const sendTest = (c: TextItem, body: string) =>
     run('test', c, async () => {
@@ -240,20 +208,18 @@ export default function Texts() {
 
   return (
     <div className="flex flex-wrap items-start gap-6">
-      {sysOpen && <SystemButtons items={system} onClose={() => setSysOpen(false)} onChanged={refresh} />}
-      {resetKb && (
+      {resetKb && cur && (
         <Dialog
           title="Вернуть клавиатуру как в коде?"
-          message="Порядок рядов и скрытые кнопки сбросятся. Подписи и стили кнопок останутся."
+          message="Все изменения клавиатуры этого сообщения пропадут."
           actions={[
-            { label: 'Отмена', style: 'cancel', onClick: () => setResetKb(undefined) },
+            { label: 'Отмена', style: 'cancel', onClick: () => setResetKb(false) },
             {
               label: 'Вернуть',
               style: 'destructive',
               onClick: () => {
-                const kb = keyboards.find((k) => k.id === resetKb)
-                setResetKb(undefined)
-                if (kb) void resetKeyboard(kb)
+                setResetKb(false)
+                void resetKeyboard(cur)
               },
             },
           ]}
@@ -262,7 +228,6 @@ export default function Texts() {
       <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-(--spacing(12)))]">
         <div className="flex items-center gap-1">
           <SearchField className="min-w-0 grow" placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
-          <RowAction icon="gear" label="Системные кнопки" disabled={!system.length} onClick={() => setSysOpen(true)} />
         </div>
         {/* Длинный список прокручивается сам: не отодвигает редактор и на компьютере закреплён рядом с ним. */}
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-lg:max-h-72">
@@ -331,12 +296,6 @@ export default function Texts() {
               />
             ) : (
               <div className="flex flex-col gap-2">
-                {cur.kind === 'button' && (
-                  <div className="caption-1 flex min-w-0 flex-wrap gap-x-2 font-mono text-text-secondary">
-                    <code className="truncate">{cur.key}</code>
-                    {cur.route && <code className="truncate">→ {cur.route}</code>}
-                  </div>
-                )}
                 <div className="flex items-start gap-2">
                 <Input
                   className="min-w-0 grow"
@@ -349,9 +308,7 @@ export default function Texts() {
                   after={counter(draft.length, BUTTON_LIMIT)}
                   hint={`Простой текст без разметки, до ${BUTTON_LIMIT} символов.`}
                 />
-                {cur.kind === 'button' && <StyleSelect aria-label="Стиль кнопки" disabled={!!busy} value={styleOf(cur)} onChange={(v) => setStyleDrafts((d) => ({ ...d, [cur.key]: v }))} />}
                 </div>
-                {cur.kind === 'button' && <span className="footnote text-text-secondary">Подпись и стиль общие для всех экранов с этой кнопкой.</span>}
               </div>
             )}
 
@@ -395,53 +352,46 @@ export default function Texts() {
             </Button>
           </div>
 
-          {keyboards.map((kb) => (
-            <div key={kb.id} className="flex flex-col gap-2">
-              <KeyboardCard
+          {kb && (
+            <div className="flex flex-col gap-2">
+              <MessageKeyboardCard
                 kb={kb}
-                layout={layoutOf(kb)}
-                view={viewOf}
-                messageTitles={kb.messages.some((m) => m !== cur.key) ? kb.messages.map((m) => byKey(m)?.title ?? m) : []}
+                cat={cat}
+                rows={kbRows}
                 busy={!!busy}
                 saving={busy === 'save'}
-                dirty={kbDirty(kb)}
-                onLayout={(l) => setLayouts((d) => ({ ...d, [kb.id]: l }))}
-                onLabel={(id, v) => setDrafts((d) => ({ ...d, [id]: v }))}
-                onStyle={(id, v) => setStyleDrafts((d) => ({ ...d, [id]: v }))}
-                onSave={() => saveKeyboard(kb)}
+                dirty={kbDirty}
+                onRows={(r) => setKbDrafts((d) => ({ ...d, [cur.key]: r }))}
+                onSave={() => saveKeyboard(cur)}
                 onCancel={() => {
-                  dropLayout(kb.id)
-                  buttonKeys(kb).forEach(dropDraft)
+                  dropKbDraft(cur.key)
                   setFailure(undefined)
                 }}
-                onReset={() => setResetKb(kb.id)}
+                onReset={() => setResetKb(true)}
               />
-              {failure?.key === cur.key && failure.scope === kb.id && (
+              {failure?.key === cur.key && failure.scope === KB_SCOPE && (
                 <p role="alert" className="admin-body text-destructive-strong">
                   {failure.message}
                 </p>
               )}
             </div>
-          ))}
+          )}
         </div>
       )}
 
       {cur && (
         <aside aria-label="Превью сообщения" className="sticky top-6 flex min-w-0 grow basis-80 flex-col gap-2">
           <h2 className="admin-label px-1 text-text-secondary">Превью с примером данных</h2>
-          {keyboards.length > 1 && shownKb && (
-            <div role="radiogroup" className="flex flex-wrap gap-1.5">
-              {keyboards.map((k) => (
-                <button
-                  key={k.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={k.id === shownKb.id}
-                  className={cn('admin-label focus-ring cursor-pointer rounded-md px-2.5 py-1.5 text-left', k.id === shownKb.id ? 'bg-accent-strong text-on-accent-strong' : 'bg-surface text-text')}
-                  onClick={() => setPreviewKb(k.id)}
-                >
-                  {k.title}
-                </button>
+          {kb && condIds.length > 0 && (
+            <div role="group" aria-label="Условия для превью" className="flex flex-col gap-2 rounded-lg bg-surface px-4 py-3 shadow-card">
+              <span className="admin-label text-text-secondary">Условия для превью</span>
+              {condIds.map((id) => (
+                <Checkbox
+                  key={id}
+                  checked={fakeSet.has(id)}
+                  label={cat.conditions.find((c) => c.id === id)?.title ?? id}
+                  onChange={(on) => setFake((f) => (on ? [...f, id] : f.filter((x) => x !== id)))}
+                />
               ))}
             </div>
           )}

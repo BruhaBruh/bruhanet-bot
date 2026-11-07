@@ -110,25 +110,60 @@ export interface TextVar {
   max: number
 }
 
-export interface KeyboardSlot {
+export interface CondRef {
   id: string
-  kind: 'button' | 'dynamic'
-  label: string
-  removable?: boolean
-  style?: string
+  not?: boolean
 }
 
-export interface KeyboardInfo {
+/** Кнопка (или шаблон) клавиатуры сообщения; поля сервера, без вычисляемых. */
+export interface KbCell {
   id: string
-  title: string
-  messages: string[]
-  slots: KeyboardSlot[]
-  rows: string[][]
-  hidden: string[]
-  default: string[][]
+  key?: string
+  label?: string
+  style?: string
+  action: string
+  conditions: CondRef[]
+}
+
+export interface KbCellOut extends KbCell {
+  locked: boolean
+  template: boolean
+  /** Что увидит юзер: своя подпись или текст кнопки реестра, пример, стиль. Шаблону не нужен. */
+  effective?: { label: string; preview: string; style: string }
+}
+
+export interface MessageKeyboard {
+  rows: KbCellOut[][]
+  default: KbCellOut[][]
   overridden: boolean
+  locked: string[]
   inactive?: boolean
   problem?: string
+}
+
+export interface KbCondition {
+  id: string
+  title: string
+  description: string
+}
+
+export interface KbAction {
+  id: string
+  title: string
+  kind: string
+  guard?: string
+  bound: boolean
+}
+
+export interface KbTemplate {
+  id: string
+  title: string
+}
+
+export interface KbCatalogs {
+  conditions: KbCondition[]
+  actions: KbAction[]
+  templates: KbTemplate[]
 }
 
 export interface TextItem {
@@ -146,7 +181,7 @@ export interface TextItem {
   buttons: string[]
   route?: string
   style: string
-  keyboards?: KeyboardInfo[]
+  keyboard?: MessageKeyboard | null
 }
 
 export interface Settings {

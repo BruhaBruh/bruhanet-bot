@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hide, moveSlot, show, type Layout } from './keyboard-layout'
+import { moveSlot, type Layout } from './keyboard-layout'
 
 const L = (rows: string[][], hidden: string[] = []): Layout => ({ rows, hidden })
 const cell = (id: string, h: 'left' | 'right' = 'right', v: 'top' | 'bottom' = 'bottom') => ({ kind: 'cell' as const, id, h, v })
@@ -41,13 +41,5 @@ describe('moveSlot', () => {
     const full = L(Array.from({ length: 8 }, (_, i) => [String(i)]).slice(0, 7).concat([['p', 'q']]))
     expect(moveSlot(full, 'p', { kind: 'gap', index: 0 }, [])).toBe(full)
     expect(moveSlot(full, '0', cell('p', 'right', 'top'), []).rows).toHaveLength(8)
-  })
-
-  it('hide drops empty rows; show appends a row, not past 8 rows', () => {
-    const h = hide(L([['a'], ['b', 'c']]), 'a')
-    expect(h).toEqual({ rows: [['b', 'c']], hidden: ['a'] })
-    expect(show(h, 'a')).toEqual({ rows: [['b', 'c'], ['a']], hidden: [] })
-    const full = L(Array.from({ length: 8 }, (_, i) => [String(i)]), ['x'])
-    expect(show(full, 'x')).toBe(full)
   })
 })
