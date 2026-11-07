@@ -225,7 +225,7 @@ export default function Texts() {
           ]}
         />
       )}
-      <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-(--spacing(12)))]">
+      <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-7.5rem)]">
         <div className="flex items-center gap-1">
           <SearchField className="min-w-0 grow" placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
         </div>
