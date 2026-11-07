@@ -14,7 +14,8 @@ import { formatSchedule, isoToMskLocal, mskLocalNow, scheduleInFuture, scheduleS
 
 export interface ComposerDraft {
   text: string
-  photo?: string
+  photo?: string // file_id старой рассылки (картинки у нас нет)
+  photoId?: string // картинка из /api/photos
   audience?: Audience
   audienceDays?: number | null
   silent?: boolean
@@ -100,7 +101,10 @@ export function Composer(props: ComposerProps) {
   const existing = props.mode === 'broadcast' ? props.broadcastId : undefined
   const scheduledEdit = props.mode === 'broadcast' && props.status === 'scheduled'
   const [text, setText] = useState(initial?.text ?? '')
-  const [photo, setPhoto] = useState(initial?.photo)
+  const [photoId, setPhotoId] = useState(initial?.photoId)
+  // file_id старой рассылки живёт, пока не загрузили картинку заново
+  const [legacyPhoto, setLegacyPhoto] = useState(initial?.photoId ? undefined : initial?.photo)
+  const photo = photoId ?? legacyPhoto
   const [photoUrl, setPhotoUrl] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -175,7 +179,8 @@ export function Composer(props: ComposerProps) {
   }
   function changePhoto(next?: string, url?: string) {
     draftChanged()
-    setPhoto(next)
+    setPhotoId(next)
+    setLegacyPhoto(undefined)
     setPhotoUrl(url)
   }
 
@@ -196,7 +201,7 @@ export function Composer(props: ComposerProps) {
   // null — грузится или для аудитории нет числа (дни не заданы), undefined — не удалось получить
   const recipients = counts == null ? counts : (counts[audience] ?? null)
 
-  const body = () => ({ text, ...(photo ? { photo } : {}) })
+  const body = () => ({ text, ...(photoId ? { photoId } : legacyPhoto ? { photo: legacyPhoto } : {}) })
   const broadcastBody = () => ({
     ...body(),
     audience,
@@ -332,7 +337,8 @@ export function Composer(props: ComposerProps) {
 
   const picker = (
     <PhotoPicker
-      value={photo}
+      value={photoId}
+      legacy={!!legacyPhoto}
       onChange={changePhoto}
       onUploading={(v) => {
         setUploading(v)
@@ -383,8 +389,8 @@ export function Composer(props: ComposerProps) {
             .map((b) => [{ text: b.text, url: b.url || undefined, style: b.style || 'default' }])}
           media={
             photo &&
-            (photoUrl ? (
-              <img src={photoUrl} alt="" className="block aspect-video w-full min-w-60 object-cover" />
+            (photoUrl || photoId ? (
+              <img src={photoUrl || `/api/photos/${photoId}`} alt="" className="block aspect-video w-full min-w-60 object-cover" />
             ) : (
               <div className="flex aspect-video w-full min-w-60 items-center justify-center bg-fill-tertiary text-text-secondary">
                 <Icon name="card" size={32} />

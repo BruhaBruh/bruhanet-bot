@@ -95,7 +95,7 @@ export default function BroadcastView() {
 
   const duplicate = () => {
     navigate('/broadcasts/new', {
-      state: { text: b.text, photo: b.photo, audience: b.audience, audienceDays: b.audienceDays, silent: b.silent, buttons: b.buttons },
+      state: { text: b.text, photo: b.photo, photoId: b.photoId ?? undefined, audience: b.audience, audienceDays: b.audienceDays, silent: b.silent, buttons: b.buttons },
     })
     toast(`Копия «${titleOf(b)}» открыта в редакторе`, { icon: 'check' })
   }
@@ -188,10 +188,14 @@ export default function BroadcastView() {
                 time={b.createdAt ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(b.createdAt)) : ''}
                 keyboard={b.buttons.map((x) => [{ text: x.text, url: x.url, style: x.style || 'default' }])}
                 media={
-                  b.photo && (
-                    <div className="flex aspect-video w-full min-w-60 items-center justify-center bg-fill-tertiary text-text-secondary">
-                      <Icon name="card" size={32} label="Фото" />
-                    </div>
+                  b.photoId ? (
+                    <img src={`/api/photos/${b.photoId}`} alt="Фото рассылки" className="block aspect-video w-full min-w-60 object-cover" />
+                  ) : (
+                    b.photo && (
+                      <div className="flex aspect-video w-full min-w-60 items-center justify-center bg-fill-tertiary text-text-secondary">
+                        <Icon name="card" size={32} label="Фото" />
+                      </div>
+                    )
                   )
                 }
               >
@@ -204,7 +208,7 @@ export default function BroadcastView() {
               </MessageBubble>
             </div>
           </div>
-          {b.photo && <p className="caption-1 px-1 text-text-secondary">Фото отправлено как есть; Telegram хранит его по file_id, картинку здесь не показываем.</p>}
+          {b.photo && !b.photoId && <p className="caption-1 px-1 text-text-secondary">Фото отправлено как есть; Telegram хранит его по file_id, картинку здесь не показываем.</p>}
         </aside>
       </div>
 

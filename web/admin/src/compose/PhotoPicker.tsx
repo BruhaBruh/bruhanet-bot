@@ -4,15 +4,17 @@ import { Button, Icon, Spinner } from '@/ui'
 import { ApiError, upload } from '../api'
 import { checkPhoto } from './photo'
 
-// value — file_id загруженного фото; url — локальное превью, у дублированной рассылки его нет
+// value — id загруженной картинки (GET /api/photos/{id} отдаёт её для превью); legacy — у старой рассылки только
+// file_id Telegram: картинки у нас нет, показываем плитку. url — локальное превью только что выбранного файла.
 export interface PhotoPickerProps {
   value?: string
-  onChange(photo: string | undefined, url?: string): void
+  legacy?: boolean
+  onChange(photoId: string | undefined, url?: string): void
   onUploading?(busy: boolean): void
   disabled?: boolean
 }
 
-export function PhotoPicker({ value, onChange, onUploading, disabled }: PhotoPickerProps) {
+export function PhotoPicker({ value, legacy, onChange, onUploading, disabled }: PhotoPickerProps) {
   const [file, setFile] = useState({ url: '', name: '' })
   const [busy, setBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -24,8 +26,8 @@ export function PhotoPicker({ value, onChange, onUploading, disabled }: PhotoPic
   useEffect(() => () => void (file.url && URL.revokeObjectURL(file.url)), [file.url])
   // родитель сбросил фото (после отправки)
   useEffect(() => {
-    if (!value) gen.current++
-  }, [value])
+    if (!value && !legacy) gen.current++
+  }, [value, legacy])
 
   function setUploading(v: boolean) {
     setBusy(v)
@@ -39,11 +41,11 @@ export function PhotoPicker({ value, onChange, onUploading, disabled }: PhotoPic
     setUploading(true)
     const g = gen.current
     try {
-      const { photo } = await upload<{ photo: string }>('/api/photos', f)
+      const { photoId } = await upload<{ photoId: string }>('/api/photos', f)
       if (g !== gen.current) return
       const url = URL.createObjectURL(f)
       setFile({ url, name: f.name })
-      onChange(photo, url)
+      onChange(photoId, url)
     } catch (err) {
       if (g !== gen.current) return
       setError(err instanceof ApiError && err.body.message ? err.body.message : 'Не удалось загрузить фото')
@@ -88,10 +90,10 @@ export function PhotoPicker({ value, onChange, onUploading, disabled }: PhotoPic
           if (f) void pick(f)
         }}
       />
-      {value ? (
+      {value || legacy ? (
         <div className={cn('flex flex-wrap items-center gap-4 rounded-md', dragging && 'outline-2 outline-accent')}>
-          {file.url ? (
-            <img src={file.url} alt="Прикреплённое фото" className="block h-22.5 w-40 rounded-md bg-fill-tertiary object-cover" />
+          {file.url || value ? (
+            <img src={file.url || `/api/photos/${value}`} alt="Прикреплённое фото" className="block h-22.5 w-40 rounded-md bg-fill-tertiary object-cover" />
           ) : (
             <div className="flex h-22.5 w-40 items-center justify-center rounded-md bg-fill-tertiary text-text-secondary">
               <Icon name="card" size={24} />

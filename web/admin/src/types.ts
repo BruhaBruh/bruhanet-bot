@@ -140,7 +140,8 @@ export interface Broadcast {
   id: string
   status: BroadcastStatus
   text: string
-  photo?: string
+  photo?: string // file_id старых рассылок
+  photoId?: string | null // картинка, загруженная через /api/photos
   audience: Audience
   audienceDays: number | null
   silent: boolean
@@ -165,6 +166,7 @@ export interface DirectMessage {
   telegramId: number
   text: string
   photo?: string
+  photoId?: string | null
   status: 'pending' | 'sent' | 'failed'
   createdAt: string
 }

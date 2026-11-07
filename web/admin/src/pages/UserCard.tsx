@@ -271,7 +271,7 @@ function UserCardInner({ id }: { id?: string }) {
               return (
                 <li key={m.id} className={`flex items-center justify-between gap-3 py-2.5 ${separator}`}>
                   <span className="flex min-w-0 flex-col">
-                    <span className="break-words">{snippet(m.text, m.photo)}</span>
+                    <span className="break-words">{snippet(m.text, m.photo || m.photoId || undefined)}</span>
                     <span className="footnote text-text-secondary">{formatShortDate(m.createdAt)}</span>
                   </span>
                   <StatusTag tone={tone}>{label}</StatusTag>

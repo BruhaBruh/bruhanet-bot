@@ -31,7 +31,7 @@ vi.mock('./PhotoPicker', () => ({
   },
 }))
 
-type Body = { idempotencyKey?: string; text?: string; photo?: string; audience?: string; audienceDays?: number | null; silent?: boolean; buttons?: unknown[] }
+type Body = { idempotencyKey?: string; text?: string; photo?: string; photoId?: string; audience?: string; audienceDays?: number | null; silent?: boolean; buttons?: unknown[] }
 type Call = { url: string; method: string; body?: Body }
 let calls: Call[]
 let replies: Record<string, (() => Response | Promise<Response>)[]>
@@ -141,6 +141,34 @@ describe('Composer', () => {
     expect(disabled(btn(SEND))).toBe(true)
     await setPhoto('file1')
     expect(disabled(btn(SEND))).toBe(false)
+  })
+
+  it('send carries photoId, a duplicated broadcast keeps its picture, a legacy file_id is sent as photo until replaced', async () => {
+    replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
+    const dup = await setup({ mode: 'broadcast', initial: { text: 'hi', photoId: 'pic1' } })
+    expect(kids.picker.value).toBe('pic1')
+    expect(kids.picker.legacy).toBe(false)
+    await dup.click(SEND)
+    await dup.click(CONFIRM)
+    expect(posts()[0].body).toMatchObject({ photoId: 'pic1' })
+    expect(posts()[0].body).not.toHaveProperty('photo')
+    dup.r.unmount()
+
+    calls = []
+    const old = await setup({ mode: 'broadcast', initial: { text: 'hi', photo: 'AgAD' } })
+    expect(kids.picker.value).toBeUndefined()
+    expect(kids.picker.legacy).toBe(true)
+    await old.click(SEND)
+    await old.click(CONFIRM)
+    expect(posts()[0].body).toMatchObject({ photo: 'AgAD' })
+    expect(posts()[0].body).not.toHaveProperty('photoId')
+    await old.setPhoto('new1')
+    expect(kids.picker.legacy).toBe(false)
+    await old.click(SEND)
+    await old.click(CONFIRM)
+    const last = posts().at(-1)!.body!
+    expect(last).toMatchObject({ photoId: 'new1' })
+    expect(last).not.toHaveProperty('photo')
   })
 
   it('broadcast needs a second confirm click; cancel goes back', async () => {
@@ -534,6 +562,18 @@ describe('Composer', () => {
       await advance(1600)
       expect(puts()).toHaveLength(2)
       expect(puts()[1].url).toBe(puts()[0].url)
+      vi.restoreAllMocks()
+    })
+
+    it('autosave carries photoId', async () => {
+      vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000003')
+      replies['PUT /api/broadcasts/00000000-0000-4000-8000-000000000003'] = [json(200, { broadcast: { id: 'x', status: 'draft' } })]
+      await open()
+      act(() => kids.picker.onChange('p1'))
+      await advance(1600)
+      expect(puts()).toHaveLength(1)
+      expect(puts()[0].body).toMatchObject({ photoId: 'p1' })
+      expect(puts()[0].body).not.toHaveProperty('photo')
       vi.restoreAllMocks()
     })
 

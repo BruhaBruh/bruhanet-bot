@@ -234,6 +234,14 @@ describe('Broadcasts', () => {
     expect(screen.getByRole('status').textContent).toContain('Копия «Заголовок a» открыта в редакторе')
   })
 
+  it('duplicate of a broadcast with a stored picture carries photoId', async () => {
+    stub({ 1: { items: [item('a', { photoId: 'pic1' })], total: 1 } })
+    await renderList()
+    fireEvent.click(table().getByRole('button', { name: 'Дублировать' }))
+    await flush()
+    expect(JSON.parse(screen.getByTestId('state').textContent!)).toMatchObject({ photoId: 'pic1' })
+  })
+
   it('failed load is shown', async () => {
     stub({})
     await renderList()

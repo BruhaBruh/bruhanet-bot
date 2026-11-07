@@ -30,17 +30,18 @@ const columns: DataTableColumn<Broadcast>[] = [
     key: 'title',
     title: 'Рассылка',
     render: (b) => {
-      const label = b.photo ? 'С фото' : 'Только текст'
+      const hasPhoto = !!(b.photo || b.photoId)
+      const label = hasPhoto ? 'С фото' : 'Только текст'
       return (
         <span className="flex items-center gap-2.5">
           <span
             title={label}
             className={cn(
               'inline-flex size-7 flex-none items-center justify-center rounded-xs',
-              b.photo ? 'bg-accent-tint text-accent-strong' : 'bg-fill-tertiary text-text-secondary',
+              hasPhoto ? 'bg-accent-tint text-accent-strong' : 'bg-fill-tertiary text-text-secondary',
             )}
           >
-            <Icon name={b.photo ? 'card' : 'message'} size={16} label={label} />
+            <Icon name={hasPhoto ? 'card' : 'message'} size={16} label={label} />
           </span>
           <span className="flex max-w-70 min-w-0 flex-col whitespace-nowrap">
             <span className="truncate font-medium">{titleOf(b)}</span>
@@ -126,7 +127,7 @@ export default function Broadcasts() {
 
   const duplicate = (b: Broadcast) => {
     navigate('/broadcasts/new', {
-      state: { text: b.text, photo: b.photo, audience: b.audience, audienceDays: b.audienceDays, silent: b.silent, buttons: b.buttons },
+      state: { text: b.text, photo: b.photo, photoId: b.photoId ?? undefined, audience: b.audience, audienceDays: b.audienceDays, silent: b.silent, buttons: b.buttons },
     })
     toast(`Копия «${titleOf(b)}» открыта в редакторе`, { icon: 'check' })
   }

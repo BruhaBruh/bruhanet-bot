@@ -167,3 +167,19 @@ describe('BroadcastView', () => {
     expect(screen.getByRole('alert').textContent).toBe('Не удалось загрузить рассылку')
   })
 })
+
+describe('photo', () => {
+  it('shows the stored picture from the api, no file_id note', async () => {
+    stub(() => json(200, { broadcast: broadcast({ photoId: 'pic1' }) }))
+    await open()
+    expect(document.querySelector('img[src="/api/photos/pic1"]')).toBeTruthy()
+    expect(screen.queryByText(/file_id/)).toBeNull()
+  })
+
+  it('a legacy file_id broadcast keeps the placeholder and the note', async () => {
+    stub(() => json(200, { broadcast: broadcast({ photo: 'AgAD', photoId: null }) }))
+    await open()
+    expect(document.querySelector('img[src^="/api/photos/"]')).toBeNull()
+    expect(screen.getByText(/file_id/)).toBeTruthy()
+  })
+})

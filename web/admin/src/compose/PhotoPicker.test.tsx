@@ -12,7 +12,7 @@ beforeEach(() => {
   uploads = 0
   vi.stubGlobal('fetch', async () => {
     uploads++
-    return new Response(JSON.stringify({ photo: `file${uploads}` }), { status: 200 })
+    return new Response(JSON.stringify({ photoId: `file${uploads}` }), { status: 200 })
   })
   URL.createObjectURL = () => 'blob:x'
   URL.revokeObjectURL = () => {}
@@ -21,7 +21,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 const zone = () => screen.getByRole('button', { name: /Добавить фото/ }).parentElement!
 
-it('drag-and-drop uploads the file and reports file_id with preview url', async () => {
+it('drag-and-drop uploads the file and reports photoId with preview url', async () => {
   const onChange = vi.fn()
   render(<PhotoPicker onChange={onChange} />)
   fireEvent.drop(zone(), { dataTransfer: { files: [png] } })
@@ -44,6 +44,15 @@ it('disabled picker ignores drops', async () => {
   fireEvent.drop(zone(), { dataTransfer: { files: [png] } })
   await flush()
   expect(uploads).toBe(0)
+})
+
+it('an uploaded picture is previewed from the server, a legacy file_id gets a placeholder', () => {
+  const a = render(<PhotoPicker value="pic1" onChange={() => {}} />)
+  expect(a.container.querySelector('img')!.getAttribute('src')).toBe('/api/photos/pic1')
+  a.unmount()
+  const b = render(<PhotoPicker legacy onChange={() => {}} />)
+  expect(b.container.querySelector('img')).toBeNull()
+  expect(screen.getByText('Фото из рассылки')).toBeTruthy()
 })
 
 it('replace uploads a new file, delete clears the value', async () => {

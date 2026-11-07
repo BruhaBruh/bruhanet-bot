@@ -43,7 +43,7 @@ export default function BroadcastEdit() {
         mode="broadcast"
         broadcastId={b.id}
         status={b.status}
-        initial={{ text: b.text, photo: b.photo, audience: b.audience, audienceDays: b.audienceDays, silent: b.silent, buttons: b.buttons, scheduledAt: b.scheduledAt }}
+        initial={{ text: b.text, photo: b.photo, photoId: b.photoId ?? undefined, audience: b.audience, audienceDays: b.audienceDays, silent: b.silent, buttons: b.buttons, scheduledAt: b.scheduledAt }}
         onSent={(sent) => {
           announceSent(sent)
           navigate(`/broadcasts/${b.id}`, { replace: true })
