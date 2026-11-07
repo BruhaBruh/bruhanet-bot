@@ -38,6 +38,58 @@ type fakeQueue struct {
 	blocked    []int64
 	received   map[int64]int
 	markErr    error
+
+	photos      map[uuid.UUID]*fakePhoto
+	setFileErr  error
+	setFileCall int
+}
+
+type fakePhoto struct {
+	content []byte
+	fileID  string
+}
+
+func (q *fakeQueue) PhotoForSend(_ context.Context, id uuid.UUID) (string, []byte, string, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	p := q.photos[id]
+	if p == nil {
+		return "", nil, "", store.ErrNotFound
+	}
+	if p.fileID != "" {
+		return p.fileID, nil, "image/png", nil
+	}
+	return "", p.content, "image/png", nil
+}
+
+func (q *fakeQueue) SetPhotoFileID(_ context.Context, id uuid.UUID, fileID string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.setFileCall++
+	if q.setFileErr != nil {
+		return q.setFileErr
+	}
+	if p := q.photos[id]; p != nil && p.fileID == "" {
+		p.fileID = fileID
+	}
+	return nil
+}
+
+func (q *fakeQueue) addPhoto(content string) uuid.UUID {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.photos == nil {
+		q.photos = map[uuid.UUID]*fakePhoto{}
+	}
+	id := uuid.New()
+	q.photos[id] = &fakePhoto{content: []byte(content)}
+	return id
+}
+
+func (q *fakeQueue) photo(id uuid.UUID) fakePhoto {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return *q.photos[id]
 }
 
 func (q *fakeQueue) MarkBotBlocked(_ context.Context, id int64) error {
@@ -749,5 +801,96 @@ func TestWorkerGiftLinkForbiddenLogged(t *testing.T) {
 	log := runFor(t, w, 200*time.Millisecond)
 	if q.len() != 0 || !strings.Contains(log, "level=ERROR") || !strings.Contains(log, "gift link not delivered") || !strings.Contains(log, "CODE9") {
 		t.Fatalf("rows=%d log: %s", q.len(), log)
+	}
+}
+
+// Первая доставка рассылки с картинкой идёт байтами и запоминает file_id самого большого размера, остальные — по нему.
+func TestWorkerPhotoIDUploadsOnceThenFileID(t *testing.T) {
+	srv, q, w := setup(t)
+	pid := q.addPhoto("PNGDATA")
+	for chat := int64(1); chat <= 3; chat++ {
+		q.add(model.OutboxMessage{EventType: "broadcast", ChatID: chat, Text: "cap", ParseMode: "HTML", PhotoID: pid.String()})
+	}
+	drain(t, w, q)
+	calls := srv.Calls("sendPhoto")
+	if len(calls) != 3 {
+		t.Fatalf("sendPhoto calls = %d", len(calls))
+	}
+	if string(calls[0].Files["photo"]) != "PNGDATA" {
+		t.Fatalf("first call was not an upload: %+v", calls[0])
+	}
+	got := q.photo(pid).fileID
+	if !strings.HasPrefix(got, "up-") || strings.HasPrefix(got, "up-small") {
+		t.Fatalf("saved file_id = %q, want the largest size", got)
+	}
+	for _, c := range calls[1:] {
+		if c.Files["photo"] != nil || c.Params.Get("photo") != got {
+			t.Fatalf("later call must use file_id %q: %+v", got, c)
+		}
+	}
+}
+
+// Отказ Telegram на загрузке не запоминает file_id: следующая строка снова шлёт байты.
+func TestWorkerPhotoIDUploadFailureDoesNotPersist(t *testing.T) {
+	srv, q, w := setup(t)
+	srv.FailMethod("sendPhoto", 400, "Bad Request: wrong file")
+	pid := q.addPhoto("PNGDATA")
+	q.add(model.OutboxMessage{EventType: "direct", ChatID: 5, Text: "x", PhotoID: pid.String(), DirectID: 1})
+	drain(t, w, q)
+	if q.photo(pid).fileID != "" || q.setFileCall != 0 || q.direct[1] != model.DirectFailed {
+		t.Fatalf("file_id=%q set=%d direct=%v", q.photo(pid).fileID, q.setFileCall, q.direct)
+	}
+	srv.FailMethod("sendPhoto", 0, "")
+	q.add(model.OutboxMessage{EventType: "direct", ChatID: 6, Text: "x", PhotoID: pid.String(), DirectID: 2})
+	drain(t, w, q)
+	calls := srv.Calls("sendPhoto")
+	if last := calls[len(calls)-1]; string(last.Files["photo"]) != "PNGDATA" {
+		t.Fatalf("retry after failure must upload bytes again: %+v", last)
+	}
+	if q.direct[2] != model.DirectSent {
+		t.Fatalf("direct = %v", q.direct)
+	}
+}
+
+// Не удалось записать file_id — сообщение всё равно доставлено, байты уйдут снова.
+func TestWorkerPhotoIDSaveFailureStillDelivers(t *testing.T) {
+	srv, q, w := setup(t)
+	q.setFileErr = errors.New("db down")
+	pid := q.addPhoto("PNGDATA")
+	q.add(
+		model.OutboxMessage{EventType: "direct", ChatID: 5, Text: "x", PhotoID: pid.String(), DirectID: 1},
+		model.OutboxMessage{EventType: "direct", ChatID: 6, Text: "x", PhotoID: pid.String(), DirectID: 2},
+	)
+	drain(t, w, q)
+	calls := srv.Calls("sendPhoto")
+	if len(calls) != 2 || calls[0].Files["photo"] == nil || calls[1].Files["photo"] == nil || q.direct[1] != model.DirectSent || q.direct[2] != model.DirectSent {
+		t.Fatalf("calls=%+v direct=%v", calls, q.direct)
+	}
+}
+
+// Картинки нет в БД: доставка провалена с error в логе, текст без фото не уходит.
+func TestWorkerPhotoIDMissingFails(t *testing.T) {
+	srv, q, w := setup(t)
+	bid := q.addBroadcast(1)
+	q.add(model.OutboxMessage{EventType: "broadcast", ChatID: 5, Text: "x", PhotoID: uuid.NewString(), Broadcast: bid.String()})
+	log := runFor(t, w, 200*time.Millisecond)
+	if q.len() != 0 || q.broadcast(bid).Failed != 1 || !strings.Contains(log, "level=ERROR") || !strings.Contains(log, "outbox photo is missing") {
+		t.Fatalf("rows=%d b=%+v log=%s", q.len(), q.broadcast(bid), log)
+	}
+	if len(srv.Calls("sendPhoto"))+len(srv.Calls("sendMessage")) != 0 {
+		t.Fatal("something was sent without the photo")
+	}
+}
+
+// «Отправить мне» (text_test): картинка из БД, кнопки и без звука — как у рассылки.
+func TestWorkerPhotoIDPreview(t *testing.T) {
+	srv, q, w := setup(t)
+	pid := q.addPhoto("PNGDATA")
+	kb := broadcast.Keyboard([]broadcast.Button{{Text: "Go", URL: "https://example.com"}})
+	q.add(model.OutboxMessage{EventType: "text_test", ChatID: 9, Text: "cap", ParseMode: "HTML", PhotoID: pid.String(), Keyboard: kb, Silent: true})
+	drain(t, w, q)
+	calls := srv.Calls("sendPhoto")
+	if len(calls) != 1 || string(calls[0].Files["photo"]) != "PNGDATA" || calls[0].Params.Get("reply_markup") == "" || calls[0].Params.Get("disable_notification") != "true" {
+		t.Fatalf("calls: %+v", calls)
 	}
 }

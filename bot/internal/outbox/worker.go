@@ -2,6 +2,7 @@
 package outbox
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -36,7 +37,13 @@ type Queue interface {
 	DirectDelivered(ctx context.Context, id int64, ok bool) error
 	MarkBotBlocked(ctx context.Context, telegramID int64) error
 	AddBroadcastReceived(ctx context.Context, telegramID int64) error
+	// PhotoForSend — file_id картинки, если Telegram её уже принял, иначе байты и тип; нет картинки — store.ErrNotFound.
+	PhotoForSend(ctx context.Context, id uuid.UUID) (fileID string, content []byte, contentType string, err error)
+	SetPhotoFileID(ctx context.Context, id uuid.UUID, fileID string) error
 }
+
+// errPhotoMissing — картинки строки нет в БД (удалена): доставка проваливается, текст без фото не уходит.
+var errPhotoMissing = errors.New("outbox photo is missing")
 
 // Notice — текст и клавиатура уведомления о платеже (routes.PaymentNotice).
 type Notice func(ctx context.Context, chatID int64, key string, expireAt time.Time, days, devices int) (string, *models.InlineKeyboardMarkup)
@@ -103,6 +110,10 @@ func (w *Worker) process(ctx context.Context, it model.OutboxItem) bool {
 		case err == nil:
 			observability.OutboxMessages.WithLabelValues(it.EventType, "sent").Inc()
 			return w.remove(ctx, it, true)
+		case errors.Is(err, errPhotoMissing):
+			stlog.Error(ctx, "outbox photo is missing, message not delivered", "event_type", it.EventType, "photo_id", it.PhotoID, "chat_id", it.ChatID)
+			observability.OutboxMessages.WithLabelValues(it.EventType, "dropped").Inc()
+			return w.remove(ctx, it, false)
 		case errors.Is(err, bot.ErrorForbidden), errors.Is(err, bot.ErrorBadRequest):
 			if errors.Is(err, bot.ErrorForbidden) {
 				// Повтор идемпотентен: остаётся время первой блокировки.
@@ -195,15 +206,27 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 			ChatID: it.ChatID, FromChatID: it.FromChatID, MessageID: it.MessageID,
 		})
 		return err
-	case it.Photo != "":
+	case it.Photo != "" || it.PhotoID != "":
 		p := &bot.SendPhotoParams{
-			ChatID: it.ChatID, Photo: &models.InputFileString{Data: it.Photo},
+			ChatID:  it.ChatID,
 			Caption: it.Text, ParseMode: models.ParseMode(it.ParseMode), DisableNotification: it.Silent,
 		}
 		if it.Keyboard != nil { // nil-указатель в интерфейсе ReplyMarkup не годится
 			p.ReplyMarkup = it.Keyboard
 		}
-		_, err := w.b.SendPhoto(ctx, p)
+		var upload uuid.UUID // не Nil — фото уходит байтами, file_id возьмём из ответа
+		if it.PhotoID != "" {
+			var err error
+			if p.Photo, upload, err = w.photo(ctx, it.PhotoID); err != nil {
+				return err
+			}
+		} else {
+			p.Photo = &models.InputFileString{Data: it.Photo}
+		}
+		msg, err := w.b.SendPhoto(ctx, p)
+		if err == nil && upload != uuid.Nil {
+			w.rememberPhoto(ctx, upload, msg)
+		}
 		return err
 	default:
 		p := &bot.SendMessageParams{ChatID: it.ChatID, Text: it.Text, ParseMode: models.ParseMode(it.ParseMode), DisableNotification: it.Silent}
@@ -212,6 +235,47 @@ func (w *Worker) send(ctx context.Context, it model.OutboxItem) error {
 		}
 		_, err := w.b.SendMessage(ctx, p)
 		return err
+	}
+}
+
+// photo готовит вложение для строки с PhotoID: известный Telegram file_id или байты (тогда вторым значением id картинки,
+// file_id которой надо запомнить после отправки).
+func (w *Worker) photo(ctx context.Context, rawID string) (models.InputFile, uuid.UUID, error) {
+	id, perr := uuid.Parse(rawID)
+	if perr != nil {
+		return nil, uuid.Nil, errors.Join(errPhotoMissing, perr)
+	}
+	fileID, content, ct, err := w.q.PhotoForSend(ctx, id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil, uuid.Nil, errPhotoMissing
+	case err != nil:
+		return nil, uuid.Nil, err
+	case fileID != "":
+		return &models.InputFileString{Data: fileID}, uuid.Nil, nil
+	}
+	return &models.InputFileUpload{Filename: "photo" + photoExt[ct], Data: bytes.NewReader(content)}, id, nil
+}
+
+var photoExt = map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+// rememberPhoto сохраняет file_id самого большого размера из ответа Telegram: остальные получатели получат фото по нему.
+// Сбой не мешает доставке (следующая строка отправит байты ещё раз).
+func (w *Worker) rememberPhoto(ctx context.Context, id uuid.UUID, msg *models.Message) {
+	var best *models.PhotoSize
+	if msg != nil {
+		for i, p := range msg.Photo {
+			if best == nil || p.Width*p.Height > best.Width*best.Height {
+				best = &msg.Photo[i]
+			}
+		}
+	}
+	if best == nil {
+		stlog.Warn(ctx, "telegram response has no photo, file_id not saved", "photo_id", id.String())
+		return
+	}
+	if err := w.q.SetPhotoFileID(context.WithoutCancel(ctx), id, best.FileID); err != nil {
+		stlog.Warn(ctx, "failed to save photo file_id", "photo_id", id.String(), "error", err)
 	}
 }
 

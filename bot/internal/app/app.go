@@ -46,6 +46,9 @@ const (
 	referralCron = "*/5 * * * *"
 	// namesCron — добор имён юзеров через getChat.
 	namesCron = "*/10 * * * *"
+	// photosCron — раз в сутки удаляет картинки рассылок, на которые никто не ссылается дольше photoTTL.
+	photosCron = "30 4 * * *"
+	photoTTL   = 7 * 24 * time.Hour
 )
 
 func New(logger *slog.Logger, config *config.Config) (app.App, error) {
@@ -173,6 +176,11 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 	if _, err = c.AddFunc(namesCron, runNames); err != nil {
 		cancelRun()
 		return nil, errors.Join(errors.New("failed to schedule name backfill"), err)
+	}
+
+	if _, err = c.AddFunc(photosCron, func() { cleanPhotos(stlog.Wrap(runCtx, logger, "component", "photos"), st, time.Now) }); err != nil {
+		cancelRun()
+		return nil, errors.Join(errors.New("failed to schedule photo cleanup"), err)
 	}
 
 	if _, err = c.AddFunc(panelSyncCron, func() { syncPanel(stlog.Wrap(runCtx, logger, "component", "panel_sync"), rwObs, st) }); err != nil {
@@ -385,6 +393,20 @@ func (j *reminderJob) follow(ctx context.Context, every time.Duration, at func(c
 			}
 			stlog.Info(ctx, "reminders rescheduled", "times", next)
 		}
+	}
+}
+
+// cleanPhotos — один проход по cron: сбой только в лог, следующий проход повторит.
+func cleanPhotos(ctx context.Context, st interface {
+	DeleteStalePhotos(ctx context.Context, before time.Time) (int, error)
+}, now func() time.Time) {
+	n, err := st.DeleteStalePhotos(ctx, now().Add(-photoTTL))
+	if err != nil {
+		stlog.Error(ctx, "photo cleanup failed", "error", err)
+		return
+	}
+	if n > 0 {
+		stlog.Info(ctx, "stale photos deleted", "count", n)
 	}
 }
 

@@ -26,6 +26,8 @@ const Token = "test-token"
 type Call struct {
 	Method string
 	Params url.Values
+	// Files — загруженные multipart-файлы по имени поля (sendPhoto с байтами вместо file_id).
+	Files map[string][]byte
 }
 
 type Server struct {
@@ -133,8 +135,18 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	_ = r.ParseMultipartForm(1 << 20) //nolint:gosec // G120 false positive: body already capped by MaxBytesReader above
 	method := path.Base(r.URL.Path)
+	var files map[string][]byte
+	if r.MultipartForm != nil {
+		files = map[string][]byte{}
+		for name, hs := range r.MultipartForm.File {
+			if f, err := hs[0].Open(); err == nil {
+				files[name], _ = io.ReadAll(f)
+				_ = f.Close()
+			}
+		}
+	}
 	s.mu.Lock()
-	s.calls = append(s.calls, Call{Method: method, Params: r.Form})
+	s.calls = append(s.calls, Call{Method: method, Params: r.Form, Files: files})
 	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -166,6 +178,14 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	switch method {
 	case "getMe":
 		_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Bot","username":"bruhanet_test_bot"}}`)
+	case "sendPhoto":
+		// как настоящий Telegram: ответ несёт размеры загруженного фото, file_id нового — "up-<номер вызова>"
+		s.mu.Lock()
+		n := len(s.calls)
+		s.mu.Unlock()
+		_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":1,"date":0,"chat":{"id":1,"type":"private"},"photo":[`+
+			`{"file_id":"up-small-`+strconv.Itoa(n)+`","file_unique_id":"s","width":90,"height":90},`+
+			`{"file_id":"up-`+strconv.Itoa(n)+`","file_unique_id":"b","width":1280,"height":1280}]}}`)
 	case "answerCallbackQuery", "deleteMessage", "setMessageReaction":
 		_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
 	default:
