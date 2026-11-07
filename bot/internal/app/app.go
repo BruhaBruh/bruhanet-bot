@@ -23,6 +23,7 @@ import (
 	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler"
 	"github.com/bruhabruh/bruhanet/bot/internal/handler/routes"
+	"github.com/bruhabruh/bruhanet/bot/internal/names"
 	"github.com/bruhabruh/bruhanet/bot/internal/observability"
 	"github.com/bruhabruh/bruhanet/bot/internal/outbox"
 	"github.com/bruhabruh/bruhanet/bot/internal/referral"
@@ -43,6 +44,8 @@ const (
 	panelSyncCron = "*/15 * * * *"
 	// referralCron — сверка наград рефералки, не выданных сразу.
 	referralCron = "*/5 * * * *"
+	// namesCron — добор имён юзеров через getChat.
+	namesCron = "*/10 * * * *"
 )
 
 func New(logger *slog.Logger, config *config.Config) (app.App, error) {
@@ -164,6 +167,14 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 		return nil, errors.Join(errors.New("failed to schedule referral reconcile"), err)
 	}
 
+	// Добор имён: юзеры из панели приходят без имени; раз сразу при старте бота и дальше по cron.
+	namesJob := names.New(st, names.FromBot(b), nil)
+	runNames := func() { namesJob.Run(stlog.Wrap(runCtx, logger, "component", "names")) }
+	if _, err = c.AddFunc(namesCron, runNames); err != nil {
+		cancelRun()
+		return nil, errors.Join(errors.New("failed to schedule name backfill"), err)
+	}
+
 	if _, err = c.AddFunc(panelSyncCron, func() { syncPanel(stlog.Wrap(runCtx, logger, "component", "panel_sync"), rwObs, st) }); err != nil {
 		cancelRun()
 		return nil, errors.Join(errors.New("failed to schedule panel sync"), err)
@@ -237,6 +248,7 @@ func New(logger *slog.Logger, config *config.Config) (app.App, error) {
 					defer close(done)
 					b.Start(runCtx)
 				}()
+				go runNames()
 				return nil
 			},
 			func(ctx context.Context) error {
