@@ -1,5 +1,5 @@
 export { Avatar, type AvatarProps } from './avatar'
-export { TgAvatar } from './tg-avatar'
+export { BOT_FALLBACK, TgAvatar } from './tg-avatar'
 export { Badge, type BadgeProps } from './badge'
 export { Button, type ButtonProps } from './button'
 export { Card, type CardProps } from './card'

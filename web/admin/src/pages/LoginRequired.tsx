@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
-import { Avatar, Button, Icon, MessageBubble, Spinner, toast } from '@/ui'
+import { Avatar, BOT_FALLBACK, Button, Icon, MessageBubble, Spinner, toast } from '@/ui'
 import { buttonVariants } from '@/ui/primitives/button'
 import { cn } from '@/lib/utils'
 import { NO_BOT, parseBot, type BotInfo } from '../me'
@@ -152,7 +152,7 @@ export default function LoginRequired() {
           className="flex min-w-0 grow basis-80 flex-col overflow-hidden rounded-lg bg-chat-bg"
         >
           <div className="flex items-center gap-2.5 bg-header-bg px-4 py-2.5 shadow-[inset_0_-0.5px_0_var(--separator)]">
-            <Avatar name={bot.name || 'Бот'} colorIndex={5} size={36} />
+            <Avatar name={bot.name || 'Бот'} src={BOT_FALLBACK} colorIndex={5} size={36} />
             <div className="flex flex-col">
               <span className="font-semibold">{bot.name || 'Бот'}</span>
               <span className="admin-label font-normal text-text-secondary">бот</span>

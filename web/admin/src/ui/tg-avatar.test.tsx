@@ -23,6 +23,19 @@ describe('TgAvatar', () => {
     expect(none.container.textContent).toBe('АК')
   })
 
+  it('the bot falls back to the logo, then to the letter', () => {
+    const bot = render(<TgAvatar tg="bot" name="Бот Бруха" />)
+    fireEvent.error(bot.container.querySelector('img')!)
+    expect(bot.container.querySelector('img')!.getAttribute('src')).toBe('/bot-avatar.png')
+    fireEvent.error(bot.container.querySelector('img')!)
+    expect(bot.container.querySelector('img')).toBeNull()
+    expect(bot.container.textContent).toBe('ББ')
+    // у юзера логотипа бота нет: сразу буква
+    const user = render(<TgAvatar tg={5} name="Иван" />)
+    fireEvent.error(user.container.querySelector('img')!)
+    expect(user.container.querySelector('img')).toBeNull()
+  })
+
   it('falls back to the letter avatar on error and remembers it', () => {
     const first = render(<TgAvatar tg={7} name="Иван Петров" />)
     fireEvent.error(first.container.querySelector('img')!)
