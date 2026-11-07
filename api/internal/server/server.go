@@ -59,7 +59,10 @@ type Store interface {
 	Broadcast(ctx context.Context, id uuid.UUID) (model.Broadcast, error)
 	ListBroadcasts(ctx context.Context, f model.BroadcastFilter) ([]model.Broadcast, int, error)
 	AudienceCounts(ctx context.Context, now time.Time, days int) (model.AudienceCounts, error)
-	CreateDirect(ctx context.Context, telegramID int64, text, photo string) (int64, error)
+	CreateDirect(ctx context.Context, telegramID int64, text, photo string, photoID *uuid.UUID) (int64, error)
+	SavePhoto(ctx context.Context, content []byte, contentType string) (uuid.UUID, error)
+	Photo(ctx context.Context, id uuid.UUID) ([]byte, string, error)
+	PhotoExists(ctx context.Context, id uuid.UUID) (bool, error)
 	DirectMessages(ctx context.Context, telegramID int64) ([]model.DirectMessage, error)
 	UserByUsername(ctx context.Context, username string) (model.UserSummary, error)
 	CreatePromo(ctx context.Context, p model.Promo) (model.Promo, error)
@@ -88,9 +91,9 @@ type Panel interface {
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
 }
 
-// PhotoSender — фото в Telegram (api/internal/telegram): загрузка возвращает file_id, чтение — поток файла.
+// PhotoSender — чтение файлов из Telegram (api/internal/telegram): чеки платежей. Фото рассылок в Telegram не
+// заливаются: байты лежат в БД, их отправляет бот при доставке.
 type PhotoSender interface {
-	SendPhoto(ctx context.Context, chatID int64, r io.Reader, filename, caption string) (fileID string, err error)
 	OpenFile(ctx context.Context, fileID string) (io.ReadCloser, error)
 }
 
@@ -144,6 +147,7 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/sync", s.runSync)
 	apiMux.HandleFunc("GET /api/payments", s.payments)
 	apiMux.HandleFunc("GET /api/payments/{id}/photo", s.paymentPhoto)
+	apiMux.HandleFunc("GET /api/photos/{id}", s.photo)
 	apiMux.HandleFunc("GET /api/avatars/{id}", s.avatarImage)
 	apiMux.HandleFunc("POST /api/payments/{id}/confirm", s.resolvePayment(true))
 	apiMux.HandleFunc("POST /api/payments/{id}/decline", s.resolvePayment(false))
@@ -180,7 +184,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /auth", s.auth)
 	mux.HandleFunc("GET /auth/bot", s.authBot)
 	mux.Handle("/api/", jsonOnly(s.requireSession(apiMux)))
-	// единственное исключение из jsonOnly: загрузка фото — multipart; сессия обязательна, тип проверяет сам хендлер.
+	// единственное исключение из jsonOnly: загрузка фото рассылки — multipart; сессия обязательна, тип проверяет сам хендлер.
 	mux.Handle("POST /api/photos", s.requireSession(http.HandlerFunc(s.uploadPhoto)))
 	mux.HandleFunc("/", s.static) // без метода: "GET /" конфликтует с "/api/"
 	return metrics(mux)

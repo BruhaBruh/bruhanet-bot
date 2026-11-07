@@ -62,6 +62,7 @@ type fakeStore struct {
 	lastBF       model.BroadcastFilter
 	styles       map[string]string
 	directs      []model.DirectMessage
+	photos       map[uuid.UUID]fakePhoto
 
 	userPromos []model.UserPromo
 
@@ -263,7 +264,7 @@ func newServerTimeout(t *testing.T, baseURL string, panel server.Panel, panelTim
 func newServerTG(t *testing.T, baseURL string, panel server.Panel, panelTimeout time.Duration) (http.Handler, *fakeStore, *fakeTG) {
 	t.Helper()
 	st := newFakeStore()
-	tg := &fakeTG{fileID: "AgAD-file"}
+	tg := &fakeTG{}
 	h := server.New(server.Deps{
 		Store:        st,
 		Panel:        panel,
@@ -635,7 +636,7 @@ func (f *fakeStore) SendBroadcast(_ context.Context, d model.BroadcastDraft, adm
 }
 
 func fillBroadcast(b model.Broadcast, d model.BroadcastDraft) model.Broadcast {
-	b.Text, b.Photo, b.Audience, b.AudienceDays, b.Silent, b.ScheduledAt = d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, d.ScheduledAt
+	b.Text, b.Photo, b.PhotoID, b.Audience, b.AudienceDays, b.Silent, b.ScheduledAt = d.Text, d.Photo, d.PhotoID, d.Audience, d.AudienceDays, d.Silent, d.ScheduledAt
 	b.Buttons = d.Buttons
 	if b.Buttons == nil {
 		b.Buttons = []broadcast.Button{}
@@ -729,11 +730,11 @@ func (f *fakeStore) AudienceCounts(_ context.Context, _ time.Time, days int) (mo
 	return f.counts, nil
 }
 
-func (f *fakeStore) CreateDirect(_ context.Context, telegramID int64, text, photo string) (int64, error) {
+func (f *fakeStore) CreateDirect(_ context.Context, telegramID int64, text, photo string, photoID *uuid.UUID) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	id := int64(len(f.directs) + 1)
-	f.directs = append(f.directs, model.DirectMessage{ID: id, TelegramID: telegramID, Text: text, Photo: photo, Status: model.DirectPending, CreatedAt: now})
+	f.directs = append(f.directs, model.DirectMessage{ID: id, TelegramID: telegramID, Text: text, Photo: photo, PhotoID: photoID, Status: model.DirectPending, CreatedAt: now})
 	return id, nil
 }
 
@@ -749,17 +750,9 @@ func (f *fakeStore) DirectMessages(_ context.Context, telegramID int64) ([]model
 	return out, nil
 }
 
-// fakeTG — Telegram для загрузки фото.
+// fakeTG — чтение файлов из Telegram. SendPhoto в интерфейсе api нет: загрузить фото в Telegram он не может по построению.
 type fakeTG struct {
 	mu      sync.Mutex
-	calls   int
-	chatID  int64
-	name    string
-	caption string
-	data    []byte
-	fileID  string
-	err     error
-
 	file    string // содержимое OpenFile
 	opened  string
 	openErr error
@@ -775,15 +768,35 @@ func (f *fakeTG) OpenFile(_ context.Context, fileID string) (io.ReadCloser, erro
 	return io.NopCloser(strings.NewReader(f.file)), nil
 }
 
-func (f *fakeTG) SendPhoto(_ context.Context, chatID int64, r io.Reader, filename, caption string) (string, error) {
+type fakePhoto struct {
+	content []byte
+	ct      string
+}
+
+func (f *fakeStore) SavePhoto(_ context.Context, content []byte, ct string) (uuid.UUID, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls++
-	f.chatID, f.name, f.caption = chatID, filename, caption
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return "", err
+	if f.photos == nil {
+		f.photos = map[uuid.UUID]fakePhoto{}
 	}
-	f.data = data
-	return f.fileID, f.err
+	id := uuid.New()
+	f.photos[id] = fakePhoto{content, ct}
+	return id, nil
+}
+
+func (f *fakeStore) Photo(_ context.Context, id uuid.UUID) ([]byte, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.photos[id]
+	if !ok {
+		return nil, "", store.ErrNotFound
+	}
+	return p.content, p.ct, nil
+}
+
+func (f *fakeStore) PhotoExists(_ context.Context, id uuid.UUID) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.photos[id]
+	return ok, nil
 }

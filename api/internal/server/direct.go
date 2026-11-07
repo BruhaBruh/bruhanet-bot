@@ -27,7 +27,7 @@ func (s *server) directMessage(w http.ResponseWriter, r *http.Request) {
 		internal(w, r, "direct user", err)
 		return
 	}
-	msgID, err := s.Store.CreateDirect(r.Context(), id, in.Text, in.Photo)
+	msgID, err := s.Store.CreateDirect(r.Context(), id, in.Text, in.Photo, in.PhotoID)
 	if err != nil {
 		internal(w, r, "create direct", err)
 		return

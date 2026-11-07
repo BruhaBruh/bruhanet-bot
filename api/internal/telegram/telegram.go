@@ -1,4 +1,4 @@
-// Package telegram — Bot API для api: загрузка фото и чтение файлов, без поллинга.
+// Package telegram — Bot API для api: чтение файлов, имена и аватарки, без поллинга.
 package telegram
 
 import (
@@ -77,28 +77,6 @@ func (c *Client) OpenFile(ctx context.Context, fileID string) (io.ReadCloser, er
 		io.Reader
 		io.Closer
 	}{io.LimitReader(resp.Body, MaxFileSize), resp.Body}, nil
-}
-
-// SendPhoto загружает фото в чат и возвращает file_id самого большого размера.
-func (c *Client) SendPhoto(ctx context.Context, chatID int64, r io.Reader, filename, caption string) (string, error) {
-	msg, err := c.b.SendPhoto(ctx, &bot.SendPhotoParams{
-		ChatID:  chatID,
-		Photo:   &models.InputFileUpload{Filename: filename, Data: r},
-		Caption: caption,
-	})
-	if err != nil {
-		return "", clean("telegram sendPhoto", err)
-	}
-	var best *models.PhotoSize
-	for i, p := range msg.Photo {
-		if best == nil || p.Width*p.Height > best.Width*best.Height {
-			best = &msg.Photo[i]
-		}
-	}
-	if best == nil {
-		return "", ErrNoPhoto
-	}
-	return best.FileID, nil
 }
 
 // Me — username и имя бота (getMe).

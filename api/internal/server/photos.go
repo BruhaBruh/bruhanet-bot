@@ -1,25 +1,24 @@
 package server
 
 import (
-	"bytes"
 	"errors"
 	"io"
 	"mime"
 	"net/http"
 	"slices"
-	"strings"
+	"strconv"
 
-	"github.com/go-telegram/bot"
+	"github.com/google/uuid"
 
-	"github.com/bruhabruh/bruhanet/pkg/stlog"
+	"github.com/bruhabruh/bruhanet/core/store"
 )
 
-const maxPhotoSize = 10 << 20 // лимит Telegram на фото
+const maxPhotoSize = 10 << 20 // лимит Telegram на фото (sendPhoto)
 
 var photoTypes = []string{"image/jpeg", "image/png", "image/webp"}
 
-// uploadPhoto принимает multipart-поле file, проверяет тип по содержимому и размер до Telegram,
-// шлёт фото админу и отдаёт file_id — дальше рассылки ссылаются на него.
+// uploadPhoto принимает multipart-поле file, проверяет тип по содержимому и размер, кладёт байты в БД и отдаёт photoId.
+// В Telegram ничего не уходит: фото улетит с первым сообщением рассылки (воркер бота).
 func (s *server) uploadPhoto(w http.ResponseWriter, r *http.Request) {
 	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "multipart/form-data" {
 		writeError(w, http.StatusUnsupportedMediaType, "content type must be multipart/form-data")
@@ -61,22 +60,36 @@ func (s *server) uploadPhoto(w http.ResponseWriter, r *http.Request) {
 			writeInvalid(w, "можно загрузить только JPEG, PNG или WebP")
 			return
 		}
-		name := part.FileName()
-		if name == "" {
-			name = "photo"
-		}
-		fileID, err := s.Telegram.SendPhoto(r.Context(), s.AdminID, bytes.NewReader(data), name, "Фото для рассылки")
+		ct := http.DetectContentType(data)
+		id, err := s.Store.SavePhoto(r.Context(), data, ct)
 		if err != nil {
-			stlog.Warn(r.Context(), "upload photo to telegram", "error", err)
-			if errors.Is(err, bot.ErrorBadRequest) {
-				// описание Telegram (токен бывает только в URL, а он уже вычищен в telegram.Client)
-				writeInvalid(w, "Telegram не принял фото: "+strings.TrimPrefix(err.Error(), bot.ErrorBadRequest.Error()+", "))
-				return
-			}
-			writeError(w, http.StatusBadGateway, "telegram_unavailable")
+			internal(w, r, "save photo", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"photo": fileID})
+		writeJSON(w, http.StatusOK, map[string]string{"photoId": id.String()})
 		return
 	}
+}
+
+// photo отдаёт загруженную картинку для превью в панели; id неизменяем, поэтому кэш браузера безопасен.
+func (s *server) photo(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	data, ct, err := s.Store.Photo(r.Context(), id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	case err != nil:
+		internal(w, r, "get photo", err)
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	_, _ = w.Write(data)
 }

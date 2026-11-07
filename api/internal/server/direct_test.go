@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/bruhabruh/bruhanet/core/model"
 )
 
@@ -42,6 +44,20 @@ func TestDirectMessage(t *testing.T) {
 	getJSON(t, h, "/api/users/7", c, &out)
 	if len(out.Messages) != 1 || out.Messages[0].ID != 1 || out.Messages[0].Status != model.DirectPending {
 		t.Fatalf("messages = %+v", out.Messages)
+	}
+}
+
+// Личное сообщение с загруженной картинкой: photoId уходит в store (и дальше в outbox), неизвестный — 400.
+func TestDirectMessagePhotoID(t *testing.T) {
+	h, st, c := cardServer(t, &fakePanel{})
+	pid, _ := st.SavePhoto(t.Context(), []byte("IMG"), "image/png")
+
+	w := send(h, http.MethodPost, "/api/users/7/messages", c, `{"text":"","photoId":"`+pid.String()+`"}`)
+	if w.Code != http.StatusCreated || len(st.directs) != 1 || st.directs[0].PhotoID == nil || *st.directs[0].PhotoID != pid {
+		t.Fatalf("%d %s %+v", w.Code, w.Body, st.directs)
+	}
+	if w := send(h, http.MethodPost, "/api/users/7/messages", c, `{"text":"x","photoId":"`+uuid.NewString()+`"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown photo: %d %s", w.Code, w.Body)
 	}
 }
 

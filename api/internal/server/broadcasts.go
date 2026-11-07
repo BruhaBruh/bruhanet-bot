@@ -23,10 +23,34 @@ const (
 	maxCaptionLen  = 1024 // подпись к фото в Telegram, UTF-16
 )
 
-// message — тело рассылки и личного сообщения: Telegram HTML и необязательный file_id фото.
+// message — тело рассылки и личного сообщения: Telegram HTML и необязательное фото. Фото — либо PhotoID (картинка,
+// загруженная через POST /api/photos), либо Photo (file_id Telegram: старые черновики и дубли старых рассылок); не оба.
 type message struct {
-	Text  string `json:"text"`
-	Photo string `json:"photo"`
+	Text    string     `json:"text"`
+	Photo   string     `json:"photo"`
+	PhotoID *uuid.UUID `json:"photoId"`
+}
+
+func (m *message) hasPhoto() bool { return m.Photo != "" || m.PhotoID != nil }
+
+// checkPhotoRef: одно из двух полей, а загруженная картинка должна быть в БД; при ошибке сам отвечает 400.
+func (s *server) checkPhotoRef(w http.ResponseWriter, r *http.Request, m *message) bool {
+	if m.Photo != "" && m.PhotoID != nil {
+		writeInvalid(w, "укажите одно фото: photo или photoId")
+		return false
+	}
+	if m.PhotoID == nil {
+		return true
+	}
+	ok, err := s.Store.PhotoExists(r.Context(), *m.PhotoID)
+	if err != nil {
+		internal(w, r, "photo exists", err)
+		return false
+	}
+	if !ok {
+		writeInvalid(w, "фото не найдено, загрузите его заново")
+	}
+	return ok
 }
 
 // validateMessage — те же правила, что у текстов-сообщений, переменные только общие; с фото лимит подписи 1024
@@ -58,12 +82,15 @@ func (s *server) checkMessage(w http.ResponseWriter, r *http.Request, m *message
 	if strings.TrimSpace(m.Text) == "" {
 		m.Text = ""
 	}
+	if !s.checkPhotoRef(w, r, m) {
+		return false
+	}
 	cur, _, err := s.current(r.Context())
 	if err != nil {
 		internal(w, r, "settings", err)
 		return false
 	}
-	if err := validateMessage(m.Text, m.Photo != "", cur.Vars); err != nil {
+	if err := validateMessage(m.Text, m.hasPhoto(), cur.Vars); err != nil {
 		writeInvalid(w, texts.Problem(err))
 		return false
 	}
@@ -85,7 +112,7 @@ func (s *server) previewBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.Store.Enqueue(r.Context(), model.OutboxMessage{
-		EventType: "text_test", ChatID: s.AdminID, Text: in.Text, Photo: in.Photo, ParseMode: "HTML", Template: texts.HasVars(in.Text),
+		EventType: "text_test", ChatID: s.AdminID, Text: in.Text, Photo: in.Photo, PhotoID: idString(in.PhotoID), ParseMode: "HTML", Template: texts.HasVars(in.Text),
 		Keyboard: broadcast.Keyboard(in.Buttons), Silent: in.Silent,
 	})
 	if err != nil {
@@ -269,7 +296,7 @@ func (s *server) createBroadcast(w http.ResponseWriter, r *http.Request) {
 	}
 	b, created, err := s.Store.SendBroadcast(r.Context(),
 		model.BroadcastDraft{
-			IdempotencyKey: in.IdempotencyKey, DraftID: in.DraftID, Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
+			IdempotencyKey: in.IdempotencyKey, DraftID: in.DraftID, Text: in.Text, Photo: in.Photo, PhotoID: in.PhotoID, Audience: in.Audience, AudienceDays: in.AudienceDays,
 			Silent: in.Silent, Buttons: in.Buttons, ScheduledAt: at,
 		},
 		s.AdminID, s.Now())
@@ -323,13 +350,16 @@ func (s *server) updateBroadcast(w http.ResponseWriter, r *http.Request) {
 	var b model.Broadcast
 	switch {
 	case errors.Is(err, store.ErrNotFound) || cur.Status == broadcast.StatusDraft:
+		if !s.checkPhotoRef(w, r, &in.message) {
+			return
+		}
 		at, nerr := normalizeDraft(&in)
 		if nerr != nil {
 			writeInvalid(w, usererr.Message(nerr))
 			return
 		}
 		b, err = s.Store.SaveDraft(r.Context(), id, model.BroadcastDraft{
-			Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
+			Text: in.Text, Photo: in.Photo, PhotoID: in.PhotoID, Audience: in.Audience, AudienceDays: in.AudienceDays,
 			Silent: in.Silent, Buttons: in.Buttons, ScheduledAt: at,
 		})
 	case cur.Status == broadcast.StatusScheduled:
@@ -342,7 +372,7 @@ func (s *server) updateBroadcast(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b, err = s.Store.UpdateScheduled(r.Context(), id, model.BroadcastDraft{
-			Text: in.Text, Photo: in.Photo, Audience: in.Audience, AudienceDays: in.AudienceDays,
+			Text: in.Text, Photo: in.Photo, PhotoID: in.PhotoID, Audience: in.Audience, AudienceDays: in.AudienceDays,
 			Silent: in.Silent, Buttons: in.Buttons, ScheduledAt: at,
 		})
 	default:
@@ -424,4 +454,12 @@ func (s *server) broadcasts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
+}
+
+// idString — id картинки для payload outbox; пусто — без картинки.
+func idString(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
 }
