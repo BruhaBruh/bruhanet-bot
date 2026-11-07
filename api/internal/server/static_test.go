@@ -45,3 +45,14 @@ func TestSPAFallback(t *testing.T) {
 		}
 	}
 }
+
+// Заголовки безопасности стоят и на странице, и на api, и на отказе без сессии.
+func TestSecurityHeadersThroughServer(t *testing.T) {
+	h, _ := newServer(t, "http://localhost:5173")
+	for _, p := range []string{"/", "/api/me", "/auth/bot"} {
+		w := do(h, http.MethodGet, p, "", "")
+		if w.Header().Get("X-Frame-Options") != "DENY" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+			t.Errorf("%s: headers = %v", p, w.Header())
+		}
+	}
+}

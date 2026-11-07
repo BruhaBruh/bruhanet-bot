@@ -207,7 +207,7 @@ func New(d Deps) http.Handler {
 	// единственное исключение из jsonOnly: загрузка фото рассылки — multipart; сессия обязательна, тип проверяет сам хендлер.
 	mux.Handle("POST /api/photos", s.requireSession(http.HandlerFunc(s.uploadPhoto)))
 	mux.HandleFunc("/", s.static) // без метода: "GET /" конфликтует с "/api/"
-	return metrics(mux)
+	return metrics(securityHeaders(csp(d.Static), mux))
 }
 
 type statusWriter struct {
