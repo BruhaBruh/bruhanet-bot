@@ -100,7 +100,6 @@ var (
 // deviceVars — переменные экранов с лимитом устройств.
 var deviceVars = []Var{
 	{Name: "limit", Description: "Всего устройств в подписке", Sample: "7", Max: 4},
-	{Name: "base", Description: "Устройств в базе без доплаты", Sample: "5", Max: 4},
 	{Name: "extra", Description: "Докупленных устройств", Sample: "2", Max: 4},
 	varDevicePrice,
 }
@@ -229,7 +228,7 @@ var registry = []Def{
 		"<b>❌ Платёж отклонён</b>\n\nКоличество устройств не изменилось.").
 		shown("Когда админ отклонил оплату устройств, через очередь уведомлений", mainButtons...),
 	msg("devices.menu", groupDevices, "Устройства",
-		devicesHead+"Подключено: <b>{{.connected}}</b> из <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
+		devicesHead+"Подключено: <b>{{.connected}}</b> из <b>{{.limit}}</b> (+{{.extra}})\n"+
 			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц",
 		slices.Concat(deviceVars, []Var{varConnected})...).
 		shown("По кнопке «Устройства» в главном меню, пока подписка действует", "button.devices_buy", "button.devices_clear", "button.devices_miniapp", "button.back"),
@@ -259,7 +258,7 @@ var registry = []Def{
 		varDevMax).
 		shown("Когда в ответ на «Своё число» пришло не число или число вне допустимого", "button.back"),
 	msg("devices.no_term", groupDevices, "Устройства: подписка закончилась",
-		devicesHead+"Сейчас в подписке: <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
+		devicesHead+"Сейчас в подписке: <b>{{.limit}}</b> (+{{.extra}})\n"+
 			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц\n\n"+
 			"Подписка закончилась, поэтому докупить устройства можно после продления. Уже купленные войдут в цену тарифа.",
 		deviceVars...).
