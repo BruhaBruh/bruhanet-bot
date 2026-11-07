@@ -292,6 +292,7 @@ var keyboards = []Keyboard{
 		fx("button.copy_link", "button.back"), nil, row("button.copy_link"), row("button.back")),
 	kb("gift_ready", "Подарок оплачен: ссылка", []string{"gift.ready"},
 		fx("button.copy_link", "button.back"), nil, row("button.copy_link"), row("button.back")),
+	kb("login", "Вход в админ-панель", []string{"login.message"}, fx("button.login"), nil, row("button.login")),
 	kb("error", "Ошибка", []string{"error.generic"},
 		slices.Concat(fx("button.back"), rm("button.support")), nil, row("button.back"), row("button.support")),
 	kb("reminder", "Напоминания об окончании", []string{"reminder.week", "reminder.day"},

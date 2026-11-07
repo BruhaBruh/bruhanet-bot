@@ -43,7 +43,7 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 		ChatID:             h.cfg.Telegram.AdminID,
 		Text:               text,
 		ParseMode:          models.ParseModeHTML,
-		ReplyMarkup:        keyboard.Inline(keyboard.Row(urlButton(ctx, h.c, "button.login", link, keyboard.StylePrimary))),
+		ReplyMarkup:        h.kb(ctx, "login", "login.message").url("button.login", link, keyboard.StylePrimary).markup(),
 		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 	})
 	if errors.Is(err, bot.ErrorBadRequest) {

@@ -26,7 +26,8 @@ func CheckCatalog(t *testing.T) {
 		case texts.ActionTemplate:
 			_, ok = templateBlock[name]
 		case texts.ActionLink, texts.ActionURLKind:
-			ok = a.ID == "link:support"
+			_, bound := argKey[a.ID] // «link:login» питает экран входа, как flow/copy
+			ok = a.ID == "link:support" || bound
 		}
 		if !ok {
 			t.Errorf("action %s (%s) has no implementation", a.ID, kind)

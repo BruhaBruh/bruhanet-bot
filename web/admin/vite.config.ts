@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: { outDir: 'dist' },
   server: {
+    // dev-вход: Telegram не принимает localhost в URL-кнопке, а *.localtest.me резолвится в 127.0.0.1 (ADMIN_BASE_URL в .env)
+    allowedHosts: ['.localtest.me'],
     proxy: {
       '/api': 'http://localhost:8090',
       '/auth': 'http://localhost:8090',

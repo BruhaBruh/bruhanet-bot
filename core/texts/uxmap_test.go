@@ -50,7 +50,7 @@ func TestUXMapCoversDefaultKeyboards(t *testing.T) {
 		def, _, _ := MessageDefault(key)
 		for _, c := range def.cells() {
 			switch {
-			case strings.HasPrefix(c.Action, "url:"), strings.HasPrefix(c.Action, "copy:"), c.Action == "link:support":
+			case strings.HasPrefix(c.Action, "url:"), strings.HasPrefix(c.Action, "copy:"), strings.HasPrefix(c.Action, "link:"):
 				continue
 			}
 			if len(MapTargets(key, c.Action)) == 0 {

@@ -79,6 +79,7 @@ var actions = []Action{
 	{ID: "route:gift", Title: "Подарить подписку", Kind: ActionRoute, Guard: "gifts_on"},
 	{ID: "route:referral", Title: "Пригласить друга", Kind: ActionRoute, Guard: "referral_on"},
 	{ID: "link:support", Title: "Поддержка (ссылка из настроек)", Kind: ActionLink},
+	{ID: "link:login", Title: "Ссылка входа в админ-панель", Kind: ActionLink, Bound: true},
 	{ID: "copy:subscription", Title: "Скопировать ссылку подписки", Kind: ActionCopy, Bound: true},
 	{ID: "copy:referral_link", Title: "Скопировать реферальную ссылку", Kind: ActionCopy, Bound: true},
 	{ID: "copy:gift_link", Title: "Скопировать ссылку подарка", Kind: ActionCopy, Bound: true},
@@ -232,6 +233,8 @@ func cellSpec(kbID, slot string) Cell {
 		c.Action = "route:trial"
 	case "button.devices":
 		c.Action = "route:devices"
+	case "button.login":
+		c.Action, c.Style = "link:login", StylePrimary
 	case "button.devices_buy":
 		c.Action = "route:devices_buy"
 	case "button.devices_custom":

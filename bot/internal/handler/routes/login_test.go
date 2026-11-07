@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bruhabruh/bruhanet/bot/internal/tgtest"
+	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
 func TestLoginAdmin(t *testing.T) {
@@ -120,5 +121,19 @@ func TestStartOtherPayloadForAdminIsTheMenu(t *testing.T) {
 		if n := len(e.pay.LoginTokens()); n != 0 {
 			t.Fatalf("%q: tokens = %d", text, n)
 		}
+	}
+}
+
+// Кнопка входа — ячейка клавиатуры сообщения: подпись и стиль правятся в редакторе, ссылка остаётся токеновой.
+func TestLoginButtonFromConstructor(t *testing.T) {
+	e := newEnv(t)
+	store(e, "login.message", func(l *texts.MsgLayout) {
+		l.Rows[0][0].Label = "Открыть панель"
+		l.Rows[0][0].Style = texts.StyleSuccess
+	})
+	e.process(t, tgtest.Message(adminID, "/login"))
+	kb := e.last(t, "sendMessage").Params.Get("reply_markup")
+	if !strings.Contains(kb, `"text":"Открыть панель"`) || !strings.Contains(kb, `"style":"success"`) || !strings.Contains(kb, `"url":"http://localhost:5173/auth?token=`) {
+		t.Fatalf("reply_markup = %s", kb)
 	}
 }

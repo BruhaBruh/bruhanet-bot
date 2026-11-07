@@ -57,6 +57,7 @@ func (b *kbBuilder) callback(key, data string, style keyboard.Style) *kbBuilder 
 }
 
 func (b *kbBuilder) url(key, url string, style keyboard.Style) *kbBuilder {
+	b.args[key] = url
 	return b.put(key, urlButton(b.ctx, b.c, key, url, style))
 }
 
@@ -97,7 +98,7 @@ var routeData = map[string]string{
 // argKey — какую кнопку экрана питает привязанное действие (flow/copy): ключ в b.args.
 var argKey = map[string]string{
 	"flow:yes": "button.yes", "flow:no": "button.no", "flow:have_promo": "button.have_promo",
-	"flow:devices_custom": "button.devices_custom", "flow:drop_devices": "button.drop_devices", "flow:remove_promo": "button.remove_promo",
+	"link:login": "button.login", "flow:devices_custom": "button.devices_custom", "flow:drop_devices": "button.drop_devices", "flow:remove_promo": "button.remove_promo",
 	"copy:subscription": "button.subscription", "copy:referral_link": "button.copy_link", "copy:gift_link": "button.copy_link",
 }
 
@@ -161,6 +162,12 @@ func (b *kbBuilder) cell(c texts.Cell, defStyle keyboard.Style) (keyboard.Button
 		return keyboard.URL(label, name).Style(style), true
 	case c.Action == "link:support":
 		return keyboard.URL(label, b.c.Settings(b.ctx).SupportURL).Style(style), true
+	case c.Action == "link:login": // ссылка с одноразовым токеном знает только экран входа
+		v, ok := b.args[argKey[c.Action]]
+		if !ok {
+			return keyboard.Button{}, false
+		}
+		return keyboard.URL(label, v).Style(style), true
 	case kind == "route":
 		if a, _ := texts.LookupAction(c.Action); a.Guard != "" && !b.env.eval(a.Guard) {
 			return keyboard.Button{}, false
