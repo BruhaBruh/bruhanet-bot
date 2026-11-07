@@ -87,13 +87,13 @@ func TestSendBroadcastIdempotent(t *testing.T) {
 	d := draft("<b>hi</b>")
 	d.Photo = "file1"
 	d.Silent = true
-	d.Buttons = []broadcast.Button{{Text: "Сайт", URL: "https://e.com", Style: "primary"}}
+	d.Buttons = []broadcast.Button{{Text: "Сайт", URL: "https://e.com", Style: "primary"}, {Text: "Ещё", URL: "https://e.com/2", Inline: true}}
 	b, created, err := s.SendBroadcast(ctx, d, 1, bt0)
 	if err != nil || !created {
 		t.Fatalf("created=%v err=%v", created, err)
 	}
 	if b.Status != broadcast.StatusSending || b.Total != 2 || b.Text != d.Text || b.Photo != "file1" || b.FinishedAt != nil ||
-		!b.Silent || len(b.Buttons) != 1 || b.ScheduledAt != nil || b.Audience != "all" {
+		!b.Silent || len(b.Buttons) != 2 || !b.Buttons[1].Inline || b.Buttons[0].Inline || b.ScheduledAt != nil || b.Audience != "all" {
 		t.Fatalf("broadcast: %+v", b)
 	}
 	got, err := s.OutboxBatch(ctx, 10)

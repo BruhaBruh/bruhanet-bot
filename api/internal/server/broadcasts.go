@@ -260,7 +260,7 @@ func normalizeDraft(in *broadcastIn) (*time.Time, error) {
 		in.AudienceDays = nil
 	}
 	if len(in.Buttons) > broadcast.MaxButtons {
-		return nil, usererr.Errorf("too many buttons", "кнопок может быть не больше 3")
+		return nil, usererr.Errorf("too many buttons", "кнопок может быть не больше %d", broadcast.MaxButtons)
 	}
 	for i, b := range in.Buttons {
 		if utf8.RuneCountInString(b.Text) > draftButtonText || len(b.URL) > draftButtonURL {

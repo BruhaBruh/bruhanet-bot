@@ -37,7 +37,8 @@ const (
 var Audiences = []string{AudienceAll, AudienceActive, AudienceNoSubscription, AudienceExpiring, AudienceTrial}
 
 const (
-	MaxButtons    = 3
+	MaxButtons    = 6
+	MaxRowButtons = 2
 	MaxButtonText = 64 // UTF-16, как у кнопок бота
 	MaxButtonURL  = 512
 	MinDays       = 1
@@ -54,6 +55,8 @@ type Button struct {
 	Text  string `json:"text"`
 	URL   string `json:"url"`
 	Style string `json:"style"`
+	// Inline: кнопка в одной строке с предыдущей; нет — своя строка (так хранятся старые рассылки).
+	Inline bool `json:"inline,omitempty"`
 }
 
 // ValidateAudience: expiring требует days 1..60, остальные days не принимают (nil).
@@ -70,14 +73,23 @@ func ValidateAudience(audience string, days *int) error {
 	return nil
 }
 
-// ValidateButtons — до 3 кнопок: текст 1..64 простым текстом (без переменных), https-ссылка, стиль из texts.Styles.
+// ValidateButtons — до 6 кнопок, в строке не больше 2 (первая не inline): текст 1..64 простым текстом (без переменных), https-ссылка, стиль из texts.Styles.
 // javascript:, data:, tg: и http: отклоняются: разрешён только https с хостом.
 func ValidateButtons(bs []Button) error {
 	if len(bs) > MaxButtons {
 		return errors.Join(ErrButtons, usererr.Errorf("at most %d buttons", "кнопок может быть не больше %d", MaxButtons))
 	}
+	inRow := 0
 	for i, b := range bs {
 		n := i + 1
+		if b.Inline {
+			inRow++
+			if i == 0 || inRow > MaxRowButtons {
+				return errors.Join(ErrButtons, usererr.Errorf("button %d: at most %d buttons in a row, the first cannot share a row", "кнопка %d: в строке не больше %d кнопок, первая кнопка всегда в своей строке", n, MaxRowButtons))
+			}
+		} else {
+			inRow = 1
+		}
 		if t := strings.TrimSpace(b.Text); t == "" || t != b.Text || len(utf16.Encode([]rune(t))) > MaxButtonText {
 			return errors.Join(ErrButtons, usererr.Errorf("button %d: text must be 1..%d characters without surrounding spaces", "кнопка %d: текст от 1 до %d символов, без пробелов по краям", n, MaxButtonText))
 		}
@@ -102,14 +114,31 @@ func validURL(raw string) bool {
 	return err == nil && u.Scheme == "https" && u.Host != "" && u.Hostname() != "" && u.User == nil && u.Opaque == ""
 }
 
-// Keyboard — клавиатура под сообщением, по кнопке в строке; нет кнопок — nil.
+// Rows группирует кнопки в строки: Inline — в строку предыдущей (если там меньше 2), иначе новая строка.
+func Rows(bs []Button) [][]Button {
+	var rows [][]Button
+	for _, b := range bs {
+		if n := len(rows); b.Inline && n > 0 && len(rows[n-1]) < MaxRowButtons {
+			rows[n-1] = append(rows[n-1], b)
+			continue
+		}
+		rows = append(rows, []Button{b})
+	}
+	return rows
+}
+
+// Keyboard — клавиатура под сообщением по строкам Rows; нет кнопок — nil.
 func Keyboard(bs []Button) *models.InlineKeyboardMarkup {
 	if len(bs) == 0 {
 		return nil
 	}
-	rows := make([][]models.InlineKeyboardButton, len(bs))
-	for i, b := range bs {
-		rows[i] = []models.InlineKeyboardButton{{Text: b.Text, URL: b.URL, Style: b.Style}}
+	var rows [][]models.InlineKeyboardButton
+	for _, r := range Rows(bs) {
+		row := make([]models.InlineKeyboardButton, len(r))
+		for i, b := range r {
+			row[i] = models.InlineKeyboardButton{Text: b.Text, URL: b.URL, Style: b.Style}
+		}
+		rows = append(rows, row)
 	}
 	return &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 }

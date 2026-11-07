@@ -42,8 +42,44 @@ func TestValidateButtons(t *testing.T) {
 	if err := ValidateButtons([]Button{{Text: strings.Repeat("я", 64), URL: "HTTPS://Example.com"}}); err != nil {
 		t.Fatalf("boundary 64 / upper-case scheme: %v", err)
 	}
-	if err := ValidateButtons([]Button{ok, ok, ok, ok}); !errors.Is(err, ErrButtons) {
-		t.Fatalf("4 buttons: %v", err)
+	if err := ValidateButtons([]Button{ok, ok, ok, ok, ok, ok, ok}); !errors.Is(err, ErrButtons) {
+		t.Fatalf("7 buttons: %v", err)
+	}
+	if err := ValidateButtons([]Button{ok, ok, ok, ok, ok, ok}); err != nil {
+		t.Fatalf("6 buttons: %v", err)
+	}
+}
+
+func TestButtonRows(t *testing.T) {
+	ok := Button{Text: "a", URL: "https://e.com"}
+	in := ok
+	in.Inline = true
+	good := [][]Button{{ok, in}, {ok, ok, in}, {ok, in, ok, in, ok, in}}
+	for _, bs := range good {
+		if err := ValidateButtons(bs); err != nil {
+			t.Errorf("%v: %v", bs, err)
+		}
+	}
+	for name, bs := range map[string][]Button{
+		"first inline": {in, ok},
+		"three in row": {ok, in, in},
+	} {
+		if err := ValidateButtons(bs); !errors.Is(err, ErrButtons) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	kb := Keyboard([]Button{ok, in, ok, ok, in})
+	if got := len(kb.InlineKeyboard); got != 3 || len(kb.InlineKeyboard[0]) != 2 || len(kb.InlineKeyboard[1]) != 1 || len(kb.InlineKeyboard[2]) != 2 {
+		t.Fatalf("rows = %+v", kb.InlineKeyboard)
+	}
+	// старые строки без inline: по кнопке в строке
+	flat := Keyboard([]Button{ok, ok, ok})
+	if len(flat.InlineKeyboard) != 3 {
+		t.Fatalf("flat rows = %d", len(flat.InlineKeyboard))
+	}
+	// переполненный ряд не теряет кнопки
+	if r := Rows([]Button{ok, in, in}); len(r) != 2 || len(r[1]) != 1 {
+		t.Fatalf("overflow rows = %+v", r)
 	}
 }
 

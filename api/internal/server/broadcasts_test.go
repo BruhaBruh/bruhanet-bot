@@ -460,7 +460,16 @@ func TestBroadcastButtonsAndSilent(t *testing.T) {
 	btn := func(text, url, style string) map[string]any {
 		return map[string]any{"text": text, "url": url, "style": style}
 	}
+	inl := func(m map[string]any) map[string]any { m["inline"] = true; return m }
+	// две в строке: inline сохраняется, старый плоский формат без поля остаётся валидным
 	code, b := postBC(t, h, c, map[string]any{
+		"idempotencyKey": uuid.New(), "text": "x",
+		"buttons": []any{btn("a", "https://e.com", ""), inl(btn("b", "https://e.com", "")), btn("c", "https://e.com", "")},
+	})
+	if code != http.StatusCreated || len(b.Buttons) != 3 || b.Buttons[0].Inline || !b.Buttons[1].Inline || b.Buttons[2].Inline {
+		t.Fatalf("inline: %d %+v", code, b.Buttons)
+	}
+	code, b = postBC(t, h, c, map[string]any{
 		"idempotencyKey": uuid.New(), "text": "x", "silent": true,
 		"buttons": []any{btn("Сайт", "https://e.com/?a=1", "primary"), btn("Ещё", "https://e.org", "")},
 	})
@@ -470,15 +479,17 @@ func TestBroadcastButtonsAndSilent(t *testing.T) {
 	n := len(st.broadcasts)
 	long := strings.Repeat("я", 65)
 	for name, buttons := range map[string][]any{
-		"javascript": {btn("x", "javascript:alert(1)", "")},
-		"data":       {btn("x", "data:text/html;base64,PHNjcmlwdD4=", "")},
-		"http":       {btn("x", "http://e.com", "")},
-		"tg":         {btn("x", "tg://user?id=1", "")},
-		"vars":       {btn("{{.name}}", "https://e.com", "")},
-		"long text":  {btn(long, "https://e.com", "")},
-		"empty":      {btn("", "https://e.com", "")},
-		"style":      {btn("x", "https://e.com", "rainbow")},
-		"four":       {btn("1", "https://e.com", ""), btn("2", "https://e.com", ""), btn("3", "https://e.com", ""), btn("4", "https://e.com", "")},
+		"javascript":   {btn("x", "javascript:alert(1)", "")},
+		"data":         {btn("x", "data:text/html;base64,PHNjcmlwdD4=", "")},
+		"http":         {btn("x", "http://e.com", "")},
+		"tg":           {btn("x", "tg://user?id=1", "")},
+		"vars":         {btn("{{.name}}", "https://e.com", "")},
+		"long text":    {btn(long, "https://e.com", "")},
+		"empty":        {btn("", "https://e.com", "")},
+		"style":        {btn("x", "https://e.com", "rainbow")},
+		"seven":        {btn("1", "https://e.com", ""), btn("2", "https://e.com", ""), btn("3", "https://e.com", ""), btn("4", "https://e.com", ""), btn("5", "https://e.com", ""), btn("6", "https://e.com", ""), btn("7", "https://e.com", "")},
+		"first inline": {inl(btn("1", "https://e.com", ""))},
+		"three in row": {btn("1", "https://e.com", ""), inl(btn("2", "https://e.com", "")), inl(btn("3", "https://e.com", ""))},
 	} {
 		code, _ := postBC(t, h, c, map[string]any{"idempotencyKey": uuid.New(), "text": "x", "buttons": buttons})
 		if code != http.StatusBadRequest {
@@ -555,7 +566,7 @@ func TestBroadcastDraftAutosave(t *testing.T) {
 	}
 	for name, in := range map[string]map[string]any{
 		"audience":    {"audience": "nope"},
-		"four":        {"buttons": []any{map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}}},
+		"seven":       {"buttons": []any{map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}}},
 		"long button": {"buttons": []any{map[string]any{"text": strings.Repeat("я", 201)}}},
 		"long url":    {"buttons": []any{map[string]any{"url": "https://e.com/" + strings.Repeat("a", 2048)}}},
 		"bad time":    {"scheduledAt": "завтра"},
