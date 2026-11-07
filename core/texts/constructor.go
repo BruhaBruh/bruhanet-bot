@@ -32,6 +32,7 @@ var conditions = []Condition{
 	{"devices_sale_on", "Продажа устройств включена", "Цена дополнительного устройства в настройках больше нуля."},
 	{"gifts_on", "Подарки доступны", "В настройках есть хотя бы один тариф."},
 	{"referral_on", "Рефералка включена", "Дни за приглашённого друга в настройках больше нуля."},
+	{"miniapp_on", "Задана ссылка на MiniApp", "В настройках «Устройства» указана ссылка на страницу, где юзер удаляет устройства по одному."},
 }
 
 // Conditions — каталог условий (копия).
@@ -73,12 +74,14 @@ var actions = []Action{
 	{ID: "route:info", Title: "Информация о подписке", Kind: ActionRoute},
 	{ID: "route:pay", Title: "Оплата и продление", Kind: ActionRoute},
 	{ID: "route:promo", Title: "Промокод", Kind: ActionRoute},
-	{ID: "route:devices", Title: "Устройства", Kind: ActionRoute, Guard: "devices_sale_on"},
+	{ID: "route:devices", Title: "Устройства", Kind: ActionRoute, Guard: "in_panel"},
+	{ID: "route:devices_clear", Title: "Очистка устройств", Kind: ActionRoute, Guard: "in_panel"},
 	{ID: "route:devices_buy", Title: "Докупка устройств", Kind: ActionRoute, Guard: "devices_sale_on"},
 	{ID: "route:trial", Title: "Пробный период", Kind: ActionRoute, Guard: "trial_available"},
 	{ID: "route:gift", Title: "Подарить подписку", Kind: ActionRoute, Guard: "gifts_on"},
 	{ID: "route:referral", Title: "Пригласить друга", Kind: ActionRoute, Guard: "referral_on"},
 	{ID: "link:support", Title: "Поддержка (ссылка из настроек)", Kind: ActionLink},
+	{ID: "link:miniapp", Title: "MiniApp: управление устройствами (ссылка из настроек)", Kind: ActionLink, Guard: "miniapp_on"},
 	{ID: "link:login", Title: "Ссылка входа в админ-панель", Kind: ActionLink, Bound: true},
 	{ID: "copy:subscription", Title: "Скопировать ссылку подписки", Kind: ActionCopy, Bound: true},
 	{ID: "copy:referral_link", Title: "Скопировать реферальную ссылку", Kind: ActionCopy, Bound: true},
@@ -236,6 +239,10 @@ func cellSpec(kbID, slot string) Cell {
 		c.Action = "route:devices"
 	case "button.login":
 		c.Action, c.Style = "link:login", StylePrimary
+	case "button.devices_clear":
+		c.Action = "route:devices_clear"
+	case "button.devices_miniapp":
+		c.Action = "link:miniapp"
 	case "button.devices_buy":
 		c.Action = "route:devices_buy"
 	case "button.devices_custom":

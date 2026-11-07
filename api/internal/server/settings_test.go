@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const botKeys = `"reminderTimes":["18:00","09:30"],"advanceLimit":2,"advanceHours":48,"reminderWeekDays":5,"reminderDayHours":12,"devicesBase":4,"devicePrice":50,"deviceOptions":[1,4],"deviceMax":8,"trialDays":5,"trialDevices":3,"referralDays":9`
+const botKeys = `"reminderTimes":["18:00","09:30"],"advanceLimit":2,"advanceHours":48,"reminderWeekDays":5,"reminderDayHours":12,"devicesBase":4,"devicePrice":50,"deviceOptions":[1,4],"deviceMax":8,"miniAppUrl":"https://sub.example/app","trialDays":5,"trialDevices":3,"referralDays":9`
 
 const goodSettings = `{"prices":{"1":200,"3":500},"phone":"+7 111","bank":"Сбер","comments":[" Кофе ","Чай"],"supportUrl":"https://t.me/new",` + botKeys + `}`
 
@@ -33,7 +33,7 @@ func TestSettingsPutThenGet(t *testing.T) {
 	if w := send(h, http.MethodPut, "/api/settings", c, goodSettings); w.Code != http.StatusNoContent {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if len(st.setRaw) != 18 {
+	if len(st.setRaw) != 19 {
 		t.Fatalf("saved keys = %v", st.setRaw)
 	}
 	w := send(h, http.MethodGet, "/api/settings", c, "")

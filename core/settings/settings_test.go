@@ -101,6 +101,8 @@ func TestValidateBotKeys(t *testing.T) {
 		"base big":       func(s *Settings) { s.DevicesBase = 101 },
 		"price negative": func(s *Settings) { s.DevicePrice = -1 },
 		"price big":      func(s *Settings) { s.DevicePrice = 100_001 },
+		"miniapp http":   func(s *Settings) { s.MiniAppURL = "http://x.example" },
+		"miniapp space":  func(s *Settings) { s.MiniAppURL = "https://x.example/a b" },
 		"max zero":       func(s *Settings) { s.DeviceMax = 0 },
 		"max big":        func(s *Settings) { s.DeviceMax = 101 },
 		"options none":   func(s *Settings) { s.DeviceOptions = nil },

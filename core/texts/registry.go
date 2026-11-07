@@ -91,6 +91,7 @@ var (
 	varDevicePrice   = Var{Name: "devicePrice", Description: "Цена одного доп. устройства в месяц, ₽", Sample: "50", Max: 8}
 	varDevCountShort = Var{Name: "countShort", Description: "Сколько устройств добавляется, кратко: «2 устр.»", Sample: "2 устр.", Max: 12}
 	varDevCount      = Var{Name: "count", Description: "Сколько устройств добавляется, с единицей: «2 устройства»", Sample: "2 устройства", Max: 16}
+	varConnected     = Var{Name: "connected", Description: "Сколько устройств сейчас подключено (из панели); нет данных — «—»", Sample: "3", Max: 4}
 	varDevMax        = Var{Name: "max", Description: "Наибольшее число устройств за одну докупку (из настроек)", Sample: "10", Max: 4}
 	varDevTotal      = Var{Name: "price", Description: "Итоговая цена в рублях", Sample: "500", Max: 8}
 )
@@ -227,10 +228,18 @@ var registry = []Def{
 		"<b>❌ Платёж отклонён</b>\n\nКоличество устройств не изменилось.").
 		shown("Когда админ отклонил оплату устройств, через очередь уведомлений", mainButtons...),
 	msg("devices.menu", groupPayment, "Устройства",
-		devicesHead+"Сейчас в подписке: <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
+		devicesHead+"Подключено: <b>{{.connected}}</b> из <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
 			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц",
-		deviceVars...).
-		shown("По кнопке «Устройства» в главном меню, пока подписка действует", "button.devices_buy", "button.back"),
+		slices.Concat(deviceVars, []Var{varConnected})...).
+		shown("По кнопке «Устройства» в главном меню, пока подписка действует", "button.devices_buy", "button.devices_clear", "button.devices_miniapp", "button.back"),
+	msg("devices.clear_confirm", groupPayment, "Очистка устройств: подтверждение",
+		devicesHead+"Отключить все подключённые устройства (сейчас <b>{{.connected}}</b>)? Потом их можно подключить заново, лимит подписки: <b>{{.limit}}</b>.\n\nВсё верно?",
+		varConnected, Var{Name: "limit", Description: "Сколько устройств в подписке", Sample: "7", Max: 4}).
+		shown("По кнопке «Очистить устройства» на экране «Устройства»", "button.yes", "button.no"),
+	msg("devices.cleared", groupPayment, "Устройства очищены",
+		"<b>✅ Устройства очищены</b>\n\nВсе устройства отключены от подписки. Подключай заново: можно до <b>{{.limit}}</b>.",
+		Var{Name: "limit", Description: "Сколько устройств в подписке", Sample: "7", Max: 4}).
+		shown("После подтверждения очистки устройств", "button.back"),
 	msg("devices.buy", groupPayment, "Докупка устройств",
 		devicesHead+"Выбери, сколько устройств добавить, или нажми «Своё число» (до {{.max}}).\n"+
 			"Одно устройство — {{.devicePrice}} ₽ в месяц, цена считается до конца текущей подписки, срок не меняется.",
@@ -415,6 +424,8 @@ var registry = []Def{
 	btn("button.devices", "Устройства (в меню)", "📱 Устройства").on("devices", StyleDefault, "Главное меню, если юзер есть в панели и продажа устройств включена"),
 	btn("button.devices_add", "Добавить устройства", "+{{.count}} — {{.price}} ₽", Var{Name: "count", Description: "Сколько устройств добавляется числом", Sample: "2", Max: 3}, varDevTotal).
 		on("dev", StyleDefault, "Экран «Устройства», по кнопке на количество"),
+	btn("button.devices_clear", "Очистить устройства", "🧹 Очистить устройства").on("devclr", StyleDefault, "Экран «Устройства»"),
+	btn("button.devices_miniapp", "Управлять устройствами (MiniApp)", "📲 Управлять устройствами").on("url:miniAppUrl", StyleDefault, "Экран «Устройства», пока в настройках задана ссылка на MiniApp"),
 	btn("button.devices_buy", "Докупить устройства", "➕ Докупить").on("devbuy", StyleDefault, "Экран «Устройства», пока подписка действует"),
 	btn("button.devices_custom", "Своё число устройств", "✏️ Своё число").on("devc", StyleDefault, "Меню докупки устройств"),
 	btn("button.drop_devices", "Без доп. устройств", "Без доп. устройств").on("buyd", StyleDefault, "Подтверждение тарифа, если у юзера есть доп. устройства"),

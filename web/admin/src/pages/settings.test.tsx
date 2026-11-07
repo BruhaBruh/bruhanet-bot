@@ -25,6 +25,7 @@ const s = {
   devicePrice: 0,
   deviceOptions: [1, 2, 3, 5],
   deviceMax: 10,
+  miniAppUrl: '',
   trialDays: 3,
   trialDevices: 2,
   referralDays: 7,
@@ -260,6 +261,20 @@ describe('Settings', () => {
     fireEvent.click(btn('Сохранить изменения'))
     await flush()
     expect(puts()[0].body).toMatchObject({ deviceOptions: [1, 4, 8], deviceMax: 8 })
+  })
+
+  it('MiniApp link: optional, https only, saved trimmed', async () => {
+    await open()
+    expect(field('Ссылка на MiniApp для удаления устройств').value).toBe('')
+    edit(field('Ссылка на MiniApp для удаления устройств'), 'http://x.example')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()).toHaveLength(0)
+    expect(screen.getByRole('alert').textContent).toContain('https://')
+    edit(field('Ссылка на MiniApp для удаления устройств'), '  https://sub.example/app  ')
+    fireEvent.click(btn('Сохранить изменения'))
+    await flush()
+    expect(puts()[0].body).toMatchObject({ miniAppUrl: 'https://sub.example/app' })
   })
 
   it('trial days and devices are editable and saved; 0 days is explained as off', async () => {

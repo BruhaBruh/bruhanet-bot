@@ -95,7 +95,7 @@ func (b *kbBuilder) markup() *models.InlineKeyboardMarkup {
 // routeData — действия `route:<имя>` конструктора: имя → callback data роута (allow-list; тест сверяет с каталогом).
 var routeData = map[string]string{
 	"menu": routeMenu, "info": routeInfo, "pay": routePay, "promo": routePromo, "devices": routeDevices,
-	"trial": routeTrial, "gift": routeGift, "referral": routeReferral, "devices_buy": routeDevicesBuy,
+	"trial": routeTrial, "gift": routeGift, "referral": routeReferral, "devices_buy": routeDevicesBuy, "devices_clear": routeDevicesClear,
 }
 
 // argKey — какую кнопку экрана питает привязанное действие (flow/copy): ключ в b.args.
@@ -165,6 +165,11 @@ func (b *kbBuilder) cell(c texts.Cell, defStyle keyboard.Style) (keyboard.Button
 		return keyboard.URL(label, name).Style(style), true
 	case c.Action == "link:support":
 		return keyboard.URL(label, b.c.Settings(b.ctx).SupportURL).Style(style), true
+	case c.Action == "link:miniapp":
+		if u := b.c.Settings(b.ctx).MiniAppURL; u != "" {
+			return keyboard.URL(label, u).Style(style), true
+		}
+		return keyboard.Button{}, false
 	case c.Action == "link:login": // ссылка с одноразовым токеном знает только экран входа
 		v, ok := b.args[argKey[c.Action]]
 		if !ok {

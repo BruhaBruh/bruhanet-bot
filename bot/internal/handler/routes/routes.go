@@ -37,6 +37,9 @@ type Remnawave interface {
 	// SetDeviceLimit пишет лимит устройств (база + купленные) — только при событии с устройствами.
 	SetDeviceLimit(ctx context.Context, telegramID int64, limit int) (*api.UserItemInfo, error)
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
+	// UserDevices — подключённые HWID-устройства по числовому id юзера в панели; DeleteAllUserDevices — очистка.
+	UserDevices(ctx context.Context, userID int) ([]api.Device, error)
+	DeleteAllUserDevices(ctx context.Context, userID int) error
 }
 
 // Payments — хранилище платежей (store.Store); ошибки — store.ErrNotFound / store.ErrNotPending.
@@ -133,6 +136,8 @@ func Register(r *router.Router, d Deps) {
 	r.Callback(giftPriceRoute.Name(), h.giftPrice)
 	r.Callback(giftBuyRoute.Name(), h.giftBuy)
 	r.Callback(routeDevices, h.devices)
+	r.Callback(routeDevicesClear, h.devicesClear)
+	r.Callback(devClearYesRoute, h.devicesClearYes)
 	r.Callback(routeDevicesBuy, h.devicesBuyMenu)
 	r.Callback(routeDevicesCustom, h.devicesCustom)
 	r.Callback(devPickRoute.Name(), h.devicesPick)

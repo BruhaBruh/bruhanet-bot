@@ -40,10 +40,10 @@ func TestLayoutReorderHideTwoColumns(t *testing.T) {
 	e.process(t, tgtest.Message(userID, "/start"))
 	// «Подписка» в сохранённой раскладке не упомянута — встала в конец; «Промокод» скрыт
 	eqLines(t, labels(t, e.last(t, "sendMessage").Params.Get("reply_markup")),
-		[]string{"💬 Поддержка|💳 Оплатить", "🎁 Подарить|🤝 Пригласить друга", "ℹ️ Информация", "🔗 Подписка"})
+		[]string{"💬 Поддержка|💳 Оплатить", "🎁 Подарить|🤝 Пригласить друга", "ℹ️ Информация", "🔗 Подписка", "📱 Устройства"})
 	// кнопки в очереди (уведомления) берут ту же раскладку
 	_, kb := routes.PaymentNotice(t.Context(), e.c, e.rw, userID, "payment.confirmed", now, 0, 0)
-	if kb.InlineKeyboard[0][0].Text != "💬 Поддержка" || len(kb.InlineKeyboard) != 4 {
+	if kb.InlineKeyboard[0][0].Text != "💬 Поддержка" || len(kb.InlineKeyboard) != 5 {
 		t.Fatalf("notice keyboard: %+v", kb.InlineKeyboard)
 	}
 }
@@ -52,10 +52,10 @@ func TestLayoutReorderHideTwoColumns(t *testing.T) {
 func TestLayoutDoesNotForceAbsentButton(t *testing.T) {
 	e := newEnv(t)
 	e.rw.AddUser(userID, now.Add(20*day)) // пробный не положен, устройства выключены
-	e.src.SetLayouts(map[string]texts.Layout{"menu": {Rows: [][]string{{"button.trial", "button.devices"}, {"button.info"}}}})
+	e.src.SetLayouts(map[string]texts.Layout{"menu": {Rows: [][]string{{"button.trial"}, {"button.info"}}}})
 	e.process(t, tgtest.Message(userID, "/start"))
 	got := labels(t, e.last(t, "sendMessage").Params.Get("reply_markup"))
-	if got[0] != "ℹ️ Информация" || strings.Contains(strings.Join(got, ","), "Пробный") || strings.Contains(strings.Join(got, ","), "Устройства") {
+	if got[0] != "ℹ️ Информация" || strings.Contains(strings.Join(got, ","), "Пробный") {
 		t.Fatalf("got %v", got)
 	}
 }

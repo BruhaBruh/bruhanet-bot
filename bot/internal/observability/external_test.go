@@ -132,6 +132,10 @@ func (f fakeRW) SetDeviceLimit(context.Context, int64, int) (*api.UserItemInfo, 
 	return nil, f.err
 }
 
+func (f fakeRW) UserDevices(context.Context, int) ([]api.Device, error) { return nil, f.err }
+
+func (f fakeRW) DeleteAllUserDevices(context.Context, int) error { return f.err }
+
 func (f fakeRW) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
 	return func(yield func(api.UserItemInfo, error) bool) {
 		yield(api.UserItemInfo{}, nil)

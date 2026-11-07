@@ -19,6 +19,9 @@ type Remnawave interface {
 	UpdateUser(ctx context.Context, telegramID int64, username string, expireAt time.Time, squadUUID uuid.UUID) (*api.UserItemInfo, error)
 	SetDeviceLimit(ctx context.Context, telegramID int64, limit int) (*api.UserItemInfo, error)
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
+	// HWID-устройства юзера по числовому id в панели (экран «Устройства»).
+	UserDevices(ctx context.Context, userID int) ([]api.Device, error)
+	DeleteAllUserDevices(ctx context.Context, userID int) error
 }
 
 type instrumented struct{ rw Remnawave }
@@ -61,6 +64,17 @@ func (i instrumented) SetDeviceLimit(ctx context.Context, id int64, limit int) (
 	return call(ctx, "SetDeviceLimit", func(ctx context.Context) (*api.UserItemInfo, error) {
 		return i.rw.SetDeviceLimit(ctx, id, limit)
 	})
+}
+
+func (i instrumented) UserDevices(ctx context.Context, userID int) ([]api.Device, error) {
+	return call(ctx, "UserDevices", func(ctx context.Context) ([]api.Device, error) { return i.rw.UserDevices(ctx, userID) })
+}
+
+func (i instrumented) DeleteAllUserDevices(ctx context.Context, userID int) error {
+	_, err := call(ctx, "DeleteAllUserDevices", func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, i.rw.DeleteAllUserDevices(ctx, userID)
+	})
+	return err
 }
 
 // Users: один спан и одна метрика на весь проход итератора.

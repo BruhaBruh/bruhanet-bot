@@ -25,8 +25,10 @@ import (
 
 const (
 	routeDevices       = "devices"
-	routeDevicesBuy    = "devbuy" // меню докупки: варианты и «Своё число»
-	routeDevicesCustom = "devc"   // ожидание числа устройств сообщением
+	routeDevicesBuy    = "devbuy"  // меню докупки: варианты и «Своё число»
+	routeDevicesCustom = "devc"    // ожидание числа устройств сообщением
+	routeDevicesClear  = "devclr"  // подтверждение очистки всех устройств
+	devClearYesRoute   = "devclry" // «Да»: очистить
 )
 
 var (
@@ -99,9 +101,54 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	h.leavePromo(ctx, userID)
-	show(ctx, b, u, h.kb(ctx, "devices", "devices.menu").
-		callback("button.devices_buy", routeDevicesBuy, keyboard.StyleDefault).
-		callback("button.back", routeMenu, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.menu", vars))
+	vars["connected"] = h.connectedDevices(ctx, user.ID)
+	kb := h.kb(ctx, "devices", "devices.menu")
+	if set.DevicesEnabled() { // докупка — только при включённой продаже; остальное доступно всегда
+		kb.callback("button.devices_buy", routeDevicesBuy, keyboard.StyleDefault)
+	}
+	kb.callback("button.devices_clear", routeDevicesClear, keyboard.StyleDefault)
+	if set.MiniAppURL != "" {
+		kb.url("button.devices_miniapp", set.MiniAppURL, keyboard.StyleDefault)
+	}
+	show(ctx, b, u, kb.callback("button.back", routeMenu, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.menu", vars))
+}
+
+// connectedDevices — сколько устройств сейчас подключено (из панели); сбой панели — «—», экран всё равно открывается.
+func (h *handlers) connectedDevices(ctx context.Context, panelUserID int) string {
+	list, err := h.rw.UserDevices(ctx, panelUserID)
+	if err != nil {
+		stlog.Warn(ctx, "failed to list devices", "error", err)
+		return "—"
+	}
+	return strconv.Itoa(len(list))
+}
+
+// devicesClear — «Очистить устройства»: подтверждение.
+func (h *handlers) devicesClear(ctx context.Context, b *bot.Bot, u *models.Update) {
+	user, extra, ok := h.deviceUser(ctx, b, u)
+	if !ok {
+		return
+	}
+	vars := map[string]string{"connected": h.connectedDevices(ctx, user.ID), "limit": strconv.Itoa(h.c.Settings(ctx).DevicesBase + extra)}
+	show(ctx, b, u, h.kb(ctx, "devices_clear_confirm", "devices.clear_confirm").
+		callback("button.yes", devClearYesRoute, keyboard.StyleSuccess).
+		callback("button.no", routeDevices, keyboard.StyleDanger).markup(),
+		h.c.Text(ctx, "devices.clear_confirm", vars))
+}
+
+// devicesClearYes — «Да»: удалить все устройства юзера в панели. Лимит и срок не меняются, повтор безвреден.
+func (h *handlers) devicesClearYes(ctx context.Context, b *bot.Bot, u *models.Update) {
+	user, extra, ok := h.deviceUser(ctx, b, u)
+	if !ok {
+		return
+	}
+	if err := h.rw.DeleteAllUserDevices(ctx, user.ID); err != nil {
+		stlog.Error(ctx, "failed to clear devices", "error", err)
+		h.showError(ctx, b, u)
+		return
+	}
+	show(ctx, b, u, h.backKeyboard(ctx, "devices.cleared", routeDevices),
+		h.c.Text(ctx, "devices.cleared", map[string]string{"limit": strconv.Itoa(h.c.Settings(ctx).DevicesBase + extra)}))
 }
 
 // deviceMost — наибольшее число устройств за одну докупку: не больше настройки и не больше места до предела панели
@@ -120,6 +167,10 @@ func (h *handlers) showDevicesLimit(ctx context.Context, b *bot.Bot, u *models.U
 // devicesBuyMenu — меню докупки: варианты из настроек с ценой до конца подписки и «Своё число».
 func (h *handlers) devicesBuyMenu(ctx context.Context, b *bot.Bot, u *models.Update) {
 	set := h.c.Settings(ctx)
+	if !set.DevicesEnabled() { // продажа выключена: докупки нет, экран «Устройства» остаётся
+		h.devices(ctx, b, u)
+		return
+	}
 	user, extra, ok := h.deviceUser(ctx, b, u)
 	if !ok {
 		return
@@ -156,6 +207,10 @@ func (h *handlers) devicesBuyMenu(ctx context.Context, b *bot.Bot, u *models.Upd
 
 // devicesCustom — «Своё число»: ждём сообщение с числом.
 func (h *handlers) devicesCustom(ctx context.Context, b *bot.Bot, u *models.Update) {
+	if !h.c.Settings(ctx).DevicesEnabled() {
+		h.devices(ctx, b, u)
+		return
+	}
 	user, extra, ok := h.deviceUser(ctx, b, u)
 	if !ok {
 		return
@@ -205,10 +260,6 @@ func (h *handlers) devicesNumberText(ctx context.Context, b *bot.Bot, u *models.
 
 // deviceUser — юзер панели и его доп. устройства; false — экран уже показан (меню или ошибка).
 func (h *handlers) deviceUser(ctx context.Context, b *bot.Bot, u *models.Update) (*api.UserItemInfo, int, bool) {
-	if !h.c.Settings(ctx).DevicesEnabled() {
-		h.start(ctx, b, u)
-		return nil, 0, false
-	}
 	userID := tgupdate.UserID(u)
 	user, err := h.rw.GetUser(ctx, userID)
 	if errors.Is(err, remnawave.ErrUserNotFound) {
@@ -241,6 +292,10 @@ func (h *handlers) devicePrice(ctx context.Context, b *bot.Bot, u *models.Update
 // priceFor — цена n устройств до конца подписки юзера; n вне 1..максимума из настроек и закончившаяся подписка — экран «Устройства».
 func (h *handlers) priceFor(ctx context.Context, b *bot.Bot, u *models.Update, n int) (int, bool) {
 	set := h.c.Settings(ctx)
+	if !set.DevicesEnabled() {
+		h.devices(ctx, b, u)
+		return 0, false
+	}
 	user, extra, ok := h.deviceUser(ctx, b, u)
 	if !ok {
 		return 0, false

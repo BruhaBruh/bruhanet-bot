@@ -32,21 +32,26 @@ func (e *env) markup(t *testing.T) string {
 	return e.last(t, "editMessageText").Params.Get("reply_markup")
 }
 
-func TestDevicesButtonOnlyWhenEnabled(t *testing.T) {
+// «Устройства» в меню есть у любого юзера панели (очистка и MiniApp не зависят от продажи); «Докупить» только при цене.
+func TestDevicesScreenAlwaysAvailableBuyOnlyWithPrice(t *testing.T) {
 	e := newEnv(t)
 	e.rw.AddUser(userID, now.Add(20*day))
 	e.process(t, tgtest.Message(userID, "/start"))
-	if strings.Contains(e.last(t, "sendMessage").Params.Get("reply_markup"), "Устройства") {
-		t.Fatal("button shown while the feature is off")
+	if !strings.Contains(e.last(t, "sendMessage").Params.Get("reply_markup"), "Устройства") {
+		t.Fatal("devices button must be in the menu while the sale is off")
 	}
-	e.process(t, tgtest.Callback(userID, "devices")) // подделанный callback при выключенной продаже — меню
-	if e.count("editMessageText") != 0 && strings.Contains(e.markup(t), "+1") {
-		t.Fatal("devices screen opened while off")
+	e.process(t, tgtest.Callback(userID, "devices"))
+	if kb := e.markup(t); strings.Contains(kb, "devbuy") || !strings.Contains(kb, "devclr") {
+		t.Fatalf("sale off: no «Докупить», but «Очистить» stays: %s", kb)
+	}
+	e.process(t, tgtest.Callback(userID, "devbuy")) // подделка при выключенной продаже: меню докупки не открывается
+	if kb := e.markup(t); strings.Contains(kb, "devc") && !strings.Contains(kb, "devclr") {
+		t.Fatalf("purchase menu opened while the sale is off: %s", kb)
 	}
 	e.src.SetSettings(map[string][]byte{"devicePrice": []byte("60")})
-	e.process(t, tgtest.Message(userID, "/start"))
-	if !strings.Contains(e.last(t, "sendMessage").Params.Get("reply_markup"), "Устройства") {
-		t.Fatal("button is missing")
+	e.process(t, tgtest.Callback(userID, "devices"))
+	if !strings.Contains(e.markup(t), "devbuy") {
+		t.Fatalf("sale on: «Докупить» missing: %s", e.markup(t))
 	}
 }
 
@@ -376,5 +381,80 @@ func TestNewUserDeviceLimitIsRetried(t *testing.T) {
 	}
 	if !strings.Contains(e.log.String(), "failed to set device limit of a new user") {
 		t.Fatalf("no warning: %s", e.log)
+	}
+}
+
+// Экран «Устройства»: сколько подключено из лимита (из панели); сбой панели не мешает открыться.
+func TestDevicesScreenShowsConnected(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.rw.SetDevices(userID, 3)
+	e.process(t, tgtest.Callback(userID, "devices"))
+	if !strings.Contains(e.text(t), "Подключено: <b>3</b> из <b>5</b>") {
+		t.Fatalf("text: %s", e.text(t))
+	}
+	e.rw.FailDevicesWith(errors.New("panel down"))
+	e.process(t, tgtest.Callback(userID, "devices"))
+	if !strings.Contains(e.text(t), "Подключено: <b>—</b>") || !strings.Contains(e.markup(t), "devclr") {
+		t.Fatalf("panel down: %s / %s", e.text(t), e.markup(t))
+	}
+}
+
+// Очистка: подтверждение → «Да» удаляет все устройства в панели; «Нет» ничего не трогает.
+func TestDevicesClearFlow(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.rw.SetDevices(userID, 4)
+	e.process(t, tgtest.Callback(userID, "devclr"))
+	if !strings.Contains(e.text(t), "сейчас <b>4</b>") || !strings.Contains(e.markup(t), "devclry") {
+		t.Fatalf("confirm: %s / %s", e.text(t), e.markup(t))
+	}
+	if len(e.rw.ClearedDevices()) != 0 {
+		t.Fatal("cleared before the confirmation")
+	}
+	e.process(t, tgtest.Callback(userID, "devices")) // «Нет»
+	if len(e.rw.ClearedDevices()) != 0 {
+		t.Fatal("«Нет» must not clear")
+	}
+	e.process(t, tgtest.Callback(userID, "devclry"))
+	if got := e.rw.ClearedDevices(); len(got) != 1 || got[0] != int(userID) {
+		t.Fatalf("cleared = %v", got)
+	}
+	if !strings.Contains(e.text(t), "Устройства очищены") || !strings.Contains(e.markup(t), `"callback_data":"devices"`) {
+		t.Fatalf("done: %s / %s", e.text(t), e.markup(t))
+	}
+	e.process(t, tgtest.Callback(userID, "devices"))
+	if !strings.Contains(e.text(t), "Подключено: <b>0</b>") {
+		t.Fatalf("after: %s", e.text(t))
+	}
+}
+
+func TestDevicesClearFailureShowsError(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.rw.SetDevices(userID, 2)
+	e.rw.FailDevicesWith(errors.New("panel down"))
+	e.process(t, tgtest.Callback(userID, "devclry"))
+	if len(e.rw.ClearedDevices()) != 0 || !strings.Contains(e.text(t), "Что-то пошло не так") {
+		t.Fatalf("%v / %s", e.rw.ClearedDevices(), e.text(t))
+	}
+}
+
+func TestDevicesClearNeedsAPanelUser(t *testing.T) {
+	e := newEnv(t) // юзера в панели нет
+	e.process(t, tgtest.Callback(userID, "devclry"))
+	if len(e.rw.ClearedDevices()) != 0 {
+		t.Fatal("cleared for a user without a panel account")
+	}
+}
+
+// Ссылка на MiniApp для точечного удаления: кнопка есть, только пока в настройках задан адрес.
+func TestDevicesMiniAppButton(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.process(t, tgtest.Callback(userID, "devices"))
+	if strings.Contains(e.markup(t), "https://") {
+		t.Fatalf("no link without a setting: %s", e.markup(t))
+	}
+	e.src.SetSettings(map[string][]byte{"devicePrice": []byte("60"), "miniAppUrl": []byte(`"https://sub.example/app"`)})
+	e.process(t, tgtest.Callback(userID, "devices"))
+	if !strings.Contains(e.markup(t), `"url":"https://sub.example/app"`) {
+		t.Fatalf("link missing: %s", e.markup(t))
 	}
 }

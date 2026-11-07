@@ -39,6 +39,9 @@ type Remnawave struct {
 	limFails   int // сколько ближайших вызовов SetDeviceLimit упадёт с limFailErr, потом успех
 	failAfter  int
 	failErr    error
+	devices    map[int][]api.Device // подключённые устройства по числовому id юзера панели
+	devErr     error
+	cleared    []int // userID, у которых вызвали DeleteAllUserDevices
 }
 
 func NewRemnawave(now func() time.Time) *Remnawave {
@@ -233,6 +236,54 @@ func (r *Remnawave) AddUserCreatedAt(telegramID int64, expireAt, createdAt time.
 	r.users[telegramID] = u
 }
 
+// SetDevices кладёт юзеру n подключённых устройств (числовой id юзера панели в фейке равен Telegram ID).
+func (r *Remnawave) SetDevices(telegramID int64, n int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.devices == nil {
+		r.devices = map[int][]api.Device{}
+	}
+	list := make([]api.Device, n)
+	for i := range list {
+		list[i] = api.Device{Hwid: fmt.Sprintf("hwid-%d-%d", telegramID, i)}
+	}
+	r.devices[int(telegramID)] = list
+}
+
+// FailDevicesWith: UserDevices и DeleteAllUserDevices возвращают err; nil — снять.
+func (r *Remnawave) FailDevicesWith(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.devErr = err
+}
+
+// ClearedDevices — userID, у которых очистили устройства, по порядку.
+func (r *Remnawave) ClearedDevices() []int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]int(nil), r.cleared...)
+}
+
+func (r *Remnawave) UserDevices(_ context.Context, userID int) ([]api.Device, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.devErr != nil {
+		return nil, r.devErr
+	}
+	return append([]api.Device(nil), r.devices[userID]...), nil
+}
+
+func (r *Remnawave) DeleteAllUserDevices(_ context.Context, userID int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.devErr != nil {
+		return r.devErr
+	}
+	delete(r.devices, userID)
+	r.cleared = append(r.cleared, userID)
+	return nil
+}
+
 // DeviceLimit — лимит устройств юзера в панели; 0 — не записывался.
 func (r *Remnawave) DeviceLimit(telegramID int64) int {
 	r.mu.Lock()
@@ -242,6 +293,7 @@ func (r *Remnawave) DeviceLimit(telegramID int64) int {
 
 func newUser(telegramID int64, expireAt time.Time) api.UserItemInfo {
 	return api.UserItemInfo{
+		ID:              int(telegramID),
 		CreatedAt:       expireAt, // в тестах юзер заведён в момент срока: ни одного выданного вне бота дня
 		Status:          api.UserItemInfoStatusACTIVE,
 		TelegramId:      api.NewNilInt(int(telegramID)),

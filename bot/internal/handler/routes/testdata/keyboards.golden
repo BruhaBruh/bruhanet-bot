@@ -11,7 +11,7 @@
 == menu: in panel, devices off
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
-  [🏷 Промокод | cb=promo | ""]
+  [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
   [🎁 Подарить | cb=gift | ""]
   [🤝 Пригласить друга | cb=referral | ""]
 == menu: in panel, devices on, trial not offered
@@ -30,7 +30,7 @@
 == menu: in panel, everything off
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
-  [🏷 Промокод | cb=promo | ""]
+  [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
   [🎁 Подарить | cb=gift | ""]
 == menu: panel down
   [⚠️ Сервис не работает | cb=menu | ""]
@@ -73,6 +73,7 @@
   [✖️ Убрать промокод | cb=price:1 | ""]
 == devices.menu
   [➕ Докупить | cb=devbuy | ""]
+  [🧹 Очистить устройства | cb=devclr | ""]
   [← Назад | cb=menu | ""]
 == devices.no_term
   [🔄 Продлить | cb=pay | "success"]
@@ -106,13 +107,13 @@
 == gift.declined
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
-  [🏷 Промокод | cb=promo | ""]
+  [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
   [🎁 Подарить | cb=gift | ""]
   [🤝 Пригласить друга | cb=referral | ""]
 == payment.confirmed
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
-  [🏷 Промокод | cb=promo | ""]
+  [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
   [🎁 Подарить | cb=gift | ""]
   [🤝 Пригласить друга | cb=referral | ""]
 == payment.declined (not in panel)

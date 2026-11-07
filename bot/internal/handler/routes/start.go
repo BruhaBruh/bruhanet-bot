@@ -144,9 +144,8 @@ func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegr
 	if trial != nil && trial(ctx, telegramID, user) {
 		kb.callback("button.trial", routeTrial, keyboard.StyleDefault)
 	}
-	if set.DevicesEnabled() {
-		kb.callback("button.devices", routeDevices, keyboard.StyleDefault)
-	}
+	// «Устройства» — любому юзеру панели: очистка и MiniApp не зависят от продажи (докупка скрыта внутри экрана)
+	kb.callback("button.devices", routeDevices, keyboard.StyleDefault)
 	menuExtras(kb, set)
 	return kb.markup()
 }
