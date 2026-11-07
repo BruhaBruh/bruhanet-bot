@@ -128,7 +128,7 @@ func TestOutboxPriorityOverBroadcast(t *testing.T) {
 	if err != nil || len(got) != 5 {
 		t.Fatalf("got %v err=%v", got, err)
 	}
-	var order []int64
+	order := make([]int64, 0, len(got))
 	for _, it := range got {
 		order = append(order, it.ChatID)
 	}
