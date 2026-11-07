@@ -295,3 +295,67 @@ func TestPanelSyncRunKeepsDataOnPanelFailure(t *testing.T) {
 		t.Fatalf("overlap: %v", err)
 	}
 }
+
+func TestNamesDueAndSave(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	at := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	week := at.Add(-7 * 24 * time.Hour)
+	// 1: без имени, не писал; 2: без имени, писал недавно; 3: с именем; 4: без имени, спрашивали вчера
+	for id, u := range map[int64]model.UserSeen{
+		2: {TelegramID: 2, At: at}, 3: {TelegramID: 3, FirstName: "Ян", At: at}, 4: {TelegramID: 4, Username: "dd", At: at},
+	} {
+		if err := s.TouchUser(ctx, u); err != nil {
+			t.Fatal(id, err)
+		}
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO users (telegram_id, username) VALUES (1, 'old')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveChatName(ctx, 4, "", "", "", at.Add(-24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := s.NamesDue(ctx, week, 10)
+	if err != nil || len(ids) != 2 || ids[0] != 2 || ids[1] != 1 {
+		t.Fatalf("due: %v %v", ids, err)
+	}
+	if ids, _ = s.NamesDue(ctx, week, 1); len(ids) != 1 {
+		t.Fatalf("limit: %v", ids)
+	}
+	// спрашивали давно — снова в выборке
+	if ids, _ = s.NamesDue(ctx, at, 10); len(ids) != 3 {
+		t.Fatalf("stale: %v", ids)
+	}
+
+	// имя записано и попытка отмечена; username без имени не стирается пустым
+	if err = s.SaveChatName(ctx, 1, "", "Ольга", "С", at); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SaveChatName(ctx, 1, "", "", "", at); err != nil {
+		t.Fatal(err)
+	}
+	var first, last, user string
+	if err = s.pool.QueryRow(ctx, `SELECT first_name, last_name, username FROM users WHERE telegram_id = 1`).Scan(&first, &last, &user); err != nil {
+		t.Fatal(err)
+	}
+	if first != "Ольга" || last != "С" || user != "old" {
+		t.Fatalf("saved: %q %q %q", first, last, user)
+	}
+	// новый непустой username заменяет прежний
+	if err = s.SaveChatName(ctx, 1, "new", "", "", at); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.pool.QueryRow(ctx, `SELECT username FROM users WHERE telegram_id = 1`).Scan(&user); err != nil || user != "new" {
+		t.Fatalf("username: %q %v", user, err)
+	}
+	if ids, _ = s.NamesDue(ctx, at.Add(time.Hour), 10); len(ids) != 2 {
+		t.Fatalf("after save: %v", ids) // 1 теперь с именем и выпал
+	}
+	// панельная синхронизация не стирает имя и username
+	if _, err = s.ApplyPanelSync(ctx, []model.PanelUser{{TelegramID: 1, Username: "", Status: "ACTIVE", ExpireAt: at, CreatedAt: at}}, at.Add(time.Hour), at.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.pool.QueryRow(ctx, `SELECT first_name, username FROM users WHERE telegram_id = 1`).Scan(&first, &user); err != nil || first != "Ольга" || user != "new" {
+		t.Fatalf("sync wiped: %q %q %v", first, user, err)
+	}
+}

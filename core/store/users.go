@@ -163,3 +163,38 @@ func (s *Store) ExtraDevices(ctx context.Context, id int64) (int, error) {
 	}
 	return n, err
 }
+
+// NamesDue — юзеры без имени, чьё имя пора спросить у Telegram: ещё не спрашивали либо спрашивали давно (before).
+// Недавно писавшие первыми.
+func (s *Store) NamesDue(ctx context.Context, before time.Time, limit int) ([]int64, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT telegram_id FROM users
+		WHERE coalesce(first_name, '') = '' AND coalesce(last_name, '') = ''
+		  AND (name_checked_at IS NULL OR name_checked_at < $1)
+		ORDER BY last_seen_at DESC NULLS LAST, telegram_id LIMIT $2`, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// SaveChatName записывает имя и username из getChat и отмечает попытку (name_checked_at). Пустое значение не стирает
+// имеющееся; username меняется на новый непустой. Нет юзера — ничего.
+func (s *Store) SaveChatName(ctx context.Context, id int64, username, first, last string, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users SET name_checked_at = $5,
+			first_name = coalesce(NULLIF($3, ''), first_name),
+			last_name = coalesce(NULLIF($4, ''), last_name),
+			username = coalesce(NULLIF($2, ''), username)
+		WHERE telegram_id = $1`, id, username, first, last, at)
+	return err
+}
