@@ -42,6 +42,7 @@ type Store interface {
 	GrantReferral(ctx context.Context, referredID int64, now time.Time,
 		apply func(referrerID int64, username string, days int) ([]model.OutboxMessage, error)) error
 	UserReferral(ctx context.Context, id int64) (model.UserReferral, error)
+	ReferrerRewardDays(ctx context.Context, referrerID int64) (int, error)
 	SetUserPanel(ctx context.Context, id int64, expireAt time.Time, status string, at time.Time) error
 	ListPayments(ctx context.Context, f model.PaymentFilter) ([]model.Payment, int, error)
 	Revenue(ctx context.Context, from, to time.Time) (int, error)

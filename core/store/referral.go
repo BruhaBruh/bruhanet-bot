@@ -130,3 +130,13 @@ func (s *Store) UserReferral(ctx context.Context, id int64) (model.UserReferral,
 	}
 	return r, err
 }
+
+// ReferrerRewardDays — сколько дней юзер получил как пригласивший (награды, по которым дни уже выданы).
+// Бонус, полученный им как приглашённым другом, сюда не входит.
+func (s *Store) ReferrerRewardDays(ctx context.Context, referrerID int64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT coalesce(sum(days), 0)::int FROM referral_rewards WHERE referrer_id = $1 AND referrer_rewarded_at IS NOT NULL`,
+		referrerID).Scan(&n)
+	return n, err
+}

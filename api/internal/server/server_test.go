@@ -43,16 +43,17 @@ type fakeStore struct {
 	tokens   map[string]time.Time // hash → expires_at; удалённый = использованный
 	sessions map[string]session
 
-	users     []model.UserSummary
-	referral  model.UserReferral
-	payments  []model.Payment // по возрастанию id
-	revenue   int
-	lastUF    model.UserFilter
-	lastF     model.PaymentFilter
-	lastRev   [2]time.Time
-	revFn     func(from, to time.Time) (int, error) // если задан — вместо revenue
-	listErr   error                                 // ошибка ListPayments
-	growthErr error
+	users      []model.UserSummary
+	referral   model.UserReferral
+	rewardDays int
+	payments   []model.Payment // по возрастанию id
+	revenue    int
+	lastUF     model.UserFilter
+	lastF      model.PaymentFilter
+	lastRev    [2]time.Time
+	revFn      func(from, to time.Time) (int, error) // если задан — вместо revenue
+	listErr    error                                 // ошибка ListPayments
+	growthErr  error
 
 	overrides map[string]string
 	setRaw    map[string][]byte
@@ -418,6 +419,8 @@ func (f *fakeStore) ListUsers(_ context.Context, fl model.UserFilter) ([]model.U
 func (f *fakeStore) UserPromos(context.Context, int64) ([]model.UserPromo, error) {
 	return f.userPromos, nil
 }
+
+func (f *fakeStore) ReferrerRewardDays(context.Context, int64) (int, error) { return f.rewardDays, nil }
 
 func (f *fakeStore) UserByID(_ context.Context, id int64) (model.UserSummary, error) {
 	for _, u := range f.users {

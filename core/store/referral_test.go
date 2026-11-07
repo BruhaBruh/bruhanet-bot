@@ -559,3 +559,29 @@ func TestReferralNoDeadlockWithReferrerOwnPayments(t *testing.T) {
 		t.Fatal("referrer rewarded twice")
 	}
 }
+
+func TestReferrerRewardDays(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	// 100 — пригласивший: одна награда выдана (7), одна ещё нет; сам 100 приглашён юзером 500 и получил как друг
+	for _, r := range []struct {
+		referred, referrer int64
+		days               int
+		referrerPaid       bool
+	}{{1, 100, 7, true}, {2, 100, 5, false}, {3, 100, 3, true}, {100, 500, 9, true}} {
+		paidAt := "NULL"
+		if r.referrerPaid {
+			paidAt = "now()"
+		}
+		if _, err := s.pool.Exec(ctx, `INSERT INTO referral_rewards (referred_id, referrer_id, days, payment_id, referrer_rewarded_at)
+			VALUES ($1, $2, $3, $1, `+paidAt+`)`, r.referred, r.referrer, r.days); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for id, want := range map[int64]int{100: 10, 500: 9, 999: 0} {
+		got, err := s.ReferrerRewardDays(ctx, id)
+		if err != nil || got != want {
+			t.Fatalf("ReferrerRewardDays(%d) = %d, %v; want %d", id, got, err, want)
+		}
+	}
+}
