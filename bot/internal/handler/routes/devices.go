@@ -90,10 +90,10 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	vars := deviceVars(set, extra)
 	if devices.RemainingDays(user.ExpireAt, h.now()) == 0 {
-		show(ctx, b, u, keyboard.Inline(
-			keyboard.Row(callbackButton(ctx, h.c, "button.renew", routePay, keyboard.StyleSuccess)),
-			keyboard.Row(callbackButton(ctx, h.c, "button.back", routeMenu, keyboard.StyleDefault)),
-		), h.c.Text(ctx, "devices.no_term", vars))
+		show(ctx, b, u, newKB(ctx, h.c, "devices_no_term").
+			callback("button.renew", routePay, keyboard.StyleSuccess).
+			callback("button.back", routeMenu, keyboard.StyleDefault).markup(),
+			h.c.Text(ctx, "devices.no_term", vars))
 		return
 	}
 	buttons := make([]keyboard.Button, 0, len(deviceChoices))
@@ -106,10 +106,9 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 			map[string]string{"count": strconv.Itoa(n), "price": strconv.Itoa(price)}), devPickRoute.Data(n)).
 			Style(h.c.Style(ctx, "button.devices_add", keyboard.StyleDefault)))
 	}
-	rows := keyboard.Grid(2, buttons...)
-	rows = append(rows, keyboard.Row(callbackButton(ctx, h.c, "button.back", routeMenu, keyboard.StyleDefault)))
 	h.leavePromo(ctx, userID)
-	show(ctx, b, u, keyboard.Inline(rows...), h.c.Text(ctx, "devices.menu", vars))
+	show(ctx, b, u, newKB(ctx, h.c, "devices").block("@devices", keyboard.Grid(2, buttons...)).
+		callback("button.back", routeMenu, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.menu", vars))
 }
 
 // deviceUser — юзер панели и его доп. устройства; false — экран уже показан (меню или ошибка).
@@ -161,10 +160,10 @@ func (h *handlers) devicesPick(ctx context.Context, b *bot.Bot, u *models.Update
 	if !ok {
 		return
 	}
-	show(ctx, b, u, keyboard.Inline(keyboard.Row(
-		callbackButton(ctx, h.c, "button.yes", devYesRoute.Data(n), keyboard.StyleSuccess),
-		callbackButton(ctx, h.c, "button.no", routeDevices, keyboard.StyleDanger),
-	)), h.c.Text(ctx, "devices.confirm", map[string]string{"count": devicesCount(n), "price": strconv.Itoa(price)}))
+	show(ctx, b, u, newKB(ctx, h.c, "devices_confirm").
+		callback("button.yes", devYesRoute.Data(n), keyboard.StyleSuccess).
+		callback("button.no", routeDevices, keyboard.StyleDanger).markup(),
+		h.c.Text(ctx, "devices.confirm", map[string]string{"count": devicesCount(n), "price": strconv.Itoa(price)}))
 }
 
 // devicesBuy — «Да»: платёж за устройства (kind devices, срок не меняет, промокоды и аванс не действуют).

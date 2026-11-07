@@ -17,10 +17,9 @@ func ReminderMessage(ctx context.Context, c *content.Provider, kind string, expi
 	if kind == "day" {
 		key = "reminder.day"
 	}
-	return c.Text(ctx, key, map[string]string{"expireAt": formatTime(expireAt)}), keyboard.Inline(keyboard.Row(
-		callbackButton(ctx, c, "button.renew", routePay, keyboard.StyleSuccess),
-		copyButton(ctx, c, "button.subscription", subURL, keyboard.StylePrimary),
-	))
+	return c.Text(ctx, key, map[string]string{"expireAt": formatTime(expireAt)}), newKB(ctx, c, "reminder").
+		callback("button.renew", routePay, keyboard.StyleSuccess).
+		copy("button.subscription", subURL, keyboard.StylePrimary).markup()
 }
 
 // PaymentNotice — уведомление юзеру о решении по платежу, из строки outbox: текст key с новым сроком и главная клавиатура.

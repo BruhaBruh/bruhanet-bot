@@ -99,13 +99,11 @@ func (h *handlers) paymentPromoText(ctx context.Context, b *bot.Bot, u *models.U
 	vars := tariffVars(d.Month, promo.Apply(base, p))
 	vars["base"] = strconv.Itoa(base)
 	vars["code"] = p.Code
-	send(ctx, b, tgupdate.ChatID(u), keyboard.Inline(
-		keyboard.Row(
-			callbackButton(ctx, h.c, "button.yes", buyPromoRoute.Data(d.Month, p.ID), keyboard.StyleSuccess),
-			callbackButton(ctx, h.c, "button.no", routePay, keyboard.StyleDanger),
-		),
-		keyboard.Row(callbackButton(ctx, h.c, "button.remove_promo", priceRoute.Data(d.Month), keyboard.StyleDefault)),
-	), h.c.Text(ctx, "promo.confirm_discount", vars))
+	send(ctx, b, tgupdate.ChatID(u), newKB(ctx, h.c, "confirm_promo").
+		callback("button.yes", buyPromoRoute.Data(d.Month, p.ID), keyboard.StyleSuccess).
+		callback("button.no", routePay, keyboard.StyleDanger).
+		callback("button.remove_promo", priceRoute.Data(d.Month), keyboard.StyleDefault).markup(),
+		h.c.Text(ctx, "promo.confirm_discount", vars))
 }
 
 // menuPromoText — код на дни из меню: продлить подписку в транзакции активации.

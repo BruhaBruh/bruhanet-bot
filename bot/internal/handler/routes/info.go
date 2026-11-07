@@ -16,13 +16,12 @@ import (
 
 func (h *handlers) info(ctx context.Context, b *bot.Bot, u *models.Update) {
 	telegramID := tgupdate.UserID(u)
-	back := keyboard.Row(callbackButton(ctx, h.c, "button.back", routeMenu, keyboard.StyleDefault))
 	user, err := h.rw.GetUser(ctx, telegramID)
 	if errors.Is(err, remnawave.ErrUserNotFound) {
-		show(ctx, b, u, keyboard.Inline(
-			keyboard.Row(callbackButton(ctx, h.c, "button.buy", routePay, keyboard.StyleSuccess)),
-			back,
-		), h.c.Text(ctx, "menu.info_not_bought", nil))
+		show(ctx, b, u, newKB(ctx, h.c, "info_new").
+			callback("button.buy", routePay, keyboard.StyleSuccess).
+			callback("button.back", routeMenu, keyboard.StyleDefault).markup(),
+			h.c.Text(ctx, "menu.info_not_bought", nil))
 		return
 	}
 	if err != nil {
@@ -37,17 +36,15 @@ func (h *handlers) info(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	traffic := formatBytes(user.UserTraffic.UsedTrafficBytes) + " из " + allowed
 
-	show(ctx, b, u, keyboard.Inline(
-		keyboard.Row(
-			callbackButton(ctx, h.c, "button.renew", routePay, keyboard.StyleDefault),
-			copyButton(ctx, h.c, "button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess),
-		),
-		back,
-	), h.c.Text(ctx, "menu.info", map[string]string{
-		"status":   h.c.Text(ctx, statusKey(user.Status), nil),
-		"traffic":  traffic,
-		"expireAt": formatTime(user.ExpireAt),
-	}))
+	show(ctx, b, u, newKB(ctx, h.c, "info").
+		callback("button.renew", routePay, keyboard.StyleDefault).
+		copy("button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess).
+		callback("button.back", routeMenu, keyboard.StyleDefault).markup(),
+		h.c.Text(ctx, "menu.info", map[string]string{
+			"status":   h.c.Text(ctx, statusKey(user.Status), nil),
+			"traffic":  traffic,
+			"expireAt": formatTime(user.ExpireAt),
+		}))
 }
 
 func statusKey(s api.UserItemInfoStatus) string {

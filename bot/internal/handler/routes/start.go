@@ -13,6 +13,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/bot/internal/content"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/pkg/keyboard"
 	"github.com/bruhabruh/bruhanet/pkg/remnawave"
 	"github.com/bruhabruh/bruhanet/pkg/stlog"
@@ -110,50 +111,46 @@ func (h *handlers) mainKeyboard(ctx context.Context, telegramID int64) *models.I
 type trialOffer func(ctx context.Context, telegramID int64, user *api.UserItemInfo) bool
 
 func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64, trial trialOffer) *models.InlineKeyboardMarkup {
-	support := urlButton(ctx, c, "button.support", c.Settings(ctx).SupportURL, keyboard.StyleDanger)
-	promoBtn := callbackButton(ctx, c, "button.promo", routePromo, keyboard.StyleDefault)
+	set := c.Settings(ctx)
 	user, err := rw.GetUser(ctx, telegramID)
 	switch {
 	case errors.Is(err, remnawave.ErrUserNotFound):
-		rows := [][]keyboard.Button{keyboard.Row(callbackButton(ctx, c, "button.buy", routePay, keyboard.StyleSuccess))}
+		kb := newKB(ctx, c, "menu_new").
+			callback("button.buy", routePay, keyboard.StyleSuccess).
+			callback("button.promo", routePromo, keyboard.StyleDefault).
+			url("button.support", set.SupportURL, keyboard.StyleDanger)
 		if trial != nil && trial(ctx, telegramID, nil) {
-			rows = append(rows, keyboard.Row(callbackButton(ctx, c, "button.trial", routeTrial, keyboard.StyleDefault)))
+			kb.callback("button.trial", routeTrial, keyboard.StyleDefault)
 		}
-		rows = append(rows, keyboard.Row(promoBtn, support))
-		return keyboard.Inline(append(append(rows, giftRows(ctx, c)...), referralRows(ctx, c)...)...)
+		menuExtras(kb, set)
+		return kb.markup()
 	case err != nil:
 		stlog.Error(ctx, "failed to get remnawave user", "error", err)
 		return keyboard.Inline(keyboard.Row(callbackButton(ctx, c, "button.service_down", routeMenu, keyboard.StyleDefault)))
 	}
-	rows := [][]keyboard.Button{
-		keyboard.Row(
-			callbackButton(ctx, c, "button.info", routeInfo, keyboard.StylePrimary),
-			callbackButton(ctx, c, "button.pay", routePay, keyboard.StyleDefault),
-		),
-		keyboard.Row(
-			copyButton(ctx, c, "button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess),
-			support,
-		),
-	}
+	kb := newKB(ctx, c, "menu").
+		callback("button.info", routeInfo, keyboard.StylePrimary).
+		callback("button.pay", routePay, keyboard.StyleDefault).
+		copy("button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess).
+		url("button.support", set.SupportURL, keyboard.StyleDanger).
+		callback("button.promo", routePromo, keyboard.StyleDefault)
 	if trial != nil && trial(ctx, telegramID, user) {
-		rows = append(rows, keyboard.Row(callbackButton(ctx, c, "button.trial", routeTrial, keyboard.StyleDefault)))
+		kb.callback("button.trial", routeTrial, keyboard.StyleDefault)
 	}
-	rows = append(rows, keyboard.Row(promoRow(ctx, c, promoBtn)...))
-	return keyboard.Inline(append(append(rows, giftRows(ctx, c)...), referralRows(ctx, c)...)...)
+	if set.DevicesEnabled() {
+		kb.callback("button.devices", routeDevices, keyboard.StyleDefault)
+	}
+	menuExtras(kb, set)
+	return kb.markup()
 }
 
-// referralRows — «Пригласить друга», пока в настройках дни рефералки больше нуля.
-func referralRows(ctx context.Context, c *content.Provider) [][]keyboard.Button {
-	if !c.Settings(ctx).ReferralEnabled() {
-		return nil
+// menuExtras — кнопки, зависящие только от настроек: «Подарить» (пока есть тарифы) и «Пригласить друга» (пока дни
+// рефералки больше нуля).
+func menuExtras(kb *kbBuilder, set settings.Settings) {
+	if giftOffered(kb.ctx, kb.c) {
+		kb.callback("button.gift", routeGift, keyboard.StyleDefault)
 	}
-	return [][]keyboard.Button{keyboard.Row(callbackButton(ctx, c, "button.referral", routeReferral, keyboard.StyleDefault))}
-}
-
-// promoRow — «Промокод», а при включённой продаже устройств рядом «Устройства».
-func promoRow(ctx context.Context, c *content.Provider, promoBtn keyboard.Button) []keyboard.Button {
-	if !c.Settings(ctx).DevicesEnabled() {
-		return []keyboard.Button{promoBtn}
+	if set.ReferralEnabled() {
+		kb.callback("button.referral", routeReferral, keyboard.StyleDefault)
 	}
-	return []keyboard.Button{promoBtn, callbackButton(ctx, c, "button.devices", routeDevices, keyboard.StyleDefault)}
 }

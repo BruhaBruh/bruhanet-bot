@@ -44,13 +44,6 @@ func giftOffered(ctx context.Context, c *content.Provider) bool {
 	return len(c.Settings(ctx).Prices) > 0
 }
 
-func giftRows(ctx context.Context, c *content.Provider) [][]keyboard.Button {
-	if !giftOffered(ctx, c) {
-		return nil
-	}
-	return [][]keyboard.Button{keyboard.Row(callbackButton(ctx, c, "button.gift", routeGift, keyboard.StyleDefault))}
-}
-
 // gift — «Подарить»: выбор срока из тех же тарифов.
 func (h *handlers) gift(ctx context.Context, b *bot.Bot, u *models.Update) {
 	if !giftOffered(ctx, h.c) {
@@ -58,7 +51,7 @@ func (h *handlers) gift(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	h.leavePromo(ctx, tgupdate.UserID(u))
-	show(ctx, b, u, h.tariffKeyboardFor(ctx, giftPriceRoute), h.c.Text(ctx, "gift.tariffs", nil))
+	show(ctx, b, u, h.tariffKeyboardFor(ctx, "gift_tariffs", giftPriceRoute), h.c.Text(ctx, "gift.tariffs", nil))
 }
 
 // giftPrice — «Верно?» для подарка. Срок проверяется по текущим тарифам: callback подделывается клиентом.
@@ -68,10 +61,10 @@ func (h *handlers) giftPrice(ctx context.Context, b *bot.Bot, u *models.Update) 
 		h.gift(ctx, b, u)
 		return
 	}
-	show(ctx, b, u, keyboard.Inline(keyboard.Row(
-		callbackButton(ctx, h.c, "button.yes", giftBuyRoute.Data(month), keyboard.StyleSuccess),
-		callbackButton(ctx, h.c, "button.no", routeGift, keyboard.StyleDanger),
-	)), h.c.Text(ctx, "gift.confirm", tariffVars(month, price)))
+	show(ctx, b, u, newKB(ctx, h.c, "gift_confirm").
+		callback("button.yes", giftBuyRoute.Data(month), keyboard.StyleSuccess).
+		callback("button.no", routeGift, keyboard.StyleDanger).markup(),
+		h.c.Text(ctx, "gift.confirm", tariffVars(month, price)))
 }
 
 // giftBuy — «Да»: платёж kind gift (без промокодов, устройств, аванса и без изменения срока покупателя) и реквизиты.
@@ -156,10 +149,9 @@ func GiftNotice(ctx context.Context, c *content.Provider, rw Remnawave, botName 
 	if m.TextKey == "gift.ready" {
 		link := giftLink(botName, m.GiftCode)
 		vars["link"] = link
-		return c.Text(ctx, m.TextKey, vars), keyboard.Inline(
-			keyboard.Row(copyButton(ctx, c, "button.copy_link", link, keyboard.StyleSuccess)),
-			keyboard.Row(callbackButton(ctx, c, "button.back", routeMenu, keyboard.StyleDefault)),
-		)
+		return c.Text(ctx, m.TextKey, vars), newKB(ctx, c, "gift_ready").
+			copy("button.copy_link", link, keyboard.StyleSuccess).
+			callback("button.back", routeMenu, keyboard.StyleDefault).markup()
 	}
 	return c.Text(ctx, m.TextKey, vars), mainKeyboard(ctx, c, rw, m.ChatID, nil)
 }

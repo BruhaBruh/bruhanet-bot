@@ -33,11 +33,11 @@ func (h *handlers) tariffs(ctx context.Context, b *bot.Bot, u *models.Update) {
 }
 
 func (h *handlers) tariffKeyboard(ctx context.Context) *models.InlineKeyboardMarkup {
-	return h.tariffKeyboardFor(ctx, priceRoute)
+	return h.tariffKeyboardFor(ctx, "tariffs", priceRoute)
 }
 
-// tariffKeyboardFor — кнопки тарифов, ведущие на route (покупка тарифа или подарок).
-func (h *handlers) tariffKeyboardFor(ctx context.Context, route callback.Route[int]) *models.InlineKeyboardMarkup {
+// tariffKeyboardFor — клавиатура kb с кнопками тарифов (блок @tariffs), ведущими на route (покупка тарифа или подарок).
+func (h *handlers) tariffKeyboardFor(ctx context.Context, kb string, route callback.Route[int]) *models.InlineKeyboardMarkup {
 	prices := h.c.Settings(ctx).Prices
 	months := slices.Sorted(maps.Keys(prices))
 	buttons := make([]keyboard.Button, 0, len(months))
@@ -45,9 +45,8 @@ func (h *handlers) tariffKeyboardFor(ctx context.Context, route callback.Route[i
 		buttons = append(buttons, keyboard.Callback(h.c.Text(ctx, "button.tariff", tariffVars(m, prices[m])), route.Data(m)).
 			Style(h.c.Style(ctx, "button.tariff", keyboard.StyleDefault)))
 	}
-	rows := keyboard.Grid(2, buttons...)
-	rows = append(rows, keyboard.Row(callbackButton(ctx, h.c, "button.back", routeMenu, keyboard.StyleDefault)))
-	return keyboard.Inline(rows...)
+	return newKB(ctx, h.c, kb).block("@tariffs", keyboard.Grid(2, buttons...)).
+		callback("button.back", routeMenu, keyboard.StyleDefault).markup()
 }
 
 // tariff разбирает месяц из callback и проверяет, что такой тариф есть в текущих настройках: data подделывается клиентом.
@@ -74,19 +73,19 @@ func (h *handlers) price(ctx context.Context, b *bot.Bot, u *models.Update) {
 		h.showError(ctx, b, u)
 		return
 	}
-	yesNo := keyboard.Row(
-		callbackButton(ctx, h.c, "button.yes", buyRoute.Data(month), keyboard.StyleSuccess),
-		callbackButton(ctx, h.c, "button.no", routePay, keyboard.StyleDanger),
-	)
-	promoBtn := keyboard.Row(callbackButton(ctx, h.c, "button.have_promo", havePromoRoute.Data(month), keyboard.StyleDefault))
+	confirm := func(id string) *kbBuilder {
+		return newKB(ctx, h.c, id).
+			callback("button.yes", buyRoute.Data(month), keyboard.StyleSuccess).
+			callback("button.no", routePay, keyboard.StyleDanger).
+			callback("button.have_promo", havePromoRoute.Data(month), keyboard.StyleDefault)
+	}
 	if q.hasPaidExtra() {
-		show(ctx, b, u, keyboard.Inline(yesNo,
-			keyboard.Row(callbackButton(ctx, h.c, "button.drop_devices", buyNoDevRoute.Data(month), keyboard.StyleDefault)),
-			promoBtn,
-		), h.c.Text(ctx, "payment.confirm_devices", q.vars(h.c.Settings(ctx).DevicePrice)))
+		show(ctx, b, u, confirm("confirm_devices").
+			callback("button.drop_devices", buyNoDevRoute.Data(month), keyboard.StyleDefault).markup(),
+			h.c.Text(ctx, "payment.confirm_devices", q.vars(h.c.Settings(ctx).DevicePrice)))
 		return
 	}
-	show(ctx, b, u, keyboard.Inline(yesNo, promoBtn), h.c.Text(ctx, "payment.confirm", tariffVars(month, price)))
+	show(ctx, b, u, confirm("confirm").markup(), h.c.Text(ctx, "payment.confirm", tariffVars(month, price)))
 }
 
 func (h *handlers) buy(ctx context.Context, b *bot.Bot, u *models.Update) {

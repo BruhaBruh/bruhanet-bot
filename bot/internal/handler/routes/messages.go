@@ -71,8 +71,8 @@ func show(ctx context.Context, b *bot.Bot, u *models.Update, kb *models.InlineKe
 }
 
 func (h *handlers) showError(ctx context.Context, b *bot.Bot, u *models.Update) {
-	show(ctx, b, u, keyboard.Inline(
-		keyboard.Row(callbackButton(ctx, h.c, "button.back", routeMenu, keyboard.StyleDefault)),
-		keyboard.Row(urlButton(ctx, h.c, "button.support", h.c.Settings(ctx).SupportURL, keyboard.StyleDefault)),
-	), h.c.Text(ctx, "error.generic", nil))
+	show(ctx, b, u, newKB(ctx, h.c, "error").
+		callback("button.back", routeMenu, keyboard.StyleDefault).
+		url("button.support", h.c.Settings(ctx).SupportURL, keyboard.StyleDefault).markup(),
+		h.c.Text(ctx, "error.generic", nil))
 }
