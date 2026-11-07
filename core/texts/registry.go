@@ -76,9 +76,10 @@ var globals = []Var{
 }
 
 var (
-	varMonths = Var{Name: "months", Description: "Срок тарифа с единицей: «3 месяца»", Sample: "3 месяца", Max: 16}
-	varPrice  = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500", Max: 8}
-	varCode   = Var{Name: "code", Description: "Промокод", Sample: "SUMMER25", Max: 32}
+	varMonths      = Var{Name: "months", Description: "Срок тарифа с единицей: «3 месяца»", Sample: "3 месяца", Max: 16}
+	varMonthsShort = Var{Name: "monthsShort", Description: "Срок тарифа кратко: «3 мес.»", Sample: "3 мес.", Max: 10}
+	varPrice       = Var{Name: "price", Description: "Цена тарифа в рублях", Sample: "500", Max: 8}
+	varCode        = Var{Name: "code", Description: "Промокод", Sample: "SUMMER25", Max: 32}
 
 	varTrialDays    = Var{Name: "days", Description: "Дней пробного периода", Sample: "3", Max: 4}
 	varTrialDevices = Var{Name: "devices", Description: "Устройств на пробном периоде", Sample: "2", Max: 4}
@@ -87,9 +88,10 @@ var (
 
 	varGiftLink = Var{Name: "link", Description: "Ссылка на подарок: срабатывает один раз", Sample: "https://t.me/bot?start=gift_AbCdEfGhIjKlMnOpQrStUv", Max: 100}
 
-	varDevicePrice = Var{Name: "devicePrice", Description: "Цена одного доп. устройства в месяц, ₽", Sample: "50", Max: 8}
-	varDevCount    = Var{Name: "count", Description: "Сколько устройств добавляется, с единицей: «2 устройства»", Sample: "2 устройства", Max: 16}
-	varDevTotal    = Var{Name: "price", Description: "Итоговая цена в рублях", Sample: "500", Max: 8}
+	varDevicePrice   = Var{Name: "devicePrice", Description: "Цена одного доп. устройства в месяц, ₽", Sample: "50", Max: 8}
+	varDevCountShort = Var{Name: "countShort", Description: "Сколько устройств добавляется, кратко: «2 устр.»", Sample: "2 устр.", Max: 12}
+	varDevCount      = Var{Name: "count", Description: "Сколько устройств добавляется, с единицей: «2 устройства»", Sample: "2 устройства", Max: 16}
+	varDevTotal      = Var{Name: "price", Description: "Итоговая цена в рублях", Sample: "500", Max: 8}
 )
 
 // deviceVars — переменные экранов с лимитом устройств.
@@ -179,11 +181,11 @@ var registry = []Def{
 		shown("По кнопкам «Оплатить», «Купить», «Продлить» и «Нет» на подтверждении тарифа", "button.tariff", "button.back"),
 	msg("payment.confirm", groupPayment, "Подтверждение тарифа",
 		confirmHead+"Тариф: <b>{{.months}}</b>\nК оплате: <b>{{.price}} ₽</b>\n\nВсё верно?",
-		varMonths, varPrice).
+		varMonths, varMonthsShort, varPrice).
 		shown("После выбора тарифа в списке, а также по «Убрать промокод»", "button.yes", "button.no", "button.have_promo"),
 	msg("payment.requisites", groupPayment, "Реквизиты для оплаты",
 		"<b>💸 Оплата: {{.months}} за {{.price}} ₽</b>\n\n"+requisitesTail,
-		varMonths, varPrice,
+		varMonths, varMonthsShort, varPrice,
 		Var{
 			Name: "comments", Description: "Список комментариев к переводу, по строке «- <code>…</code>» на комментарий", Raw: true,
 			Max:    maxComments * (64 + 4), // до 10 комментариев по 64 символа + «- » и перенос строки
@@ -207,7 +209,7 @@ var registry = []Def{
 		confirmHead+"Тариф: <b>{{.months}}</b> — {{.tariff}} ₽\n"+
 			"Доп. устройства: {{.devices}} × {{.devicePrice}} ₽ × {{.monthsCount}} = {{.addon}} ₽\n\n"+
 			"Итого: <b>{{.price}} ₽</b>\n\nВсё верно?",
-		varMonths,
+		varMonths, varMonthsShort,
 		Var{Name: "tariff", Description: "Цена тарифа без устройств, ₽", Sample: "400", Max: 8},
 		Var{Name: "devices", Description: "Сколько доп. устройств уже есть у юзера", Sample: "2", Max: 4},
 		varDevicePrice,
@@ -237,11 +239,11 @@ var registry = []Def{
 		shown("По кнопке «Устройства», когда подписка закончилась", "button.renew", "button.back"),
 	msg("devices.confirm", groupPayment, "Подтверждение покупки устройств",
 		devicesHead+"Добавить <b>{{.count}}</b> до конца подписки за <b>{{.price}} ₽</b>?\nСрок подписки не изменится.\n\nВсё верно?",
-		varDevCount, varDevTotal).
+		varDevCount, varDevCountShort, varDevTotal).
 		shown("После выбора количества устройств", "button.yes", "button.no"),
 	msg("devices.requisites", groupPayment, "Реквизиты для оплаты устройств",
 		"<b>💸 Оплата устройств: {{.count}}</b>\n\n"+requisitesTail,
-		varDevCount, varDevTotal,
+		varDevCount, varDevCountShort, varDevTotal,
 		Var{
 			Name: "comments", Description: "Список комментариев к переводу, по строке «- <code>…</code>» на комментарий", Raw: true,
 			Max:    maxComments * (64 + 4),
@@ -285,7 +287,7 @@ var registry = []Def{
 	msg("promo.confirm_discount", groupPromo, "Подтверждение тарифа со скидкой",
 		confirmHead+"Тариф: <b>{{.months}}</b>\nПромокод: <code>{{.code}}</code>\n\n"+
 			"К оплате: <s>{{.base}} ₽</s> <b>{{.price}} ₽</b>\n\nВсё верно?",
-		varMonths,
+		varMonths, varMonthsShort,
 		Var{Name: "base", Description: "Цена тарифа без скидки в рублях", Sample: "500", Max: 8},
 		varPrice, varCode).
 		shown("После присланного при оплате кода на скидку", "button.yes", "button.no", "button.remove_promo"),
@@ -295,7 +297,7 @@ var registry = []Def{
 		shown("После присланного из меню кода на дни, когда срок продлён", mainButtons...),
 	msg("promo.paid_by_promo", groupPromo, "Тариф оплачен промокодом (цена 0)",
 		"<b>🎉 Подписка оплачена промокодом</b>\n\nТариф на <b>{{.months}}</b> активирован\nДействует до: <b>{{.expireAt}}</b>",
-		varMonths).
+		varMonths, varMonthsShort).
 		shown("По «Да» на тарифе со скидкой 100%, через очередь уведомлений", mainButtons...),
 
 	msg("trial.confirm", groupTrial, "Пробный период: подтверждение",
@@ -328,11 +330,11 @@ var registry = []Def{
 		shown("По кнопке «Подарить» в главном меню и «Нет» на подтверждении подарка", "button.tariff", "button.back"),
 	msg("gift.confirm", groupGift, "Подарок: подтверждение",
 		giftHead+"Подарить подписку на <b>{{.months}}</b> за <b>{{.price}} ₽</b>?\nТвой срок подписки не изменится: после оплаты ты получишь ссылку для друга, она сработает один раз.\n\nВсё верно?",
-		varMonths, varPrice).
+		varMonths, varMonthsShort, varPrice).
 		shown("После выбора срока подарка", "button.yes", "button.no"),
 	msg("gift.requisites", groupGift, "Подарок: реквизиты для оплаты",
 		"<b>💸 Оплата подарка: {{.months}} за {{.price}} ₽</b>\n\n"+requisitesTail,
-		varMonths, varPrice,
+		varMonths, varMonthsShort, varPrice,
 		Var{
 			Name: "comments", Description: "Список комментариев к переводу, по строке «- <code>…</code>» на комментарий", Raw: true,
 			Max:    maxComments * (64 + 4),
@@ -344,18 +346,18 @@ var registry = []Def{
 		shown("Когда юзер хочет оплатить подарок, а у него уже есть открытая оплата", "button.back"),
 	msg("gift.ready", groupGift, "Подарок оплачен: ссылка",
 		"<b>✅ Подарок готов</b>\n\nОплата подтверждена, подписка на <b>{{.months}}</b> ждёт получателя. Отправь другу эту ссылку, она сработает один раз:\n<code>{{.link}}</code>\n\nТвой срок подписки не изменился.",
-		varMonths, varGiftLink).
+		varMonths, varMonthsShort, varGiftLink).
 		shown("Когда админ подтвердил оплату подарка, через очередь уведомлений", "button.copy_link", "button.back"),
 	msg("gift.declined", groupGift, "Оплата подарка отклонена",
 		"<b>❌ Оплата отклонена</b>\n\nПодарок не создан, твоя подписка не изменилась.").
 		shown("Когда админ отклонил оплату подарка, через очередь уведомлений", mainButtons...),
 	msg("gift.redeemed", groupGift, "Подарок активирован (получателю)",
 		"<b>🎁 Тебе подарили подписку</b>\n\nДобавлено: <b>{{.months}}</b>\nДействует до: <b>{{.expireAt}}</b>",
-		varMonths).
+		varMonths, varMonthsShort).
 		shown("Тому, кто открыл ссылку подарка и получил подписку, через очередь уведомлений", mainButtons...),
 	msg("gift.redeemed_buyer", groupGift, "Подарок активирован (покупателю)",
 		"<b>🎉 Подарок активирован</b>\n\nПодписку на <b>{{.months}}</b> получил тот, кому ты отправил ссылку.",
-		varMonths).
+		varMonths, varMonthsShort).
 		shown("Покупателю подарка, когда ссылкой воспользовались (кто именно, не сообщается; если покупатель сам, не отправляется)", mainButtons...),
 	msg("gift.unavailable", groupGift, "Подарок недоступен", giftHead+"Этот подарок недоступен.").
 		shown("Когда ссылка подарка не сработала (причину не раскрываем: нет такого, уже использован, отменён, нельзя юзеру)", "button.back"),
@@ -384,7 +386,7 @@ var registry = []Def{
 	btn("button.back", "Назад", "← Назад").on("menu | price | pay | devices | gift", StyleDefault, "Экраны ввода промокода, списка тарифов, «Информации», подарка и ошибки"),
 	btn("button.yes", "Да (подтвердить тариф)", "✅ Да").on("buy | buyp | devy | trialy | gbuy", StyleSuccess, "Подтверждение тарифа, со скидкой и без, покупки устройств, подарка и пробного периода"),
 	btn("button.no", "Нет (к выбору тарифа)", "✖️ Нет").on("pay | devices | menu | gift", StyleDanger, "Подтверждение тарифа, со скидкой и без, покупки устройств, подарка и пробного периода"),
-	btn("button.tariff", "Тариф в списке", "{{.months}} за {{.price}} ₽", varMonths, varPrice).on("price | gprice", StyleDefault, "Список тарифов и срок подарка, по кнопке на тариф"),
+	btn("button.tariff", "Тариф в списке", "{{.months}} за {{.price}} ₽", varMonths, varMonthsShort, varPrice).on("price | gprice", StyleDefault, "Список тарифов и срок подарка, по кнопке на тариф"),
 	btn("button.service_down", "Сервис не работает", "⚠️ Сервис не работает").on(routeMenu, StyleDefault, "Вместо главного меню, когда панель недоступна"),
 	btn("button.promo", "Промокод (в меню)", "🏷 Промокод").on("promo", StyleDefault, "Главное меню"),
 	btn("button.devices", "Устройства (в меню)", "📱 Устройства").on("devices", StyleDefault, "Главное меню, если юзер есть в панели и продажа устройств включена"),

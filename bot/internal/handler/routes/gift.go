@@ -144,7 +144,7 @@ func giftPayload(u *models.Update) (code string, ok bool) {
 func GiftNotice(ctx context.Context, c *content.Provider, rw Remnawave, botName string, m model.OutboxMessage) (string, *models.InlineKeyboardMarkup) {
 	ctx = content.ForUser(ctx, m.ChatID)
 	vars := map[string]string{
-		"months": strconv.Itoa(m.Months) + " " + pluralMonths(m.Months), "expireAt": formatTime(m.ExpireAt),
+		"months": strconv.Itoa(m.Months) + " " + pluralMonths(m.Months), "monthsShort": strconv.Itoa(m.Months) + " мес.", "expireAt": formatTime(m.ExpireAt),
 	}
 	if m.TextKey == "gift.ready" {
 		link := giftLink(botName, m.GiftCode)

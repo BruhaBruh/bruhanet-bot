@@ -154,11 +154,11 @@ export default function Texts() {
     const sample = (name: string) => byKey(t.key)?.vars.find((v) => v.name === name)?.sample ?? ''
     const items =
       t.id === 'devices'
-        ? [1, 2, 3, 5].map((n) => ({ count: String(n), price: String(settings ? settings.devicePrice * n : Number(sample('price')) * n) }))
+        ? [1, 2, 3, 5].map((n) => ({ count: String(n), countShort: `${n} устр.`, price: String((settings?.devicePrice || Number(sample('price')) / 2) * n) }))
         : Object.entries(settings?.prices ?? { 1: Number(sample('price')) || 100 })
             .map(([m, p]) => ({ n: Number(m), p }))
             .sort((a, b) => a.n - b.n)
-            .map(({ n, p }) => ({ months: `${n} ${plural(n, ['месяц', 'месяца', 'месяцев'])}`, price: String(p) }))
+            .map(({ n, p }) => ({ months: `${n} ${plural(n, ['месяц', 'месяца', 'месяцев'])}`, monthsShort: `${n} мес.`, price: String(p) }))
     const buttons = items.map((v) => ({ text: renderPlain(txt.label, { ...samples, ...v }) || t.title, style }))
     return Array.from({ length: Math.ceil(buttons.length / 2) }, (_, i) => buttons.slice(i * 2, i * 2 + 2))
   }

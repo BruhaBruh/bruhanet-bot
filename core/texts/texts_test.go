@@ -157,7 +157,8 @@ func TestRegistryDefaultsValid(t *testing.T) {
 			used[m[1]] = true
 		}
 		for _, v := range d.Vars {
-			if !used[v.Name] {
+			// краткие версии («monthsShort») даются про запас: по умолчанию текст их не использует
+			if !used[v.Name] && !strings.HasSuffix(v.Name, "Short") {
 				t.Errorf("%s: var %s not used in default", d.Key, v.Name)
 			}
 			if v.Max < utf16Len(v.Sample) {

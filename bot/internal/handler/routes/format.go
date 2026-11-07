@@ -49,5 +49,5 @@ func advanceText(hours int) string {
 
 // tariffVars — переменные months («3 месяца») и price для текстов о тарифе.
 func tariffVars(month, price int) map[string]string {
-	return map[string]string{"months": fmt.Sprintf("%d %s", month, pluralMonths(month)), "price": strconv.Itoa(price)}
+	return map[string]string{"months": fmt.Sprintf("%d %s", month, pluralMonths(month)), "monthsShort": fmt.Sprintf("%d мес.", month), "price": strconv.Itoa(price)}
 }

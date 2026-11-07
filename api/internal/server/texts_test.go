@@ -127,7 +127,7 @@ func TestPutTextStyle(t *testing.T) {
 	c := st.addSession(t, adminID, now.Add(time.Hour))
 	put := func(key, body string) int { return send(h, http.MethodPut, "/api/texts/"+key, c, body).Code }
 
-	if code := put("button.pay", `{"body":"Оплатить","style":"danger"}`); code != http.StatusNoContent {
+	if code := put("button.pay", `{"body":"💳 Оплатить","style":"danger"}`); code != http.StatusNoContent {
 		t.Fatalf("%d", code)
 	}
 	if st.styles["button.pay"] != "danger" || len(st.overrides) != 0 {
@@ -137,7 +137,7 @@ func TestPutTextStyle(t *testing.T) {
 	if code := put("button.pay", `{"body":"Платить"}`); code != http.StatusNoContent || st.styles["button.pay"] != "danger" || st.overrides["button.pay"] != "Платить" {
 		t.Fatalf("%d %v %v", code, st.styles, st.overrides)
 	}
-	if code := put("button.pay", `{"body":"Оплатить"}`); code != http.StatusNoContent || st.styles["button.pay"] != "danger" || len(st.overrides) != 0 {
+	if code := put("button.pay", `{"body":"💳 Оплатить"}`); code != http.StatusNoContent || st.styles["button.pay"] != "danger" || len(st.overrides) != 0 {
 		t.Fatalf("%d %v %v", code, st.styles, st.overrides)
 	}
 	// «Обычная» при основном виде success хранится явно; вид по умолчанию — снимается
@@ -154,7 +154,7 @@ func TestPutTextStyle(t *testing.T) {
 		t.Fatalf("styles = %v", st.styles)
 	}
 	// чужой стиль и стиль не у кнопки
-	if code := put("button.pay", `{"body":"Оплатить","style":"pink"}`); code != http.StatusBadRequest {
+	if code := put("button.pay", `{"body":"💳 Оплатить","style":"pink"}`); code != http.StatusBadRequest {
 		t.Fatalf("%d", code)
 	}
 	if code := put("payment.tariffs", `{"body":"x","style":"danger"}`); code != http.StatusBadRequest {

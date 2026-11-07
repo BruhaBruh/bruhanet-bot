@@ -163,7 +163,7 @@ func (h *handlers) devicesPick(ctx context.Context, b *bot.Bot, u *models.Update
 	show(ctx, b, u, h.kb(ctx, "devices_confirm", "devices.confirm").
 		callback("button.yes", devYesRoute.Data(n), keyboard.StyleSuccess).
 		callback("button.no", routeDevices, keyboard.StyleDanger).markup(),
-		h.c.Text(ctx, "devices.confirm", map[string]string{"count": devicesCount(n), "price": strconv.Itoa(price)}))
+		h.c.Text(ctx, "devices.confirm", map[string]string{"count": devicesCount(n), "countShort": strconv.Itoa(n) + " устр.", "price": strconv.Itoa(price)}))
 }
 
 // devicesBuy — «Да»: платёж за устройства (kind devices, срок не меняет, промокоды и аванс не действуют).
@@ -193,7 +193,7 @@ func (h *handlers) devicesBuy(ctx context.Context, b *bot.Bot, u *models.Update)
 func (h *handlers) showDeviceRequisites(ctx context.Context, b *bot.Bot, u *models.Update, p model.Payment) {
 	set := h.c.Settings(ctx)
 	show(ctx, b, u, nil, h.c.Text(ctx, "devices.requisites", map[string]string{
-		"count": devicesCount(p.ExtraDevices), "price": strconv.Itoa(p.Price), "comments": commentsHTML(set.Comments),
+		"count": devicesCount(p.ExtraDevices), "countShort": strconv.Itoa(p.ExtraDevices) + " устр.", "price": strconv.Itoa(p.Price), "comments": commentsHTML(set.Comments),
 	}))
 }
 
