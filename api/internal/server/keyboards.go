@@ -93,8 +93,9 @@ func slotByID(k texts.Keyboard, id string) (texts.Slot, bool) {
 
 // keyboardsFor — клавиатуры сообщения key (по порядку реестра раскладок).
 func keyboardsFor(items map[string]kbItem, key string) []kbItem {
-	out := []kbItem{}
-	for _, k := range texts.KeyboardsFor(key) {
+	ks := texts.KeyboardsFor(key)
+	out := make([]kbItem, 0, len(ks))
+	for _, k := range ks {
 		out = append(out, items[k.ID])
 	}
 	return out

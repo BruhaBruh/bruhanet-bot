@@ -133,7 +133,7 @@ func TestKeyboardLayouts(t *testing.T) {
 	if err := s.SaveKeyboardLayout(ctx, "menu", l); err != nil {
 		t.Fatal(err)
 	}
-	l2 := texts.Layout{Rows: [][]string{{"button.info"}}} // nil Hidden сохраняется как []
+	l2 := texts.Layout{Rows: [][]string{{"button.info"}}}         // nil Hidden сохраняется как []
 	if err := s.SaveKeyboardLayout(ctx, "menu", l2); err != nil { // upsert
 		t.Fatal(err)
 	}

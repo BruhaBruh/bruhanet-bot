@@ -99,4 +99,3 @@ func TestLayoutAllHiddenNoKeyboard(t *testing.T) {
 		t.Fatalf("keyboard = %+v", kb)
 	}
 }
-
