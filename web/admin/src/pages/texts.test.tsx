@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/ui'
 import type { TgEditorHandle, TgEditorProps } from '../editor/TgEditor'
-import type { TextItem } from '../types'
+import type { KeyboardInfo, TextItem } from '../types'
 import Texts from './Texts'
 
 // Редактор подменён: тест читает value и правит через onChange.
@@ -39,8 +39,29 @@ const text = (key: string, title: string, body: string, over: Partial<TextItem> 
   when: `Когда ${title.slice(-1)}`,
   buttons: [],
   style: '',
+  keyboards: [],
   ...over,
 })
+
+const slotOf = (id: string, over = {}) => ({ id, kind: 'button' as const, label: id, removable: true, style: '', ...over })
+const menuKb = (over: Partial<KeyboardInfo> = {}): KeyboardInfo => ({
+  id: 'menu',
+  title: 'Меню',
+  messages: ['withKb', 'other'],
+  slots: [
+    slotOf('button.pay', { label: 'Оплатить', removable: false, style: 'success' }),
+    slotOf('button.info', { label: 'Инфо' }),
+    slotOf('button.help', { label: 'Помощь' }),
+    { id: '@tariffs', kind: 'dynamic' as const, label: 'тарифы (из настроек)' },
+  ],
+  rows: [['button.pay', 'button.info'], ['@tariffs'], ['button.help']],
+  hidden: [],
+  default: [['button.pay', 'button.info'], ['@tariffs'], ['button.help']],
+  overridden: false,
+  ...over,
+})
+const btnText = (key: string, title: string, body: string, over: Partial<TextItem> = {}) =>
+  text(key, title, body, { kind: 'button', group: 'Кнопки', route: key.slice(7), style: '', ...over })
 
 beforeEach(() => {
   calls = []
@@ -62,6 +83,13 @@ beforeEach(() => {
       }),
       text('withBtn', 'С кнопкой', 'тело', { buttons: ['btn'] }),
       text('btn', 'Кнопка', 'Оплатить', { kind: 'button', group: 'Кнопки', route: 'pay', style: 'success' }),
+      text('withKb', 'С клавиатурой', 'тело', { keyboards: [menuKb()], buttons: ['button.pay', 'button.info', 'button.help'] }),
+      text('other', 'Другое', 'иное', { keyboards: [menuKb()] }),
+      text('two', 'Две клавиатуры', 'две', { keyboards: [menuKb({ messages: ['two'] }), menuKb({ id: 'second', title: 'Вторая', messages: ['two'], slots: [slotOf('button.back', { label: 'Назад', removable: false })], rows: [['button.back']], default: [['button.back']] })] }),
+      btnText('button.pay', 'Оплатить', 'Оплатить', { style: 'success' }),
+      btnText('button.info', 'Информация', 'Инфо'),
+      btnText('button.help', 'Помощь', 'Помощь'),
+      text('loose', 'Без раскладки', 'тело', { buttons: ['btn'] }),
     ],
     globals: [{ name: 'name', description: 'Имя', sample: 'Иван', raw: false, max: 64 }],
   })
@@ -240,39 +268,153 @@ describe('Texts', () => {
     expect(screen.getByText('Когда B')).toBeTruthy()
   })
 
-  it('message buttons: label and style saved per button through PUT', async () => {
-    replies['PUT /api/texts/btn'] = json(204)
-    await open('/texts?key=withBtn')
-    const save = screen.getByRole('button', { name: 'Сохранить кнопку Кнопка' }) as HTMLButtonElement
-    expect(save.disabled).toBe(true)
-    expect(screen.getByText('pay')).toBeTruthy()
+  describe('keyboard editor', () => {
+    const preview = () => screen.getByRole('complementary', { name: 'Превью сообщения' })
+    const kbButtons = () => within(preview()).queryAllByRole('button').map((b) => b.textContent)
+    const click = async (name: string | RegExp) => {
+      fireEvent.click(screen.getByRole('button', { name }))
+      await flush()
+    }
+    const save = () => screen.getByRole('button', { name: 'Сохранить клавиатуру' }) as HTMLButtonElement
 
-    const group = screen.getByRole('radiogroup', { name: 'Стиль кнопки Кнопка' })
-    expect(within(group).getByRole('radio', { name: 'Успех (зелёная)' }).getAttribute('aria-checked')).toBe('true')
-    fireEvent.click(within(group).getByRole('radio', { name: 'Опасная (красная)' }))
-    edit(screen.getByRole('textbox', { name: 'Текст кнопки Кнопка' }), 'Платить')
-    expect(save.disabled).toBe(false)
-    fireEvent.click(save)
-    await flush()
-    expect(calls.filter((c) => c.method === 'PUT')).toEqual([{ url: '/api/texts/btn', method: 'PUT', body: { body: 'Платить', style: 'danger' } }])
-    expect(within(group).getByRole('radio', { name: 'Опасная (красная)' }).getAttribute('aria-checked')).toBe('true')
-    expect((screen.getByRole('button', { name: 'Сохранить кнопку Кнопка' }) as HTMLButtonElement).disabled).toBe(true)
-  })
+    it('renders rows from the API: id above the field, style select, dynamic block placeholder', async () => {
+      await open('/texts?key=withKb')
+      const input = screen.getByRole('textbox', { name: 'Текст кнопки Оплатить' })
+      const id = screen.getAllByText('button.pay').find((e) => e.tagName === 'CODE')!
+      expect(id.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(screen.getByText('→ pay')).toBeTruthy()
+      const style = screen.getByRole('combobox', { name: 'Стиль кнопки Оплатить' }) as HTMLSelectElement
+      expect(style.value).toBe('success')
+      expect(Array.from(style.options).map((o) => o.textContent)).toEqual(['Обычная', 'Основная (синяя)', 'Успех (зелёная)', 'Опасная (красная)'])
+      expect(screen.queryByRole('radiogroup')).toBeNull()
+      expect(screen.getAllByText('тарифы (из настроек)').length).toBeGreaterThan(0)
+      expect(screen.getByText('Общая для сообщений: С клавиатурой, Другое')).toBeTruthy()
+      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'тарифы (из настроек)', 'Помощь'])
+      expect(save().disabled).toBe(true)
+    })
 
-  it('button save error is shown on the message screen', async () => {
-    replies['PUT /api/texts/btn'] = json(400, { error: 'invalid', message: 'текст не может быть пустым' })
-    await open('/texts?key=withBtn')
-    edit(screen.getByRole('textbox', { name: 'Текст кнопки Кнопка' }), ' ')
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить кнопку Кнопка' }))
-    await flush()
-    expect(screen.getByRole('alert').textContent).toBe('текст не может быть пустым')
-  })
+    it('moves rows and cells; edges are disabled; the preview follows', async () => {
+      await open('/texts?key=withKb')
+      expect((screen.getByRole('button', { name: 'Выше: Оплатить' }) as HTMLButtonElement).disabled).toBe(true)
+      await click('Ниже: Помощь'.replace('Помощь', 'тарифы (из настроек)'))
+      expect(kbButtons()).toEqual(['Оплатить', 'Инфо', 'Помощь', 'тарифы (из настроек)'])
+      await click('Правее: Оплатить')
+      expect(kbButtons().slice(0, 2)).toEqual(['Инфо', 'Оплатить'])
+      expect(save().disabled).toBe(false)
+    })
 
-  it('no buttons card without buttons; a button edits its own style', async () => {
-    await open('/texts?key=a')
-    expect(screen.queryByRole('radiogroup')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Кнопка/ }))
-    expect(screen.getByRole('radiogroup', { name: 'Стиль кнопки Кнопка' })).toBeTruthy()
+    it('two per row: join is disabled when the row above is full, split gives its own row', async () => {
+      await open('/texts?key=withKb')
+      expect(screen.queryByRole('button', { name: /^В строку с предыдущей: тарифы/ })).toBeNull() // блок всегда один
+      expect((screen.getByRole('button', { name: 'В строку с предыдущей: Помощь' }) as HTMLButtonElement).disabled).toBe(true) // выше блок
+      await click('В отдельную строку: Информация')
+      const rows = within(preview()).getAllByRole('button').map((b) => b.parentElement)
+      expect(new Set(rows).size).toBe(4)
+      await click('В строку с предыдущей: Информация')
+      expect(new Set(within(preview()).getAllByRole('button').map((b) => b.parentElement)).size).toBe(3)
+    })
+
+    it('hide only removable buttons; locked one has a tooltip hint; chips bring them back', async () => {
+      await open('/texts?key=withKb')
+      expect(screen.queryByRole('button', { name: 'Скрыть: Оплатить' })).toBeNull()
+      expect(screen.getByRole('img', { name: /Нужна для работы бота: Оплатить/ })).toBeTruthy()
+      await click('Скрыть: Информация')
+      expect(kbButtons()).toEqual(['Оплатить', 'тарифы (из настроек)', 'Помощь'])
+      expect(screen.getByText('Скрытые кнопки')).toBeTruthy()
+      await click('Показать: Информация')
+      expect(kbButtons()).toEqual(['Оплатить', 'тарифы (из настроек)', 'Помощь', 'Инфо'])
+    })
+
+    it('save: button PUTs first, then the layout; one request per click; list is reloaded', async () => {
+      replies['PUT /api/texts/button.info'] = () => new Promise((r) => setTimeout(() => r(json(204)()), 10))
+      replies['PUT /api/keyboards/menu'] = json(204)
+      await open('/texts?key=withKb')
+      edit(screen.getByRole('textbox', { name: 'Текст кнопки Информация' }), 'О боте')
+      fireEvent.change(screen.getByRole('combobox', { name: 'Стиль кнопки Информация' }), { target: { value: 'primary' } })
+      expect(kbButtons()).toContain('О боте')
+      await click('Скрыть: Помощь')
+      const saveBtn = save()
+      fireEvent.click(saveBtn)
+      fireEvent.click(saveBtn)
+      await wait(40)
+      expect(puts()).toEqual([
+        { url: '/api/texts/button.info', method: 'PUT', body: { body: 'О боте', style: 'primary' } },
+        { url: '/api/keyboards/menu', method: 'PUT', body: { rows: [['button.pay', 'button.info'], ['@tariffs']], hidden: ['button.help'] } },
+      ])
+      expect(calls.filter((c) => c.url === '/api/texts' && c.method === 'GET')).toHaveLength(2)
+    })
+
+    it('save error is shown next to the keyboard; reset needs confirmation', async () => {
+      replies['PUT /api/keyboards/menu'] = json(400, { error: 'invalid', message: 'в ряду не больше 2 кнопок' })
+      await open('/texts?key=withKb')
+      await click('Ниже: Оплатить')
+      fireEvent.click(save())
+      await wait(10)
+      expect(screen.getByRole('alert').textContent).toBe('в ряду не больше 2 кнопок')
+
+      expect((screen.getByRole('button', { name: 'Вернуть как в коде' }) as HTMLButtonElement).disabled).toBe(true) // не переопределена
+    })
+
+    it('reset goes through a dialog and sends DELETE', async () => {
+      replies['DELETE /api/keyboards/menu'] = json(204)
+      replies['GET /api/texts'] = json(200, {
+        items: [text('withKb', 'С клавиатурой', 'тело', { keyboards: [menuKb({ overridden: true, rows: [['button.info'], ['button.pay']] })] })],
+        globals: [],
+      })
+      await open('/texts?key=withKb')
+      await click('Вернуть как в коде')
+      expect(screen.getByRole('alertdialog')).toBeTruthy()
+      await click('Отмена')
+      expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
+      await click('Вернуть как в коде')
+      await click('Вернуть')
+      expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/api/keyboards/menu'])
+    })
+
+    it('inactive stored layout is announced', async () => {
+      replies['GET /api/texts'] = json(200, {
+        items: [text('withKb', 'С клавиатурой', 'тело', { keyboards: [menuKb({ overridden: true, inactive: true, problem: 'кнопку «Оплатить» нельзя убрать' })] })],
+        globals: [],
+      })
+      await open('/texts?key=withKb')
+      expect(screen.getByRole('alert').textContent).toContain('Сохранённая раскладка не применяется')
+      expect(screen.getByRole('alert').textContent).toContain('нельзя убрать')
+    })
+
+    it('two keyboards: both cards, preview switches between them', async () => {
+      await open('/texts?key=two')
+      expect(screen.getByText('Клавиатура: Меню')).toBeTruthy()
+      expect(screen.getByText('Клавиатура: Вторая')).toBeTruthy()
+      expect(kbButtons()).toContain('Оплатить')
+      fireEvent.click(within(preview()).getByRole('radio', { name: 'Вторая' }))
+      await flush()
+      expect(kbButtons()).toEqual(['Назад'])
+    })
+
+    it('button text: label input, style select and id above; saved with style', async () => {
+      replies['PUT /api/texts/btn'] = json(204)
+      await open('/texts?key=btn')
+      expect(screen.getAllByText('btn').some((e) => e.tagName === 'CODE')).toBe(true)
+      expect(screen.queryByRole('radiogroup')).toBeNull()
+      fireEvent.change(screen.getByRole('combobox', { name: 'Стиль кнопки' }), { target: { value: 'danger' } })
+      edit(screen.getByRole('textbox', { name: 'Кнопка' }), 'Платить')
+      fireEvent.click(btn('Сохранить'))
+      await flush()
+      expect(puts()).toEqual([{ url: '/api/texts/btn', method: 'PUT', body: { body: 'Платить', style: 'danger' } }])
+    })
+
+    it('buttons outside any layout keep a simple card; no card for plain messages', async () => {
+      replies['PUT /api/texts/btn'] = json(204)
+      await open('/texts?key=loose')
+      edit(screen.getByRole('textbox', { name: 'Текст кнопки Кнопка' }), 'Платить')
+      fireEvent.click(btn('Сохранить кнопки'))
+      await flush()
+      expect(puts()).toEqual([{ url: '/api/texts/btn', method: 'PUT', body: { body: 'Платить', style: 'success' } }])
+      fireEvent.click(list().getByText('Текст A'))
+      await flush()
+      expect(screen.queryByText('Сохранить кнопки')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Сохранить клавиатуру' })).toBeNull()
+    })
   })
 
   it('hint tells the truth about unknown variables', async () => {

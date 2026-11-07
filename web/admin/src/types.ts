@@ -110,6 +110,27 @@ export interface TextVar {
   max: number
 }
 
+export interface KeyboardSlot {
+  id: string
+  kind: 'button' | 'dynamic'
+  label: string
+  removable?: boolean
+  style?: string
+}
+
+export interface KeyboardInfo {
+  id: string
+  title: string
+  messages: string[]
+  slots: KeyboardSlot[]
+  rows: string[][]
+  hidden: string[]
+  default: string[][]
+  overridden: boolean
+  inactive?: boolean
+  problem?: string
+}
+
 export interface TextItem {
   key: string
   group: string
@@ -125,6 +146,7 @@ export interface TextItem {
   buttons: string[]
   route?: string
   style: string
+  keyboards?: KeyboardInfo[]
 }
 
 export interface Settings {

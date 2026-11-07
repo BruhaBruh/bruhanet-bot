@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Input, MessageBubble, SearchField, Spinner, StatusTag, toast } from '@/ui'
+import { Button, Card, Dialog, Input, MessageBubble, SearchField, SegmentedControl, Select, Spinner, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { previewHtml, renderPlain, renderPreview, varLabel, visibleLen } from '../editor/serialize'
 import { formatCount } from '../format'
-import type { TextItem, TextVar } from '../types'
+import { STYLE_OPTIONS, previewStyle } from '../lib/button-rows'
+import type { KeyboardInfo, KeyboardSlot, TextItem, TextVar } from '../types'
+import { ButtonFields, KeyboardCard, type SlotView } from './keyboard-editor'
+import { sameLayout, type Layout } from './keyboard-layout'
 
 const path = (c: TextItem) => `/api/texts/${encodeURIComponent(c.key)}`
 
@@ -20,14 +23,8 @@ const counter = (n: number, limit: number) => (
   </span>
 )
 
-const SWATCHES = [
-  { value: '', label: 'Обычная', className: 'bg-keyboard-btn-bg shadow-[inset_0_0_0_1px_var(--separator)]', on: 'shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent),inset_0_0_0_1px_var(--separator)]' },
-  { value: 'primary', label: 'Основная (синяя)', className: 'bg-accent-strong', on: 'shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]' },
-  { value: 'success', label: 'Успех (зелёная)', className: 'bg-success-strong', on: 'shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]' },
-  { value: 'danger', label: 'Опасная (красная)', className: 'bg-destructive-strong', on: 'shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]' },
-]
-
 type Action = 'save' | 'test' | 'reset'
+const TEXT_SCOPE = 'text'
 
 export default function Texts() {
   const [params, setParams] = useSearchParams()
@@ -38,7 +35,10 @@ export default function Texts() {
   // черновики по ключу: переключение между текстами не теряет правки, но и не переносит их
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [styleDrafts, setStyleDrafts] = useState<Record<string, string>>({})
-  const [failure, setFailure] = useState<{ key: string; message: string }>()
+  const [layouts, setLayouts] = useState<Record<string, Layout>>({})
+  const [previewKb, setPreviewKb] = useState<string>()
+  const [resetKb, setResetKb] = useState<string>()
+  const [failure, setFailure] = useState<{ key: string; scope: string; message: string }>()
   const [busy, setBusy] = useState<Action>()
   const inFlight = useRef(false)
   const editor = useRef<TgEditorHandle>(null)
@@ -63,21 +63,64 @@ export default function Texts() {
   if (!items) return <Spinner className="self-center p-8" />
 
   const cur = items.find((i) => i.key === params.get('key')) ?? items[0]
-  const isDirty = (i: TextItem) => drafts[i.key] !== undefined && drafts[i.key] !== i.body
+  const isDirty = (i: TextItem) => (drafts[i.key] !== undefined && drafts[i.key] !== i.body) || (styleDrafts[i.key] !== undefined && styleDrafts[i.key] !== i.style)
   const draftOf = (i: TextItem) => drafts[i.key] ?? i.body
   const draft = cur ? draftOf(cur) : ''
   const setDraft = (v: string) => cur && setDrafts((d) => ({ ...d, [cur.key]: v }))
-  const dropDraft = (key: string) =>
+  const dropDraft = (key: string) => {
     setDrafts((d) => {
       const rest = { ...d }
       delete rest[key]
       return rest
     })
+    setStyleDrafts((d) => {
+      const rest = { ...d }
+      delete rest[key]
+      return rest
+    })
+  }
+  const refresh = () =>
+    get<{ items: TextItem[]; globals: TextVar[] }>('/api/texts').then(
+      (r) => {
+        setItems(r.items)
+        setGlobals(r.globals)
+      },
+      () => undefined,
+    )
   const patch = (key: string, body: string, style?: string) =>
     setItems((list) => list?.map((i) => (i.key === key ? { ...i, body, overridden: body !== i.default, inactive: false, problem: undefined, style: style ?? i.style } : i)))
   const styleOf = (i: TextItem) => styleDrafts[i.key] ?? i.style
-  // Кнопки сообщения; у самой кнопки — она же: стиль меняется здесь.
-  const buttons = !cur ? [] : items.filter((i) => (cur.kind === 'button' ? i.key === cur.key : cur.buttons.includes(i.key)))
+  const byKey = (key: string) => items.find((i) => i.key === key)
+  const buttonDirty = (key: string) => {
+    const b = byKey(key)
+    return !!b && (draftOf(b) !== b.body || styleOf(b) !== b.style)
+  }
+  const keyboards = cur?.kind === 'message' ? (cur.keyboards ?? []) : []
+  const layoutOf = (kb: KeyboardInfo): Layout => layouts[kb.id] ?? { rows: kb.rows, hidden: kb.hidden }
+  const layoutDirty = (kb: KeyboardInfo) => !sameLayout(layoutOf(kb), kb)
+  const buttonKeys = (kb: KeyboardInfo) => kb.slots.filter((x) => x.kind === 'button').map((x) => x.id)
+  const kbDirty = (kb: KeyboardInfo) => layoutDirty(kb) || buttonKeys(kb).some(buttonDirty)
+  // Кнопки сообщения, которых нет ни в одной раскладке (одиночная «Назад» и т. п.): только подпись и стиль.
+  const loose = !cur || cur.kind !== 'message' ? [] : cur.buttons.filter((k) => byKey(k) && !keyboards.some((kb) => kb.slots.some((x) => x.id === k)))
+  const sampleMap = (it?: TextItem) => Object.fromEntries([...globals, ...(it?.vars ?? [])].map((v) => [v.name, v.sample]))
+  const viewOf = (slot: KeyboardSlot): SlotView => {
+    const it = byKey(slot.id)
+    return it
+      ? { title: it.title, label: draftOf(it), style: styleOf(it), route: it.route }
+      : { title: slot.id, label: slot.label, style: slot.style ?? '' }
+  }
+  const shownKb = keyboards.find((k) => k.id === previewKb) ?? keyboards[0]
+  const previewRows = shownKb
+    ? layoutOf(shownKb).rows.map((row) =>
+        row.flatMap((id) => {
+          const slot = shownKb.slots.find((x) => x.id === id)
+          if (!slot) return []
+          if (slot.kind === 'dynamic') return [{ text: slot.label, style: 'default' as const }]
+          const v = viewOf(slot)
+          return [{ text: renderPlain(v.label, sampleMap(byKey(slot.id))) || slot.id, style: previewStyle(v.style) }]
+        }),
+      )
+    : []
 
   const s = q.trim().toLowerCase()
   const groups = new Map<string, TextItem[]>()
@@ -102,7 +145,7 @@ export default function Texts() {
   }
 
   // один запрос за раз: двойной клик не шлёт второй
-  async function run(action: Action, c: TextItem, fn: () => Promise<void>) {
+  async function run(action: Action, c: TextItem, fn: () => Promise<void>, scope = TEXT_SCOPE) {
     if (inFlight.current) return
     inFlight.current = true
     setFailure(undefined)
@@ -112,6 +155,7 @@ export default function Texts() {
     } catch (e) {
       setFailure({
         key: c.key,
+        scope,
         message: e instanceof ApiError && e.body.message ? e.body.message : 'Не удалось выполнить, попробуйте ещё раз',
       })
     } finally {
@@ -122,25 +166,66 @@ export default function Texts() {
 
   const save = (c: TextItem, body: string) =>
     run('save', c, async () => {
-      await put(path(c), { body })
-      patch(c.key, body)
+      const style = c.kind === 'button' ? styleOf(c) : undefined
+      await put(path(c), style === undefined ? { body } : { body, style })
+      patch(c.key, body, style)
       dropDraft(c.key)
-      toast(`Сообщение «${c.title}» сохранено`, { icon: 'check' })
+      toast(c.kind === 'button' ? `Кнопка «${c.title}» сохранена` : `Сообщение «${c.title}» сохранено`, { icon: 'check' })
     })
-  const saveButton = (b: TextItem) =>
-    run('save', cur, async () => {
+  // Подписи и стили кнопок — по одной (они общие для кнопки на всех экранах), потом раскладка.
+  async function putButtons(keys: string[]) {
+    for (const key of keys) {
+      const b = byKey(key)
+      if (!b || !buttonDirty(key)) continue
       const body = draftOf(b)
       const style = styleOf(b)
       await put(path(b), { body, style })
-      patch(b.key, body, style)
-      dropDraft(b.key)
-      setStyleDrafts((d) => {
-        const rest = { ...d }
-        delete rest[b.key]
-        return rest
-      })
-      toast(`Кнопка «${b.title}» сохранена`, { icon: 'check' })
+      patch(key, body, style)
+      dropDraft(key)
+    }
+  }
+  const dropLayout = (id: string) =>
+    setLayouts((d) => {
+      const rest = { ...d }
+      delete rest[id]
+      return rest
     })
+  const saveKeyboard = (kb: KeyboardInfo) =>
+    run(
+      'save',
+      cur,
+      async () => {
+        try {
+          await putButtons(buttonKeys(kb))
+          if (layoutDirty(kb)) {
+            const l = layoutOf(kb)
+            await put(`/api/keyboards/${kb.id}`, { rows: l.rows, hidden: l.hidden })
+            dropLayout(kb.id)
+          }
+          toast(`Клавиатура «${kb.title}» сохранена`, { icon: 'check' })
+        } finally {
+          await refresh()
+        }
+      },
+      kb.id,
+    )
+  const saveLoose = () =>
+    run('save', cur, async () => {
+      await putButtons(loose)
+      toast('Кнопки сохранены', { icon: 'check' })
+    }, 'loose')
+  const resetKeyboard = (kb: KeyboardInfo) =>
+    run(
+      'reset',
+      cur,
+      async () => {
+        await del(`/api/keyboards/${kb.id}`)
+        dropLayout(kb.id)
+        toast('Раскладка возвращена как в коде', { icon: 'check' })
+        await refresh()
+      },
+      kb.id,
+    )
   const sendTest = (c: TextItem, body: string) =>
     run('test', c, async () => {
       await post(`${path(c)}/test`, { body })
@@ -156,6 +241,24 @@ export default function Texts() {
 
   return (
     <div className="flex flex-wrap items-start gap-6">
+      {resetKb && (
+        <Dialog
+          title="Вернуть клавиатуру как в коде?"
+          message="Порядок рядов и скрытые кнопки сбросятся. Подписи и стили кнопок останутся."
+          actions={[
+            { label: 'Отмена', style: 'cancel', onClick: () => setResetKb(undefined) },
+            {
+              label: 'Вернуть',
+              style: 'destructive',
+              onClick: () => {
+                const kb = keyboards.find((k) => k.id === resetKb)
+                setResetKb(undefined)
+                if (kb) void resetKeyboard(kb)
+              },
+            },
+          ]}
+        />
+      )}
       <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-(--spacing(12)))]">
         <SearchField placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
         {/* Длинный список прокручивается сам: не отодвигает редактор и на компьютере закреплён рядом с ним. */}
@@ -224,61 +327,39 @@ export default function Texts() {
                 hint="Переменные подставляются при отправке. Неизвестная переменная не сохранится."
               />
             ) : (
-              <Input
-                ref={plain}
-                aria-label={cur.title}
-                placeholder={cur.title}
-                maxLength={BUTTON_LIMIT}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                after={counter(draft.length, BUTTON_LIMIT)}
-                hint={`Простой текст без разметки, до ${BUTTON_LIMIT} символов.`}
-              />
+              <div className="flex flex-col gap-2">
+                {cur.kind === 'button' && (
+                  <div className="caption-1 flex min-w-0 flex-wrap gap-x-2 font-mono text-text-secondary">
+                    <code className="truncate">{cur.key}</code>
+                    {cur.route && <code className="truncate">→ {cur.route}</code>}
+                  </div>
+                )}
+                <Input
+                  ref={plain}
+                  aria-label={cur.title}
+                  placeholder={cur.title}
+                  maxLength={BUTTON_LIMIT}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  after={counter(draft.length, BUTTON_LIMIT)}
+                  hint={`Простой текст без разметки, до ${BUTTON_LIMIT} символов.`}
+                />
+                {cur.kind === 'button' && (
+                  <Select
+                    label="Стиль кнопки"
+                    options={STYLE_OPTIONS}
+                    value={styleOf(cur)}
+                    disabled={!!busy}
+                    onChange={(v) => setStyleDrafts((d) => ({ ...d, [cur.key]: v }))}
+                    hint="Подпись и стиль общие для всех экранов с этой кнопкой."
+                  />
+                )}
+              </div>
             )}
 
             <VarChips title="Общие — нажмите, чтобы вставить" vars={globals} disabled={!!busy} onInsert={insertVar} />
             <VarChips title="Этого сообщения" vars={own} disabled={!!busy} onInsert={insertVar} />
           </Card>
-
-          {buttons.length > 0 && (
-            <Card title="Кнопки" className="gap-2.5">
-              {buttons.map((b) => (
-                <div key={b.key} className="flex flex-wrap items-center gap-2">
-                  <Input
-                    className="min-w-0 grow basis-50"
-                    placeholder={b.title}
-                    aria-label={`Текст кнопки ${b.title}`}
-                    maxLength={BUTTON_LIMIT}
-                    disabled={!!busy}
-                    value={draftOf(b)}
-                    onChange={(e) => setDrafts((d) => ({ ...d, [b.key]: e.target.value }))}
-                  />
-                  <code className="caption-1 min-w-0 shrink basis-30 truncate font-mono text-text-secondary" title={b.when}>
-                    {b.route}
-                  </code>
-                  <div role="radiogroup" aria-label={`Стиль кнопки ${b.title}`} className="flex w-35 flex-none items-center gap-1.5">
-                    {SWATCHES.map((sw) => (
-                      <button
-                        key={sw.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={styleOf(b) === sw.value}
-                        aria-label={sw.label}
-                        title={sw.label}
-                        disabled={!!busy}
-                        className={cn('focus-ring size-7 cursor-pointer rounded-full disabled:cursor-default', sw.className, styleOf(b) === sw.value && sw.on)}
-                        onClick={() => setStyleDrafts((d) => ({ ...d, [b.key]: sw.value }))}
-                      />
-                    ))}
-                  </div>
-                  <Button variant="gray" disabled={!!busy || (draftOf(b) === b.body && styleOf(b) === b.style)} aria-label={`Сохранить кнопку ${b.title}`} onClick={() => saveButton(b)}>
-                    Сохранить
-                  </Button>
-                </div>
-              ))}
-              <span className="footnote text-text-secondary">Действие кнопки задаётся в коде бота. Подпись и стиль общие для всех сообщений с этой кнопкой.</span>
-            </Card>
-          )}
 
           {cur.inactive && (
             <p className="admin-body rounded-lg bg-destructive-tint px-4 py-3 text-destructive-strong">
@@ -286,7 +367,7 @@ export default function Texts() {
             </p>
           )}
 
-          {failure?.key === cur.key && (
+          {failure?.key === cur.key && failure.scope === TEXT_SCOPE && (
             <p role="alert" className="admin-body text-destructive-strong">
               {failure.message}
             </p>
@@ -315,14 +396,76 @@ export default function Texts() {
               Сохранить
             </Button>
           </div>
+
+          {keyboards.map((kb) => (
+            <div key={kb.id} className="flex flex-col gap-2">
+              <KeyboardCard
+                kb={kb}
+                layout={layoutOf(kb)}
+                view={viewOf}
+                messageTitles={kb.messages.some((m) => m !== cur.key) ? kb.messages.map((m) => byKey(m)?.title ?? m) : []}
+                busy={!!busy}
+                saving={busy === 'save'}
+                dirty={kbDirty(kb)}
+                onLayout={(l) => setLayouts((d) => ({ ...d, [kb.id]: l }))}
+                onLabel={(id, v) => setDrafts((d) => ({ ...d, [id]: v }))}
+                onStyle={(id, v) => setStyleDrafts((d) => ({ ...d, [id]: v }))}
+                onSave={() => saveKeyboard(kb)}
+                onCancel={() => {
+                  dropLayout(kb.id)
+                  buttonKeys(kb).forEach(dropDraft)
+                  setFailure(undefined)
+                }}
+                onReset={() => setResetKb(kb.id)}
+              />
+              {failure?.key === cur.key && failure.scope === kb.id && (
+                <p role="alert" className="admin-body text-destructive-strong">
+                  {failure.message}
+                </p>
+              )}
+            </div>
+          ))}
+
+          {loose.length > 0 && (
+            <Card title="Кнопки" className="gap-3">
+              {loose.map((k) => {
+                const b = byKey(k)!
+                return (
+                  <div key={k} className="flex min-w-0 flex-col gap-2 rounded-md bg-fill-tertiary p-3">
+                    <ButtonFields
+                      id={k}
+                      view={{ title: b.title, label: draftOf(b), style: styleOf(b), route: b.route }}
+                      busy={!!busy}
+                      onLabel={(v) => setDrafts((d) => ({ ...d, [k]: v }))}
+                      onStyle={(v) => setStyleDrafts((d) => ({ ...d, [k]: v }))}
+                    />
+                  </div>
+                )
+              })}
+              <span className="footnote text-text-secondary">Действие кнопки задаётся в коде бота. Подпись и стиль общие для всех сообщений с этой кнопкой.</span>
+              {failure?.key === cur.key && failure.scope === 'loose' && (
+                <p role="alert" className="admin-body text-destructive-strong">
+                  {failure.message}
+                </p>
+              )}
+              <div className="flex justify-end">
+                <Button loading={busy === 'save'} disabled={!!busy || !loose.some(buttonDirty)} onClick={saveLoose}>
+                  Сохранить кнопки
+                </Button>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
       {cur && (
         <aside aria-label="Превью сообщения" className="sticky top-6 flex min-w-0 grow basis-80 flex-col gap-2">
           <h2 className="admin-label px-1 text-text-secondary">Превью с примером данных</h2>
+          {keyboards.length > 1 && shownKb && (
+            <SegmentedControl block options={keyboards.map((k) => ({ value: k.id, label: k.title }))} value={shownKb.id} onChange={setPreviewKb} />
+          )}
           <div className="flex min-h-80 flex-col justify-end overflow-hidden rounded-lg bg-chat-bg px-3 py-4 shadow-card">
-            <MessageBubble time="14:30">
+            <MessageBubble time="14:30" keyboard={previewRows}>
               {cur.kind === 'message' ? (
                 // только разрешённые теги после sanitize
                 <span className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: previewHtml(renderPreview(draft, samples, raw)) }} />
