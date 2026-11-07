@@ -38,8 +38,8 @@ const statusTag = (g: Gift) => {
 }
 
 const monthsLabel = (n: number) => `${n}\u00a0${plural(n, ['месяц', 'месяца', 'месяцев'])}`
-const source = (g: Gift) => (g.byAdmin ? 'выдан админом' : `куплен ${userLabel({ username: g.buyerUsername, telegramId: g.buyerId ?? 0 })}`)
-const redeemer = (g: Gift) => (g.redeemedBy ? userLabel({ username: g.redeemedUsername, telegramId: g.redeemedBy }) : '')
+const source = (g: Gift) => (g.byAdmin ? 'выдан админом' : `куплен ${userLabel({ name: g.buyerName, username: g.buyerUsername, telegramId: g.buyerId ?? 0 })}`)
+const redeemer = (g: Gift) => (g.redeemedBy ? userLabel({ name: g.redeemedName, username: g.redeemedUsername, telegramId: g.redeemedBy }) : '')
 const shortCode = (g: Gift) => (g.code ? `${g.code.slice(0, 6)}…` : '—')
 
 async function copyText(text: string, ok: string) {

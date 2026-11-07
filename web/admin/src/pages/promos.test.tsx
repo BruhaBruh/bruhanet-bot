@@ -416,7 +416,7 @@ describe('PromoNew', () => {
 
     fireEvent.click(screen.getByText('@bob').closest('button')!)
     expect(screen.queryByRole('searchbox')).toBeNull()
-    expect(screen.getByText('@bob · ID 42')).toBeTruthy()
+    expect(screen.getByText('ID 42')).toBeTruthy()
     expect(within(screen.getByRole('complementary', { name: 'Итог' })).getByText('@bob')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Изменить' }))

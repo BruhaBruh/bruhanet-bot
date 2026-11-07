@@ -41,6 +41,7 @@ export interface Payment {
   id: number | string
   telegramId: number
   username: string
+  name?: string // имя и фамилия; нет у старых ответов и неизвестных юзеров
   month: number
   price: number
   status: string
@@ -83,6 +84,7 @@ export interface UserReferral {
   paid: number
   referredBy: number | null
   referredByUsername: string
+  referredByName?: string
 }
 
 export interface TextVar {
@@ -188,6 +190,7 @@ export interface PromoActivation {
   promoId: number
   telegramId: number
   username: string
+  name?: string
   paymentId: number | null
   createdAt: string
 }
@@ -202,10 +205,12 @@ export interface Gift {
   status: GiftStatus
   buyerId: number | null
   buyerUsername: string
+  buyerName?: string
   paymentId: number | null
   byAdmin: boolean
   redeemedBy: number | null
   redeemedUsername: string
+  redeemedName?: string
   redeemedAt: string | null
   createdAt: string
 }

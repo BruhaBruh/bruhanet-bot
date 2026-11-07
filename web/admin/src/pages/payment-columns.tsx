@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { Avatar, RowAction, StatusTag, toast, type CellProps, type DataTableColumn, type Tone } from '@/ui'
 import { formatRub, formatShortDate } from '../format'
-import { userLabel } from '../promo'
+import { userLabel, userSub } from '../promo'
 import type { Payment } from '../types'
 
 type Column = DataTableColumn<Payment>
@@ -50,7 +50,7 @@ const userColumn: Column = {
       <Avatar name={userLabel(p)} id={p.telegramId} size={28} />
       <span className="flex min-w-0 flex-col">
         <span className="truncate">{userLabel(p)}</span>
-        {p.username && <span className="caption-1 truncate text-text-secondary">{p.telegramId}</span>}
+        {userSub(p) && <span className="caption-1 truncate text-text-secondary">{userSub(p)}</span>}
       </span>
     </Link>
   ),

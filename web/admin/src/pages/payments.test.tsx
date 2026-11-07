@@ -100,6 +100,14 @@ describe('Payments', () => {
     expect(screen.getByText('1 из 3')).toBeTruthy()
   })
 
+  it('shows the name with @tag and ID under it, falling back to @tag and ID', async () => {
+    stub(() => json(200, { items: [payment(1, 'confirmed', { name: 'Ева Л' }), payment(2, 'confirmed', { telegramId: 8, username: '' })], total: 2, revenue: 0 }))
+    await renderPage()
+    expect(table().getByText('Ева Л').closest('a')?.getAttribute('href')).toBe('/users/5')
+    expect(table().getByText('@eve · ID 5')).toBeTruthy()
+    expect(table().getAllByText('ID 8').length).toBe(1) // подпись
+  })
+
   it('links the user to the card and opens it on row click', async () => {
     stub()
     await renderPage()

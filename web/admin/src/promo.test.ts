@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { generateCode, promoBody, promosQuery, promoStatus, promoUntil, promoValue, validatePromo, type PromoForm } from './promo'
+import { generateCode, promoBody, promosQuery, promoStatus, promoUntil, promoValue, userLabel, userSub, userTagUrl, validatePromo, type PromoForm } from './promo'
 
 test('promoValue formats each kind', () => {
   expect(promoValue({ kind: 'percent', value: 25 })).toBe('−25%')
@@ -82,4 +82,19 @@ test('promoBody normalizes', () => {
 
 test('generateCode uses server alphabet', () => {
   for (let i = 0; i < 50; i++) expect(generateCode()).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/)
+})
+
+test('userLabel: name, then @tag, then ID', () => {
+  expect(userLabel({ name: ' Анна К ', username: 'ann', telegramId: 7 })).toBe('Анна К')
+  expect(userLabel({ name: '', username: 'ann', telegramId: 7 })).toBe('@ann')
+  expect(userLabel({ username: null, telegramId: 7 })).toBe('ID 7')
+})
+
+test('userSub: @tag and ID, or ID alone; tag link only with a username', () => {
+  expect(userSub({ name: 'Анна', username: 'ann', telegramId: 7 })).toBe('@ann · ID 7')
+  expect(userSub({ name: 'Анна', username: '', telegramId: 7 })).toBe('ID 7')
+  expect(userSub({ username: 'ann', telegramId: 7 })).toBe('ID 7') // тег уже в подписи
+  expect(userSub({ username: '', telegramId: 7 })).toBe('') // ID уже в подписи
+  expect(userTagUrl({ username: 'ann', telegramId: 7 })).toBe('https://t.me/ann')
+  expect(userTagUrl({ username: '', telegramId: 7 })).toBeNull()
 })

@@ -4,7 +4,7 @@ import { Avatar, Button, Card, Checkbox, DataTable, Input, RowAction, SearchFiel
 import { get } from '../api'
 import { formatCount, formatFullDay, formatRub, panelStatusLabels, panelStatusTones } from '../format'
 import { useSyncKey } from '../layout/page-title'
-import { userLabel } from '../promo'
+import { userLabel, userSub } from '../promo'
 import type { UserPage, UserSummary } from '../types'
 
 const DEBOUNCE_MS = 300
@@ -24,8 +24,6 @@ const EMPTY: Record<string, string> = {
   blocked_bot: 'Заблокировавших бота нет',
   blocked: 'Вы никого не блокировали',
 }
-
-const displayName = (u: UserSummary) => u.name || userLabel(u)
 
 function UserStatus({ user: u }: { user: UserSummary }) {
   // ручная блокировка важнее статуса панели
@@ -64,20 +62,19 @@ const columns: DataTableColumn<UserSummary>[] = [
     key: 'user',
     title: 'Пользователь',
     sortable: true,
-    sortValue: displayName,
+    sortValue: userLabel,
     truncate: true,
     maxWidth: 240,
     render: (u) => (
       <span className="flex items-center gap-2.5">
-        <Avatar name={displayName(u)} id={u.telegramId} size={28} />
+        <Avatar name={userLabel(u)} id={u.telegramId} size={28} />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate">{displayName(u)}</span>
-          {u.name && <span className="caption-1 truncate text-text-secondary">{userLabel(u)}</span>}
+          <span className="truncate">{userLabel(u)}</span>
+          {userSub(u) && <span className="caption-1 truncate text-text-secondary">{userSub(u)}</span>}
         </span>
       </span>
     ),
   },
-  { key: 'telegramId', title: 'Telegram ID', mono: true, width: 120 },
   { key: 'plan', title: 'Тариф', render: (u) => (u.tariffMonths ? `${u.tariffMonths} мес.` : DASH) },
   { key: 'confirmed', title: 'Платежей', numeric: true, sortable: true, width: 110, render: (u) => formatCount(u.confirmed) },
   { key: 'confirmedSum', title: 'Оплачено всего', numeric: true, sortable: true, width: 150, render: (u) => formatRub(u.confirmedSum) },
@@ -200,9 +197,9 @@ export default function Users() {
           }
           rowActions={(u) => <RowAction icon="more" label="Действия с пользователем" onClick={() => open(u)} />}
           mobileRow={(u) => ({
-            before: <Avatar name={displayName(u)} id={u.telegramId} size={40} />,
-            title: <span className="block truncate">{displayName(u)}</span>,
-            subtitle: u.name ? `${userLabel(u)}, с нами с ${formatFullDay(u.createdAt)}` : `с нами с ${formatFullDay(u.createdAt)}`,
+            before: <Avatar name={userLabel(u)} id={u.telegramId} size={40} />,
+            title: <span className="block truncate">{userLabel(u)}</span>,
+            subtitle: [userSub(u), `с нами с ${formatFullDay(u.createdAt)}`].filter(Boolean).join(', '),
             value: formatRub(u.confirmedSum),
             chevron: true,
           })}

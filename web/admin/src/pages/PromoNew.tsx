@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { Avatar, Button, Card, IconTile, Input, SearchField, SegmentedControl, Switch, toast, type IconName } from '@/ui'
 import { ApiError, get, post } from '../api'
 import { formatCount, formatDay, mskDate, plural } from '../format'
-import { generateCode, kindLabels, promoBody, promoValue, userLabel, validatePromo, type PromoKind } from '../promo'
+import { generateCode, kindLabels, promoBody, promoValue, userLabel, userSub, validatePromo, type PromoKind } from '../promo'
 import type { Promo, UserSummary } from '../types'
 
 const KIND_OPTIONS = (['percent', 'rub', 'days'] as const).map((value) => ({ value, label: kindLabels[value] }))
@@ -244,7 +244,7 @@ export default function PromoNew() {
                 <Avatar name={userLabel(picked)} id={picked.telegramId} size={32} />
                 <div className="flex min-w-0 grow flex-col">
                   <span className="truncate font-semibold">{userLabel(picked)}</span>
-                  <span className={`${note} truncate`}>{picked.username ? `@${picked.username} · ` : ''}ID {picked.telegramId}</span>
+                  <span className={`${note} truncate`}>{userSub(picked)}</span>
                 </div>
                 <Button size="sm" variant="gray" onClick={() => setPicked(undefined)}>
                   Изменить
@@ -279,7 +279,7 @@ export default function PromoNew() {
                         >
                           <Avatar name={userLabel(u)} id={u.telegramId} size={28} />
                           <span className="min-w-0 grow truncate">{userLabel(u)}</span>
-                          {u.username && <span className={`${note} flex-none`}>ID {u.telegramId}</span>}
+                          <span className={`${note} max-w-[50%] shrink-0 truncate`}>{userSub(u)}</span>
                         </button>
                       ))}
                     </div>

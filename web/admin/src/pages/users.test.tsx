@@ -90,11 +90,12 @@ describe('Users', () => {
     stub({ '/api/users?': () => json(200, page([user(1, 'ann', 2, { tariffMonths: 3, panelStatus: 'ACTIVE' }), user(2, '')])) })
     await renderAt('/users')
     const table = within(screen.getByRole('table'))
-    expect(table.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Пользователь', 'Telegram ID', 'Тариф', 'Платежей', 'Оплачено всего', 'С нами с', 'Статус', 'Действия'])
+    expect(table.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Пользователь', 'Тариф', 'Платежей', 'Оплачено всего', 'С нами с', 'Статус', 'Действия'])
     const cells = within(table.getByText('@ann').closest('tr')!).getAllByRole('cell').map((c) => c.textContent)
-    expect(cells.slice(1, 7)).toEqual(['1', '3 мес.', '2', '600 ₽', '12 сент. 2026', 'активна'])
+    expect(cells[0]).toContain('ID 1')
+    expect(cells.slice(1, 6)).toEqual(['3 мес.', '2', '600 ₽', '12 сент. 2026', 'активна'])
     const second = within(table.getByText('ID 2').closest('tr')!).getAllByRole('cell').map((c) => c.textContent)
-    expect([second[2], second[6]]).toEqual(['—', '—'])
+    expect([second[1], second[5]]).toEqual(['—', '—'])
   })
 
   it('opens the card on row click and from more', async () => {
@@ -196,7 +197,7 @@ describe('Users', () => {
     await renderAt('/users')
     const table = within(screen.getByRole('table'))
     expect(table.getByText('Анна К')).toBeTruthy()
-    expect(table.getByText('@ann')).toBeTruthy()
+    expect(table.getByText('@ann · ID 1')).toBeTruthy()
     expect(table.getByText('заблокировал бота')).toBeTruthy()
     expect(table.queryByText('активна')).toBeNull()
   })
@@ -251,6 +252,30 @@ describe('UserCard', () => {
     expect(screen.getByRole('status', { name: 'Загрузка' })).toBeTruthy()
   })
 
+  it('shows the name big, the tag as a t.me link and a copyable ID', async () => {
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    stub({ '/api/users/7': () => json(200, detail({ user: user(7, 'bob', 2, { name: 'Боб Т' }) })), '/api/users?': () => json(200, page([])) })
+    await renderAt('/users/7')
+    expect(screen.getByRole('heading', { level: 1, name: 'Боб Т' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Боб Т' })).toBeTruthy()
+    const tag = screen.getByRole('link', { name: '@bob' })
+    expect(tag.getAttribute('href')).toBe('https://t.me/bob')
+    expect(tag.getAttribute('target')).toBe('_blank')
+    expect(tag.getAttribute('rel')).toContain('noopener')
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ID' }))
+    await flush()
+    expect(writeText).toHaveBeenCalledWith('7')
+    expect(screen.getByText('ID скопирован')).toBeTruthy()
+  })
+
+  it('shows only ID when the user has neither name nor tag', async () => {
+    stub({ '/api/users/7': () => json(200, detail({ user: user(7, '', 0) })), '/api/users?': () => json(200, page([])) })
+    await renderAt('/users/7')
+    expect(screen.getByRole('heading', { level: 2, name: 'ID 7' })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /^@/ })).toBeNull()
+  })
+
   it('names the user in the header and restores the section title', async () => {
     stub({ '/api/users/7': () => json(200, detail()), '/api/users?': () => json(200, page([])) })
     await renderAt('/users/7')
@@ -289,17 +314,17 @@ describe('UserCard', () => {
 
   it('shows referral counts and a link to who invited the user', async () => {
     stub({
-      '/api/users/7': () => json(200, detail({ referral: { invited: 5, paid: 2, referredBy: 9, referredByUsername: 'alice' } })),
+      '/api/users/7': () => json(200, detail({ referral: { invited: 5, paid: 2, referredBy: 9, referredByUsername: 'alice', referredByName: 'Алиса' } })),
     })
     await renderAt('/users/7')
     expect(screen.getByText('Пригласил друзей').nextSibling?.textContent).toBe('5 (оплатили 2)')
-    expect(screen.getByRole('link', { name: '@alice' }).getAttribute('href')).toBe('/users/9')
+    expect(screen.getByRole('link', { name: 'Алиса' }).getAttribute('href')).toBe('/users/9')
   })
 
   it('shows the id when the inviter has no username', async () => {
     stub({ '/api/users/7': () => json(200, detail({ referral: { invited: 0, paid: 0, referredBy: 9, referredByUsername: '' } })) })
     await renderAt('/users/7')
-    expect(screen.getByRole('link', { name: '9' }).getAttribute('href')).toBe('/users/9')
+    expect(screen.getByRole('link', { name: 'ID 9' }).getAttribute('href')).toBe('/users/9')
   })
 
   it('resolves a pending payment from the card and reloads it', async () => {

@@ -26,8 +26,24 @@ export function promoStatus(
   return 'active'
 }
 
-// «@ann», «ID 7»: username есть не у всех
-export const userLabel = (u: { username?: string | null; telegramId: number }) => (u.username ? `@${u.username}` : `ID ${u.telegramId}`)
+export interface Who {
+  name?: string | null
+  username?: string | null
+  telegramId: number
+}
+
+// Главная подпись юзера везде: имя и фамилия, иначе «@ann», иначе «ID 7» (имя и username есть не у всех).
+export const userLabel = (u: Who) => u.name?.trim() || (u.username ? `@${u.username}` : `ID ${u.telegramId}`)
+
+// Вторая строка — то, чего нет в userLabel: «@ann · ID 7» под именем, «ID 7» под «@ann»; под «ID 7» пусто.
+export const userSub = (u: Who) => {
+  const hasName = !!u.name?.trim()
+  if (hasName) return [u.username && `@${u.username}`, `ID ${u.telegramId}`].filter(Boolean).join(' · ')
+  return u.username ? `ID ${u.telegramId}` : ''
+}
+
+// Ссылка на профиль в Telegram; без username её нет.
+export const userTagUrl = (u: Who) => (u.username ? `https://t.me/${u.username}` : null)
 
 // «до 31.08» / «—» (validUntil — YYYY-MM-DD)
 export function promoUntil(validUntil: string | null): string {

@@ -5,7 +5,7 @@ import { ApiError, get } from '../api'
 import { snippet } from '../editor/serialize'
 import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabels, panelStatusTones } from '../format'
 import { usePageTitle, useSyncKey } from '../layout/page-title'
-import { userLabel } from '../promo'
+import { userLabel, userTagUrl } from '../promo'
 import type { DirectMessage, UserDetail } from '../types'
 import { userPayColumns, userPayMobileRow } from './payment-columns'
 import { usePaymentReview } from './payment-review'
@@ -27,7 +27,7 @@ const MESSAGE_STATUS: Record<DirectMessage['status'], [Tone, string]> = {
 const day = (iso: string | null) => (iso ? formatFullDay(iso) : DASH)
 const panelStatusLabel = (status: string) => panelStatusLabels[status] ?? status
 
-async function copyPanelId(id: number) {
+async function copyId(id: number) {
   try {
     await navigator.clipboard.writeText(String(id))
     toast('ID скопирован', { icon: 'check' })
@@ -86,7 +86,7 @@ function UserCardInner({ id }: { id?: string }) {
     )
   }, [id, syncKey, reloads])
 
-  const name = d && (d.user.name || userLabel(d.user))
+  const name = d && userLabel(d.user)
   usePageTitle(name)
 
   function onSent(m: DirectMessage) {
@@ -144,13 +144,18 @@ function UserCardInner({ id }: { id?: string }) {
           </div>
           <div className="admin-table flex flex-wrap gap-x-4 gap-y-1.5 text-text-secondary">
             {user.username && (
-              <a className="focus-ring break-all text-accent-strong" href={`https://t.me/${user.username}`} target="_blank" rel="noreferrer">
+              <a className="focus-ring break-all text-accent-strong" href={userTagUrl(user) ?? undefined} target="_blank" rel="noopener noreferrer">
                 @{user.username}
               </a>
             )}
-            <span>
+            <button
+              type="button"
+              className="focus-ring cursor-pointer"
+              aria-label="Скопировать ID"
+              onClick={() => copyId(user.telegramId)}
+            >
               ID <code className="mono text-text">{user.telegramId}</code>
-            </span>
+            </button>
             <span>с нами с {formatFullDay(user.createdAt)}</span>
           </div>
         </div>
@@ -193,7 +198,7 @@ function UserCardInner({ id }: { id?: string }) {
               ) : (
                 <span className="inline-flex items-center gap-1">
                   <code className="mono break-all">{panel.id}</code>
-                  <RowAction icon="copy" label="Скопировать ID в панели" onClick={() => void copyPanelId(panel.id!)} />
+                  <RowAction icon="copy" label="Скопировать ID в панели" onClick={() => void copyId(panel.id!)} />
                 </span>
               ),
             ],
@@ -222,7 +227,7 @@ function UserCardInner({ id }: { id?: string }) {
                   [
                     'Пригласил',
                     <Link key="by" className="focus-ring break-all text-accent-strong" to={`/users/${referral.referredBy}`}>
-                      {referral.referredByUsername ? `@${referral.referredByUsername}` : referral.referredBy}
+                      {userLabel({ name: referral.referredByName, username: referral.referredByUsername, telegramId: referral.referredBy })}
                     </Link>,
                   ] as [string, ReactNode],
                 ]),
