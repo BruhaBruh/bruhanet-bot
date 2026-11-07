@@ -165,7 +165,7 @@ func TestPutMessageKeyboardInvalid(t *testing.T) {
 		want         int
 	}{
 		{http.MethodPut, "/api/texts/nope/keyboard", http.StatusNotFound},
-		{http.MethodPut, "/api/texts/payment.requisites/keyboard", http.StatusNotFound},
+		{http.MethodPut, "/api/texts/menu.status_active/keyboard", http.StatusNotFound}, // простой текст: клавиатура не положена
 		{http.MethodDelete, "/api/texts/nope/keyboard", http.StatusNotFound},
 	} {
 		if w := send(h, tc.method, tc.path, c, `{"rows":[]}`); w.Code != tc.want {
