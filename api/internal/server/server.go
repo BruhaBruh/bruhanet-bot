@@ -166,6 +166,7 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("PUT /api/texts/{key}", s.putText)
 	apiMux.HandleFunc("DELETE /api/texts/{key}", s.deleteText)
 	apiMux.HandleFunc("POST /api/texts/{key}/test", s.testText)
+	apiMux.HandleFunc("GET /api/uxmap", s.uxMap)
 	apiMux.HandleFunc("PUT /api/texts/{key}/keyboard", s.putMessageKeyboard)
 	apiMux.HandleFunc("DELETE /api/texts/{key}/keyboard", s.deleteMessageKeyboard)
 	apiMux.HandleFunc("GET /api/settings", s.settings)

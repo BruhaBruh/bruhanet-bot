@@ -411,3 +411,31 @@ func TestTextsInactive(t *testing.T) {
 		t.Fatalf("still inactive: %v", bad)
 	}
 }
+
+func TestUXMap(t *testing.T) {
+	h, st := newServer(t, "http://localhost:5173")
+	c := st.addSession(t, adminID, now.Add(time.Hour))
+	if w := send(h, http.MethodGet, "/api/uxmap", "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", w.Code)
+	}
+	w := send(h, http.MethodGet, "/api/uxmap", c, "")
+	var out struct {
+		Entries []struct {
+			ID      string `json:"id"`
+			Targets []struct {
+				To string `json:"to"`
+			} `json:"targets"`
+		} `json:"entries"`
+		Transitions []struct {
+			From, Action string
+			To           []string `json:"to"`
+		} `json:"transitions"`
+		Links []struct{ From, To string } `json:"links"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); w.Code != http.StatusOK || err != nil {
+		t.Fatalf("%d %v %s", w.Code, err, w.Body)
+	}
+	if len(out.Entries) == 0 || len(out.Transitions) == 0 || len(out.Links) == 0 || out.Entries[0].ID != "cmd_start" || out.Entries[0].Targets[0].To != "menu.greeting" {
+		t.Fatalf("map = %s", w.Body)
+	}
+}
