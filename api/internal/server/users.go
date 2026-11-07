@@ -90,6 +90,8 @@ type panelInfo struct {
 	ID       *int       `json:"id"` // числовой id юзера в панели; UUID этот клиент панели не отдаёт
 	ExpireAt *time.Time `json:"expireAt"`
 	Status   *string    `json:"status"`
+	// DeviceLimit — лимит устройств в самой панели (hwidDeviceLimit); нет значения — поля нет.
+	DeviceLimit *int `json:"deviceLimit,omitempty"`
 	// SubscriptionURL — ссылка подписки, доступ к VPN: только в карточке, только админу; не логировать.
 	SubscriptionURL *string `json:"subscriptionUrl,omitempty"`
 	Error           *string `json:"error"`
@@ -152,6 +154,9 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 		p.ID, p.ExpireAt, p.Status = ptr(info.ID), ptr(info.ExpireAt.UTC()), ptr(string(info.Status))
 		if info.SubscriptionUrl != "" {
 			p.SubscriptionURL = ptr(info.SubscriptionUrl)
+		}
+		if l, has := remnawave.DeviceLimit(*info); has {
+			p.DeviceLimit = &l
 		}
 	}
 	set, _, serr := s.current(ctx)

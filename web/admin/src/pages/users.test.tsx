@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useEffect } from 'react'
 import { MemoryRouter, useLocation, useNavigate, type NavigateFunction } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -468,6 +468,17 @@ describe('UserCard', () => {
     expect(order('ID в панели')).toEqual(['ID в панели', 'Статус', 'Срок до', 'Тариф', 'Пробный период', 'Устройства'])
     expect(order('Платежей')).toEqual(['Платежей', 'Оплачено всего', 'Средний чек', 'Первая оплата', 'Последняя оплата', 'Промокоды', 'Неоплаченные авансы'])
     expect(order('Последний визит')).toEqual(['Последний визит', 'Получил рассылок', 'Кем приглашён', 'Пригласил друзей'])
+  })
+
+  it('devices fact shows the real panel limit only when it differs from ours', async () => {
+    stub({ '/api/users/7': () => json(200, detail({ panel: { id: 1234, expireAt: '2027-01-20T10:00:00Z', status: 'ACTIVE', error: null, deviceLimit: 10 } })) })
+    await renderAt('/users/7')
+    const fact = screen.getByText('Устройства', { selector: 'dt' }).nextSibling as HTMLElement
+    expect(fact.textContent).toBe('5 + 2 = 7в панели: 10')
+    cleanup()
+    stub({ '/api/users/7': () => json(200, detail({ panel: { id: 1234, expireAt: '2027-01-20T10:00:00Z', status: 'ACTIVE', error: null, deviceLimit: 7 } })) })
+    await renderAt('/users/7')
+    expect((screen.getByText('Устройства', { selector: 'dt' }).nextSibling as HTMLElement).textContent).toBe('5 + 2 = 7')
   })
 
   it('shows the id when the inviter has no username', async () => {

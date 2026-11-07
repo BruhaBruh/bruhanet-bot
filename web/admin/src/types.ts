@@ -71,7 +71,7 @@ export interface UserDetail {
     blocked: boolean
   }
   payments: Payment[]
-  panel: { id: number | null; expireAt: string | null; status: string | null; error: 'panel_unavailable' | null; subscriptionUrl?: string }
+  panel: { id: number | null; expireAt: string | null; status: string | null; error: 'panel_unavailable' | null; deviceLimit?: number; subscriptionUrl?: string }
   devices?: { base: number; extra: number; price: number }
   messages: DirectMessage[]
   promos: UserPromo[]

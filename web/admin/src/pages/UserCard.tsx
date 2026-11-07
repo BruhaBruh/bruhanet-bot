@@ -54,6 +54,21 @@ function PanelTag({ panel }: { panel: UserDetail['panel'] }) {
   )
 }
 
+/** «5 + 2 = 7» из нашей базы; если лимит в самой панели другой (ручная правка), рядом «в панели: N» с подсветкой. */
+function DeviceFact({ base, extra, panel }: { base: number; extra: number; panel?: number }) {
+  const total = base + extra
+  return (
+    <span className="inline-flex flex-wrap items-baseline justify-end gap-x-2">
+      <span>{`${base} + ${extra} = ${total}`}</span>
+      {panel !== undefined && panel !== total && (
+        <span className="rounded-xs bg-warning-tint px-1.5 text-warning-strong" title="Лимит в Remnawave отличается от нашего: правили вручную?">
+          в панели: {panel}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function Facts({ title, rows }: { title: string; rows: Array<[string, ReactNode]> }) {
   return (
     <section className="rounded-lg bg-surface px-5 pt-4 pb-2 shadow-card">
@@ -216,7 +231,7 @@ function UserCardInner({ id }: { id?: string }) {
             ['Срок до', panel.error ? PANEL_UNAVAILABLE : day(panel.expireAt)],
             ['Тариф', user.tariffMonths ? `${user.tariffMonths} мес.` : DASH],
             ['Пробный период', user.trialUsedAt ? `использован ${day(user.trialUsedAt)}` : DASH],
-            ['Устройства', devices ? `${devices.base} + ${devices.extra} = ${devices.base + devices.extra}` : DASH],
+            ['Устройства', devices ? <DeviceFact base={devices.base} extra={devices.extra} panel={panel.deviceLimit} /> : DASH],
           ]}
         />
         <Facts

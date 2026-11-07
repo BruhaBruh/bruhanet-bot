@@ -92,6 +92,18 @@ func TestUserCardDevices(t *testing.T) {
 	}
 }
 
+// Лимит устройств из самой панели отдаётся в карточке; нет значения — поля нет.
+func TestUserCardPanelDeviceLimit(t *testing.T) {
+	h, _, c := cardServer(t, &fakePanel{user: &api.UserItemInfo{ExpireAt: now, Status: api.UserItemInfoStatusACTIVE, HwidDeviceLimit: api.NilInt{Value: 10}}})
+	if w := do(h, http.MethodGet, "/api/users/7", c, ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"deviceLimit":10`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	h, _, c = cardServer(t, &fakePanel{user: &api.UserItemInfo{ExpireAt: now, Status: api.UserItemInfoStatusACTIVE, HwidDeviceLimit: api.NilInt{Null: true}}})
+	if w := do(h, http.MethodGet, "/api/users/7", c, ""); strings.Contains(w.Body.String(), "deviceLimit") {
+		t.Fatalf("no limit in the panel: %s", w.Body)
+	}
+}
+
 func TestUserCardErrors(t *testing.T) {
 	h, _, c := cardServer(t, &fakePanel{})
 	if w := do(h, http.MethodGet, "/api/users/8", c, ""); w.Code != http.StatusNotFound {
