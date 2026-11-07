@@ -226,9 +226,7 @@ export default function Texts() {
         />
       )}
       <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-7.5rem)]">
-        <div className="flex items-center gap-1">
-          <SearchField className="min-w-0 grow" placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
-        </div>
+        <SearchField placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
         {/* Длинный список прокручивается сам: не отодвигает редактор и на компьютере закреплён рядом с ним. */}
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-lg:max-h-72">
           {!groups.size && <p className="admin-body px-1 text-text-secondary">Ничего не найдено</p>}
