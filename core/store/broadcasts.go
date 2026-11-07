@@ -19,7 +19,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
-const broadcastCols = `id, status, text, COALESCE(photo, ''), audience, audience_days, silent, buttons, scheduled_at,
+const broadcastCols = `id, status, text, COALESCE(photo, ''), photo_id, audience, audience_days, silent, buttons, scheduled_at,
 	total, sent, failed, created_at, updated_at, finished_at`
 
 func scanBroadcast(r pgx.Row) (model.Broadcast, error) {
@@ -27,7 +27,7 @@ func scanBroadcast(r pgx.Row) (model.Broadcast, error) {
 		b       model.Broadcast
 		buttons []byte
 	)
-	err := r.Scan(&b.ID, &b.Status, &b.Text, &b.Photo, &b.Audience, &b.AudienceDays, &b.Silent, &buttons, &b.ScheduledAt,
+	err := r.Scan(&b.ID, &b.Status, &b.Text, &b.Photo, &b.PhotoID, &b.Audience, &b.AudienceDays, &b.Silent, &buttons, &b.ScheduledAt,
 		&b.Total, &b.Sent, &b.Failed, &b.CreatedAt, &b.UpdatedAt, &b.FinishedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
@@ -115,7 +115,7 @@ func startLocked(ctx context.Context, tx pgx.Tx, b model.Broadcast, adminID int6
 	// ponytail: по INSERT на получателя; на десятках тысяч — CopyFrom.
 	for _, chat := range ids {
 		if err = enqueue(ctx, tx, model.OutboxMessage{
-			EventType: "broadcast", ChatID: chat, Text: b.Text, Photo: b.Photo, Template: texts.HasVars(b.Text),
+			EventType: "broadcast", ChatID: chat, Text: b.Text, Photo: b.Photo, PhotoID: idString(b.PhotoID), Template: texts.HasVars(b.Text),
 			ParseMode: string(models.ParseModeHTML), Broadcast: id, Keyboard: kb, Silent: b.Silent,
 		}); err != nil {
 			return b, err
@@ -149,9 +149,9 @@ func (s *Store) SendBroadcast(ctx context.Context, d model.BroadcastDraft, admin
 		}
 		if d.DraftID != uuid.Nil {
 			b, err = scanBroadcast(tx.QueryRow(ctx, `UPDATE broadcasts SET idempotency_key = $2, status = 'scheduled', text = $3,
-				photo = NULLIF($4, ''), audience = $5, audience_days = $6, silent = $7, buttons = $8, scheduled_at = $9, updated_at = now()
+				photo = NULLIF($4, ''), photo_id = $10, audience = $5, audience_days = $6, silent = $7, buttons = $8, scheduled_at = $9, updated_at = now()
 				WHERE id = $1 AND status = 'draft' RETURNING `+broadcastCols,
-				d.DraftID, d.IdempotencyKey, d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, buttons, d.ScheduledAt))
+				d.DraftID, d.IdempotencyKey, d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, buttons, d.ScheduledAt, d.PhotoID))
 			if errors.Is(err, ErrNotFound) {
 				// черновика нет или он уже ушёл: тот же ключ мог взять параллельный запрос
 				if b, err = scanBroadcast(tx.QueryRow(ctx, `SELECT `+broadcastCols+` FROM broadcasts WHERE idempotency_key = $1`, d.IdempotencyKey)); !errors.Is(err, ErrNotFound) {
@@ -160,10 +160,10 @@ func (s *Store) SendBroadcast(ctx context.Context, d model.BroadcastDraft, admin
 				return lockedOrMissing(ctx, tx, d.DraftID)
 			}
 		} else {
-			b, err = scanBroadcast(tx.QueryRow(ctx, `INSERT INTO broadcasts (id, idempotency_key, status, text, photo, audience, audience_days,
-				silent, buttons, scheduled_at, total) VALUES ($1, $2, 'scheduled', $3, NULLIF($4, ''), $5, $6, $7, $8, $9, 0)
+			b, err = scanBroadcast(tx.QueryRow(ctx, `INSERT INTO broadcasts (id, idempotency_key, status, text, photo, photo_id, audience, audience_days,
+				silent, buttons, scheduled_at, total) VALUES ($1, $2, 'scheduled', $3, NULLIF($4, ''), $10, $5, $6, $7, $8, $9, 0)
 				ON CONFLICT (idempotency_key) DO NOTHING RETURNING `+broadcastCols,
-				uuid.New(), d.IdempotencyKey, d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, buttons, d.ScheduledAt))
+				uuid.New(), d.IdempotencyKey, d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, buttons, d.ScheduledAt, d.PhotoID))
 			if errors.Is(err, ErrNotFound) { // параллельный запрос с тем же ключом успел раньше
 				b, err = scanBroadcast(tx.QueryRow(ctx, `SELECT `+broadcastCols+` FROM broadcasts WHERE idempotency_key = $1`, d.IdempotencyKey))
 				return err
@@ -201,13 +201,13 @@ func (s *Store) SaveDraft(ctx context.Context, id uuid.UUID, d model.BroadcastDr
 	if err != nil {
 		return model.Broadcast{}, err
 	}
-	b, err := scanBroadcast(s.pool.QueryRow(ctx, `INSERT INTO broadcasts (id, status, text, photo, audience, audience_days, silent, buttons, scheduled_at, total)
-		VALUES ($1, 'draft', $2, NULLIF($3, ''), $4, $5, $6, $7, $8, 0)
-		ON CONFLICT (id) DO UPDATE SET text = EXCLUDED.text, photo = EXCLUDED.photo, audience = EXCLUDED.audience,
+	b, err := scanBroadcast(s.pool.QueryRow(ctx, `INSERT INTO broadcasts (id, status, text, photo, photo_id, audience, audience_days, silent, buttons, scheduled_at, total)
+		VALUES ($1, 'draft', $2, NULLIF($3, ''), $9, $4, $5, $6, $7, $8, 0)
+		ON CONFLICT (id) DO UPDATE SET text = EXCLUDED.text, photo = EXCLUDED.photo, photo_id = EXCLUDED.photo_id, audience = EXCLUDED.audience,
 			audience_days = EXCLUDED.audience_days, silent = EXCLUDED.silent, buttons = EXCLUDED.buttons,
 			scheduled_at = EXCLUDED.scheduled_at, updated_at = now()
 		WHERE broadcasts.status = 'draft' RETURNING `+broadcastCols,
-		id, d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, buttons, d.ScheduledAt))
+		id, d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, buttons, d.ScheduledAt, d.PhotoID))
 	if errors.Is(err, ErrNotFound) {
 		err = ErrBroadcastLocked
 	}
@@ -227,10 +227,10 @@ func (s *Store) UpdateScheduled(ctx context.Context, id uuid.UUID, d model.Broad
 	if err != nil {
 		return model.Broadcast{}, err
 	}
-	b, err := scanBroadcast(s.pool.QueryRow(ctx, `UPDATE broadcasts SET text = $2, photo = NULLIF($3, ''), audience = $4, audience_days = $5,
+	b, err := scanBroadcast(s.pool.QueryRow(ctx, `UPDATE broadcasts SET text = $2, photo = NULLIF($3, ''), photo_id = $9, audience = $4, audience_days = $5,
 		silent = $6, buttons = $7, scheduled_at = $8, updated_at = now()
 		WHERE id = $1 AND status = 'scheduled' RETURNING `+broadcastCols,
-		id, d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, buttons, d.ScheduledAt))
+		id, d.Text, d.Photo, d.Audience, d.AudienceDays, d.Silent, buttons, d.ScheduledAt, d.PhotoID))
 	if errors.Is(err, ErrNotFound) {
 		err = lockedOrMissing(ctx, s.pool, id)
 	}
@@ -390,15 +390,15 @@ func (s *Store) ListBroadcasts(ctx context.Context, f model.BroadcastFilter) ([]
 }
 
 // CreateDirect записывает личное сообщение и строку outbox для него в одной транзакции.
-func (s *Store) CreateDirect(ctx context.Context, telegramID int64, text, photo string) (int64, error) {
+func (s *Store) CreateDirect(ctx context.Context, telegramID int64, text, photo string, photoID *uuid.UUID) (int64, error) {
 	var id int64
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO direct_messages (telegram_id, text, photo)
-			VALUES ($1, $2, NULLIF($3, '')) RETURNING id`, telegramID, text, photo).Scan(&id); err != nil {
+		if err := tx.QueryRow(ctx, `INSERT INTO direct_messages (telegram_id, text, photo, photo_id)
+			VALUES ($1, $2, NULLIF($3, ''), $4) RETURNING id`, telegramID, text, photo, photoID).Scan(&id); err != nil {
 			return err
 		}
 		return enqueue(ctx, tx, model.OutboxMessage{
-			EventType: "direct", ChatID: telegramID, Text: text, Photo: photo, Template: texts.HasVars(text),
+			EventType: "direct", ChatID: telegramID, Text: text, Photo: photo, PhotoID: idString(photoID), Template: texts.HasVars(text),
 			ParseMode: string(models.ParseModeHTML), DirectID: id,
 		})
 	})
@@ -416,7 +416,7 @@ func (s *Store) DirectDelivered(ctx context.Context, id int64, ok bool) error {
 
 // DirectMessages — личные сообщения юзеру, новые первыми.
 func (s *Store) DirectMessages(ctx context.Context, telegramID int64) ([]model.DirectMessage, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, telegram_id, text, COALESCE(photo, ''), status, created_at
+	rows, err := s.pool.Query(ctx, `SELECT id, telegram_id, text, COALESCE(photo, ''), photo_id, status, created_at
 		FROM direct_messages WHERE telegram_id = $1 ORDER BY id DESC`, telegramID)
 	if err != nil {
 		return nil, err
@@ -425,7 +425,7 @@ func (s *Store) DirectMessages(ctx context.Context, telegramID int64) ([]model.D
 	out := []model.DirectMessage{}
 	for rows.Next() {
 		var m model.DirectMessage
-		if err = rows.Scan(&m.ID, &m.TelegramID, &m.Text, &m.Photo, &m.Status, &m.CreatedAt); err != nil {
+		if err = rows.Scan(&m.ID, &m.TelegramID, &m.Text, &m.Photo, &m.PhotoID, &m.Status, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -439,4 +439,12 @@ func affected(tag pgconn.CommandTag, err error) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// idString — id картинки для payload outbox; пусто — без картинки.
+func idString(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
 }

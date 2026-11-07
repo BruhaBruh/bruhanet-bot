@@ -62,7 +62,7 @@ func TestTemplateFlag(t *testing.T) {
 	if _, _, err := s.SendBroadcast(ctx, draft("обычный {{ текст"), 1, bt0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateDirect(ctx, 10, "{{.expireAt}}", ""); err != nil {
+	if _, err := s.CreateDirect(ctx, 10, "{{.expireAt}}", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.OutboxBatch(ctx, 10)
@@ -581,15 +581,15 @@ func TestMigrationBackfillsStatus(t *testing.T) {
 func TestDirectMessages(t *testing.T) {
 	s := testStore(t)
 	ctx := t.Context()
-	id1, err := s.CreateDirect(ctx, 5, "hello", "")
+	id1, err := s.CreateDirect(ctx, 5, "hello", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	id2, err := s.CreateDirect(ctx, 5, "", "pic")
+	id2, err := s.CreateDirect(ctx, 5, "", "pic", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.CreateDirect(ctx, 6, "other", ""); err != nil {
+	if _, err = s.CreateDirect(ctx, 6, "other", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.OutboxBatch(ctx, 10)

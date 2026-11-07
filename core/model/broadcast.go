@@ -8,11 +8,13 @@ import (
 	"github.com/bruhabruh/bruhanet/core/broadcast"
 )
 
-// BroadcastDraft — содержимое рассылки из админки; Photo — file_id Telegram. Для черновика ключа нет.
+// BroadcastDraft — содержимое рассылки из админки; PhotoID — картинка в broadcast_photos, Photo — file_id Telegram у
+// старых черновиков (одно из двух). Для черновика ключа нет.
 type BroadcastDraft struct {
 	IdempotencyKey uuid.UUID
 	DraftID        uuid.UUID // отправка черновика: строка получает ключ и статус; Nil — новая
 	Text, Photo    string
+	PhotoID        *uuid.UUID
 	Audience       string
 	AudienceDays   *int
 	Silent         bool
@@ -25,7 +27,8 @@ type Broadcast struct {
 	ID           uuid.UUID          `json:"id"`
 	Status       string             `json:"status"` // broadcast.Status*
 	Text         string             `json:"text"`
-	Photo        string             `json:"photo,omitempty"`
+	Photo        string             `json:"photo,omitempty"` // file_id старых рассылок
+	PhotoID      *uuid.UUID         `json:"photoId"`
 	Audience     string             `json:"audience"`
 	AudienceDays *int               `json:"audienceDays"`
 	Silent       bool               `json:"silent"`
@@ -54,12 +57,13 @@ const (
 
 // DirectMessage — личное сообщение юзеру из админки.
 type DirectMessage struct {
-	ID         int64     `json:"id"`
-	TelegramID int64     `json:"telegramId"`
-	Text       string    `json:"text"`
-	Photo      string    `json:"photo,omitempty"`
-	Status     string    `json:"status"` // pending | sent | failed
-	CreatedAt  time.Time `json:"createdAt"`
+	ID         int64      `json:"id"`
+	TelegramID int64      `json:"telegramId"`
+	Text       string     `json:"text"`
+	Photo      string     `json:"photo,omitempty"`
+	PhotoID    *uuid.UUID `json:"photoId"`
+	Status     string     `json:"status"` // pending | sent | failed
+	CreatedAt  time.Time  `json:"createdAt"`
 }
 
 // AudienceCounts — получатели по аудиториям на момент запроса.

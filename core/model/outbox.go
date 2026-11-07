@@ -15,6 +15,8 @@ type OutboxMessage struct {
 	ParseMode string                       `json:"parse_mode,omitempty"`
 	Keyboard  *models.InlineKeyboardMarkup `json:"keyboard,omitempty"`
 	Photo     string                       `json:"photo,omitempty"` // file_id; есть — sendPhoto с подписью Text
+	// PhotoID — картинка из broadcast_photos (uuid): воркер шлёт её байтами, пока у неё нет file_id, затем по file_id.
+	PhotoID string `json:"photo_id,omitempty"`
 	// Template — Text содержит {{.переменные}}: воркер подставляет их на получателя. Нет флага — текст уходит как есть
 	// (строки до этой версии, готовые тексты и обычный текст с «{{»).
 	Template bool `json:"template,omitempty"`
