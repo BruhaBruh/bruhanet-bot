@@ -64,6 +64,8 @@ const PATHS = {
   logout: ['M10 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4', 'M14 8l4 4-4 4', 'M18 12h-8'],
   'arrow-up': ['M12 19V5', 'M6 11l6-6 6 6'],
   'arrow-down': ['M12 5v14', 'M6 13l6 6 6-6'],
+  'rows-join': ['M4 7h7v10H4z', 'M13 7h7v10h-7z'],
+  'rows-split': ['M4 5h16v5H4z', 'M4 14h16v5H4z'],
   lock: ['M6 11h12a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z', 'M8 11V8a4 4 0 0 1 8 0v3'],
   support: ['M4 13v-1a8 8 0 0 1 16 0v1', 'M4 13h3v6H5a1 1 0 0 1-1-1z', 'M20 13h-3v6h2a1 1 0 0 0 1-1z'],
 } as const

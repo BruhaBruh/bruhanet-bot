@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Dialog, Input, MessageBubble, SearchField, SegmentedControl, Spinner, StyleSelect, StatusTag, toast } from '@/ui'
+import { Button, Card, Dialog, Input, MessageBubble, SearchField, Spinner, StyleSelect, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
@@ -457,7 +457,20 @@ export default function Texts() {
         <aside aria-label="Превью сообщения" className="sticky top-6 flex min-w-0 grow basis-80 flex-col gap-2">
           <h2 className="admin-label px-1 text-text-secondary">Превью с примером данных</h2>
           {keyboards.length > 1 && shownKb && (
-            <SegmentedControl block options={keyboards.map((k) => ({ value: k.id, label: k.title }))} value={shownKb.id} onChange={setPreviewKb} />
+            <div role="radiogroup" className="flex flex-wrap gap-1.5">
+              {keyboards.map((k) => (
+                <button
+                  key={k.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={k.id === shownKb.id}
+                  className={cn('admin-label focus-ring cursor-pointer rounded-md px-2.5 py-1.5 text-left', k.id === shownKb.id ? 'bg-accent-strong text-on-accent-strong' : 'bg-surface text-text')}
+                  onClick={() => setPreviewKb(k.id)}
+                >
+                  {k.title}
+                </button>
+              ))}
+            </div>
           )}
           <div className="flex min-h-80 flex-col justify-end overflow-hidden rounded-lg bg-chat-bg px-3 py-4 shadow-card">
             <MessageBubble time="14:30" keyboard={previewRows}>

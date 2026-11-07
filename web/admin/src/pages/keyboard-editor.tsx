@@ -1,4 +1,4 @@
-import { Button, Card, Icon, Input, StyleSelect } from '@/ui'
+import { Button, Card, Icon, Input, StyleSelect, type IconName } from '@/ui'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/primitives/tooltip'
 import type { KeyboardInfo, KeyboardSlot } from '../types'
 import { canJoin, canShow, canSplit, hide, moveInRow, moveRow, show, toggleJoin, type Layout } from './keyboard-layout'
@@ -45,7 +45,7 @@ export function ButtonFields({ id, view, busy, onLabel, onStyle }: ButtonCellPro
   )
 }
 
-const cell = 'flex min-w-0 flex-col gap-2 rounded-md bg-fill-tertiary p-3'
+const cell = 'flex min-w-0 flex-col gap-1.5 rounded-md bg-fill-tertiary p-2'
 
 interface KeyboardCardProps {
   kb: KeyboardInfo
@@ -69,13 +69,32 @@ export function KeyboardCard({ kb, layout, view, messageTitles, busy, dirty, onL
   const name = (s: KeyboardSlot) => (s.kind === 'dynamic' ? s.label : view(s).title)
   const { rows } = layout
 
-  const move = (label: string, icon: 'arrow-up' | 'arrow-down' | 'chevron-left' | 'chevron-right', disabled: boolean, onClick: () => void) => (
-    <Button variant="gray" size="sm" icon={icon} aria-label={label} title={label} disabled={busy || disabled} onClick={onClick} />
+  // Иконка-кнопка в одну строку управления; подпись — в подсказке и aria-label.
+  const tool = (label: string, icon: IconName, disabled: boolean, onClick: () => void) => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          disabled={busy || disabled}
+          onClick={onClick}
+          className="focus-ring inline-flex size-7 flex-none cursor-pointer items-center justify-center rounded-sm bg-surface text-text hover:bg-cell-highlight disabled:cursor-default disabled:opacity-40"
+        >
+          <Icon name={icon} size={16} strokeWidth={2} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{label.split(': ')[0]}</TooltipContent>
+    </Tooltip>
   )
 
   return (
     <Card title={`Клавиатура: ${kb.title}`} className="gap-3">
-      {messageTitles.length > 0 && <p className="footnote text-text-secondary">Общая для сообщений: {messageTitles.join(', ')}</p>}
+      {messageTitles.length > 0 && (
+        <details className="footnote text-text-secondary">
+          <summary className="cursor-pointer">Общая для {messageTitles.length} сообщений</summary>
+          <p className="pt-1">{messageTitles.join(', ')}</p>
+        </details>
+      )}
       {kb.inactive && (
         <p role="alert" className="admin-body rounded-lg bg-destructive-tint px-4 py-3 text-destructive-strong">
           Сохранённая раскладка не применяется, бот показывает расположение по умолчанию: {kb.problem}
@@ -98,29 +117,18 @@ export function KeyboardCard({ kb, layout, view, messageTitles, busy, dirty, onL
                   ) : (
                     <ButtonFields id={id} view={view(s)} busy={busy} onLabel={(v) => onLabel(id, v)} onStyle={(v) => onStyle(id, v)} />
                   )}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {move(`Выше: ${n}`, 'arrow-up', r === 0, () => onLayout(moveRow(layout, r, -1)))}
-                    {move(`Ниже: ${n}`, 'arrow-down', r === rows.length - 1, () => onLayout(moveRow(layout, r, 1)))}
-                    {row.length > 1 && move(`Левее: ${n}`, 'chevron-left', c === 0, () => onLayout(moveInRow(layout, r, c, -1)))}
-                    {row.length > 1 && move(`Правее: ${n}`, 'chevron-right', c === row.length - 1, () => onLayout(moveInRow(layout, r, c, 1)))}
-                    {c > 0 ? (
-                      <Button variant="gray" size="sm" disabled={busy || !canSplit(layout, r, c)} aria-label={`В отдельную строку: ${n}`} onClick={() => onLayout(toggleJoin(layout, r, c, blocks))}>
-                        В отдельную строку
-                      </Button>
-                    ) : (
-                      s.kind === 'button' &&
-                      r > 0 && (
-                        <Button variant="gray" size="sm" disabled={busy || !canJoin(layout, r, c, blocks)} aria-label={`В строку с предыдущей: ${n}`} onClick={() => onLayout(toggleJoin(layout, r, c, blocks))}>
-                          В строку с предыдущей
-                        </Button>
-                      )
-                    )}
+                  <div className="flex flex-wrap items-center gap-1">
+                    {tool(`Выше: ${n}`, 'arrow-up', r === 0, () => onLayout(moveRow(layout, r, -1)))}
+                    {tool(`Ниже: ${n}`, 'arrow-down', r === rows.length - 1, () => onLayout(moveRow(layout, r, 1)))}
+                    {row.length > 1 && tool(`Левее: ${n}`, 'chevron-left', c === 0, () => onLayout(moveInRow(layout, r, c, -1)))}
+                    {row.length > 1 && tool(`Правее: ${n}`, 'chevron-right', c === row.length - 1, () => onLayout(moveInRow(layout, r, c, 1)))}
+                    {c > 0
+                      ? tool(`В отдельную строку: ${n}`, 'rows-split', !canSplit(layout, r, c), () => onLayout(toggleJoin(layout, r, c, blocks)))
+                      : s.kind === 'button' && r > 0 && tool(`В строку с предыдущей: ${n}`, 'rows-join', !canJoin(layout, r, c, blocks), () => onLayout(toggleJoin(layout, r, c, blocks)))}
                     <span className="grow" />
                     {s.kind === 'button' &&
                       (s.removable ? (
-                        <Button variant="gray" size="sm" icon="close" aria-label={`Скрыть: ${n}`} title="Скрыть" disabled={busy} onClick={() => onLayout(hide(layout, id))}>
-                          Скрыть
-                        </Button>
+                        tool(`Скрыть: ${n}`, 'close', false, () => onLayout(hide(layout, id)))
                       ) : (
                         <Tooltip>
                           <TooltipTrigger asChild>
