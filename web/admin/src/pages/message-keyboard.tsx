@@ -187,17 +187,19 @@ export function MessageKeyboardCard({ kb, cat, rows, busy, dirty, saving, onRows
                   </span>
                   {trail}
                 </div>
-                <Input
-                  className="min-w-0"
-                  placeholder={c.effective?.preview}
-                  aria-label={`Текст кнопки ${n}`}
-                  maxLength={BUTTON_LIMIT}
-                  disabled={busy}
-                  value={c.label ?? ''}
-                  onChange={(e) => edit(id, (x) => ({ ...x, label: e.target.value }))}
-                />
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex items-start gap-2">
+                  <Input
+                    className="min-w-0 grow"
+                    placeholder={c.effective?.preview}
+                    aria-label={`Текст кнопки ${n}`}
+                    maxLength={BUTTON_LIMIT}
+                    disabled={busy}
+                    value={c.label ?? ''}
+                    onChange={(e) => edit(id, (x) => ({ ...x, label: e.target.value }))}
+                  />
                   <StyleSelect aria-label={`Стиль кнопки ${n}`} disabled={busy} value={c.style || c.effective?.style || ''} onChange={(v) => edit(id, (x) => ({ ...x, style: v }))} />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
                   <Button variant="gray" size="sm" disabled={busy || c.locked} aria-label={`Действие: ${n}`} onClick={() => setModal({ id, kind: 'action' })}>
                     Действие
                   </Button>
