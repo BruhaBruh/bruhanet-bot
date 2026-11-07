@@ -136,6 +136,41 @@ func TestConstructorQueueNotices(t *testing.T) {
 	}
 }
 
+// Одиночная «Назад» — служебная ячейка: подпись, стиль и соседние кнопки правятся, а куда она ведёт, знает экран.
+func TestConstructorBackCell(t *testing.T) {
+	e := newEnv(t)
+	store(e, "promo.enter_menu", func(l *texts.MsgLayout) {
+		l.Rows[0][0].Label = "Вернуться"
+		l.Rows[0][0].Style = texts.StyleDanger
+		l.Rows = append(l.Rows, []texts.Cell{cell("site", "Сайт", "url:https://example.com")})
+	})
+	e.process(t, tgtest.Callback(userID, "promo"))
+	kb := e.last(t, "editMessageText").Params.Get("reply_markup")
+	for _, want := range []string{`"text":"Вернуться"`, `"style":"danger"`, `"callback_data":"menu"`, `"url":"https://example.com"`} {
+		if !strings.Contains(kb, want) {
+			t.Errorf("no %s in %s", want, kb)
+		}
+	}
+}
+
+// Сообщению без кнопок по умолчанию (реквизиты оплаты) админ может добавить свои; без правок клавиатуры нет.
+func TestConstructorButtonsOnMessageWithoutKeyboard(t *testing.T) {
+	e := newEnv(t)
+	e.process(t, tgtest.Callback(userID, "buy:6"))
+	if kb := e.last(t, "editMessageText").Params.Get("reply_markup"); kb != "" {
+		t.Fatalf("requisites must have no keyboard by default: %s", kb)
+	}
+	e2 := newEnv(t)
+	store(e2, "payment.requisites", func(l *texts.MsgLayout) {
+		l.Rows = [][]texts.Cell{{cell("site", "Сайт", "url:https://example.com"), cell("menu", "Меню", "route:menu")}}
+	})
+	e2.process(t, tgtest.Callback(userID, "buy:6"))
+	kb := e2.last(t, "editMessageText").Params.Get("reply_markup")
+	if !strings.Contains(kb, `"url":"https://example.com"`) || !strings.Contains(kb, `"callback_data":"menu"`) {
+		t.Fatalf("custom buttons missing: %s", kb)
+	}
+}
+
 // У каждого действия каталога есть реализация в боте.
 func TestConstructorCatalogsImplemented(t *testing.T) {
 	routes.CheckCatalog(t)

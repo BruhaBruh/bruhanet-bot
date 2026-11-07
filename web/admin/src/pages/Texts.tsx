@@ -278,6 +278,7 @@ export default function Texts() {
       <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-7.5rem)]">
         <SegmentedControl
           block
+          className="shrink-0"
           value={tab}
           options={[
             { value: 'message', label: 'Сообщения' },

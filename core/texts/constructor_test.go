@@ -24,7 +24,8 @@ func TestMessageDefaults(t *testing.T) {
 		if err := texts.ValidateMessageLayout(key, def, nil, true); err != nil {
 			t.Errorf("%s: default is invalid: %v", key, err)
 		}
-		if n := len(texts.KeyboardsFor(key)); n != 1 && (n != 2 || texts.KeyboardsFor(key)[0].ID != "menu") {
+		// без кнопок по умолчанию (0 клавиатур): реквизиты оплаты — админ может добавить свои
+		if n := len(texts.KeyboardsFor(key)); n > 2 || (n == 2 && texts.KeyboardsFor(key)[0].ID != "menu") {
 			t.Errorf("%s: %d keyboards", key, n)
 		}
 		for _, id := range locked {
@@ -190,8 +191,12 @@ func TestValidateMessageLayout(t *testing.T) {
 			}
 		}
 	}
-	if err := texts.ValidateMessageLayout("payment.requisites", texts.MsgLayout{}, nil, true); err == nil {
-		t.Error("message without keyboard accepted")
+	// сообщению без кнопок по умолчанию можно добавить свои; не-сообщению (простой текст) клавиатура не положена
+	if err := texts.ValidateMessageLayout("payment.requisites", texts.MsgLayout{}, nil, true); err != nil {
+		t.Errorf("empty keyboard of a message without default buttons: %v", err)
+	}
+	if err := texts.ValidateMessageLayout("menu.status_active", texts.MsgLayout{}, nil, true); err == nil {
+		t.Error("keyboard accepted for a plain text")
 	}
 }
 

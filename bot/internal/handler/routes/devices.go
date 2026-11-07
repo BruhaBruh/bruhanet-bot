@@ -147,7 +147,7 @@ func (h *handlers) devicesCustom(ctx context.Context, b *bot.Bot, u *models.Upda
 		h.showError(ctx, b, u)
 		return
 	}
-	show(ctx, b, u, h.backKeyboard(ctx, routeDevicesBuy), h.c.Text(ctx, "devices.custom", map[string]string{"max": strconv.Itoa(h.c.Settings(ctx).DeviceMax)}))
+	show(ctx, b, u, h.backKeyboard(ctx, "devices.custom", routeDevicesBuy), h.c.Text(ctx, "devices.custom", map[string]string{"max": strconv.Itoa(h.c.Settings(ctx).DeviceMax)}))
 }
 
 // devicesNumberText — число, присланное в ожидании: на подтверждение; не число или вне границ — подсказка и повторный ввод.
@@ -158,7 +158,7 @@ func (h *handlers) devicesNumberText(ctx context.Context, b *bot.Bot, u *models.
 	max := h.c.Settings(ctx).DeviceMax
 	n, err := strconv.Atoi(strings.TrimSpace(u.Message.Text))
 	if err != nil || n < 1 || n > max {
-		send(ctx, b, tgupdate.ChatID(u), h.backKeyboard(ctx, routeDevicesBuy), h.c.Text(ctx, "devices.number_invalid", map[string]string{"max": strconv.Itoa(max)}))
+		send(ctx, b, tgupdate.ChatID(u), h.backKeyboard(ctx, "devices.number_invalid", routeDevicesBuy), h.c.Text(ctx, "devices.number_invalid", map[string]string{"max": strconv.Itoa(max)}))
 		return
 	}
 	h.leavePromo(ctx, tgupdate.UserID(u))
@@ -266,13 +266,13 @@ func (h *handlers) devicesBuy(ctx context.Context, b *bot.Bot, u *models.Update)
 
 func (h *handlers) showDeviceRequisites(ctx context.Context, b *bot.Bot, u *models.Update, p model.Payment) {
 	set := h.c.Settings(ctx)
-	show(ctx, b, u, nil, h.c.Text(ctx, "devices.requisites", map[string]string{
+	show(ctx, b, u, h.kb(ctx, "", "devices.requisites").markup(), h.c.Text(ctx, "devices.requisites", map[string]string{
 		"count": devicesCount(p.ExtraDevices), "countShort": strconv.Itoa(p.ExtraDevices) + " устр.", "price": strconv.Itoa(p.Price), "comments": commentsHTML(set.Comments),
 	}))
 }
 
 func (h *handlers) devicesBusy(ctx context.Context, b *bot.Bot, u *models.Update) {
-	show(ctx, b, u, h.backKeyboard(ctx, routeMenu), h.c.Text(ctx, "devices.busy", nil))
+	show(ctx, b, u, h.backKeyboard(ctx, "devices.busy", routeMenu), h.c.Text(ctx, "devices.busy", nil))
 }
 
 // ensureUser заводит юзера в панели, если его там нет, и сразу пишет лимит устройств base+extra (новому — панельное

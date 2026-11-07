@@ -292,6 +292,11 @@ var keyboards = []Keyboard{
 		fx("button.copy_link", "button.back"), nil, row("button.copy_link"), row("button.back")),
 	kb("gift_ready", "Подарок оплачен: ссылка", []string{"gift.ready"},
 		fx("button.copy_link", "button.back"), nil, row("button.copy_link"), row("button.back")),
+	kb("back", "Одна кнопка «Назад»", []string{
+		"promo.enter_payment", "promo.enter_menu", "promo.not_found", "promo.disabled", "promo.not_started", "promo.expired",
+		"promo.exhausted", "promo.not_yours", "promo.only_new", "promo.already_used", "promo.wrong_place_payment", "promo.wrong_place_menu",
+		"trial.unavailable", "devices.custom", "devices.number_invalid", "devices.busy", "gift.busy", "gift.unavailable",
+	}, fx("button.back"), nil, row("button.back")),
 	kb("login", "Вход в админ-панель", []string{"login.message"}, fx("button.login"), nil, row("button.login")),
 	kb("error", "Ошибка", []string{"error.generic"},
 		slices.Concat(fx("button.back"), rm("button.support")), nil, row("button.back"), row("button.support")),

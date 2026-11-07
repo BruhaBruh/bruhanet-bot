@@ -96,15 +96,15 @@ func (h *handlers) giftBuy(ctx context.Context, b *bot.Bot, u *models.Update) {
 func (h *handlers) showGiftRequisites(ctx context.Context, b *bot.Bot, u *models.Update, p model.Payment) {
 	vars := tariffVars(p.Month, p.Price)
 	vars["comments"] = commentsHTML(h.c.Settings(ctx).Comments)
-	show(ctx, b, u, nil, h.c.Text(ctx, "gift.requisites", vars))
+	show(ctx, b, u, h.kb(ctx, "", "gift.requisites").markup(), h.c.Text(ctx, "gift.requisites", vars))
 }
 
 func (h *handlers) giftBusy(ctx context.Context, b *bot.Bot, u *models.Update) {
-	show(ctx, b, u, h.backKeyboard(ctx, routeMenu), h.c.Text(ctx, "gift.busy", nil))
+	show(ctx, b, u, h.backKeyboard(ctx, "gift.busy", routeMenu), h.c.Text(ctx, "gift.busy", nil))
 }
 
 func (h *handlers) giftUnavailable(ctx context.Context, b *bot.Bot, u *models.Update) {
-	send(ctx, b, tgupdate.ChatID(u), h.backKeyboard(ctx, routeMenu), h.c.Text(ctx, "gift.unavailable", nil))
+	send(ctx, b, tgupdate.ChatID(u), h.backKeyboard(ctx, "gift.unavailable", routeMenu), h.c.Text(ctx, "gift.unavailable", nil))
 }
 
 // redeemGift — «/start gift_<код>»: активация подарка. Любой отказ (мусор, нет такого, использован, отменён, не оплачен,

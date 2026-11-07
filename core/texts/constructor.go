@@ -83,6 +83,7 @@ var actions = []Action{
 	{ID: "copy:subscription", Title: "Скопировать ссылку подписки", Kind: ActionCopy, Bound: true},
 	{ID: "copy:referral_link", Title: "Скопировать реферальную ссылку", Kind: ActionCopy, Bound: true},
 	{ID: "copy:gift_link", Title: "Скопировать ссылку подарка", Kind: ActionCopy, Bound: true},
+	{ID: "flow:back", Title: "Назад (туда, откуда пришёл юзер)", Kind: ActionFlow, Bound: true},
 	{ID: "flow:yes", Title: "Подтвердить", Kind: ActionFlow, Bound: true},
 	{ID: "flow:no", Title: "Отказаться", Kind: ActionFlow, Bound: true},
 	{ID: "flow:have_promo", Title: "Ввести промокод на тариф", Kind: ActionFlow, Bound: true},
@@ -245,8 +246,11 @@ func cellSpec(kbID, slot string) Cell {
 		c.Action = "route:referral"
 	case "button.back":
 		c.Action = "route:menu"
-		if kbID == "devices_buy" { // «Назад» из меню докупки ведёт на экран «Устройства»
+		switch kbID {
+		case "devices_buy": // «Назад» из меню докупки ведёт на экран «Устройства»
 			c.Action = "route:devices"
+		case "back": // одиночная «Назад»: куда вести, знает экран (promo, devices.custom…)
+			c.Action = "flow:back"
 		}
 	case "button.yes":
 		c.Action, c.Style = "flow:yes", StyleSuccess
@@ -329,6 +333,10 @@ func MessageDefault(key string) (MsgLayout, []string, bool) {
 	ks := KeyboardsFor(key)
 	switch {
 	case len(ks) == 0:
+		// у сообщения нет клавиатуры по умолчанию, но админ может добавить свои кнопки (url и маршруты)
+		if d, ok := Lookup(key); ok && d.Kind == KindMessage {
+			return MsgLayout{Rows: [][]Cell{}}, nil, true
+		}
 		return MsgLayout{}, nil, false
 	case isMenuPair(ks):
 		_, l := menuDefault()

@@ -488,6 +488,15 @@ describe('Texts', () => {
       expect(screen.queryByRole('button', { name: 'Сохранить клавиатуру' })).toBeNull()
     })
 
+    it('a message without buttons offers an empty keyboard: hint and «+ Кнопка»', async () => {
+      replies['GET /api/texts'] = json(200, { items: [text('plainmsg', 'Реквизиты', 'x', { keyboard: { rows: [], default: [], overridden: false, locked: [] } })], globals: [], ...catalogs })
+      await open('/texts?key=plainmsg')
+      expect(screen.getByText(/Кнопок под этим сообщением пока нет/)).toBeTruthy()
+      await click('+ Кнопка')
+      expect(screen.getByRole('textbox', { name: 'Текст кнопки Кнопка' })).toBeTruthy()
+      expect(screen.queryByText(/Кнопок под этим сообщением пока нет/)).toBeNull()
+    })
+
     it('button texts are not in the list', async () => {
       replies['GET /api/texts'] = json(200, {
         items: [text('a', 'Текст A', 'x'), text('button.pay', 'Оплатить', 'Оплатить', { kind: 'button', group: 'Кнопки' })],

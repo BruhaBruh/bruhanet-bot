@@ -117,6 +117,24 @@ var mapTransitions = []MapTransition{
 	{"trial.confirm", "flow:no", []string{"menu.greeting"}},
 	// «Назад» с исключениями
 	{"devices.buy", "route:devices", []string{"devices.menu"}},
+	// одиночная «Назад» (flow:back): куда вести, решает экран
+	{"promo.enter_payment", "flow:back", []string{"payment.confirm", "payment.confirm_devices"}},
+	{"promo.enter_menu", "flow:back", []string{"menu.greeting"}},
+	{"promo.wrong_place_payment", "flow:back", []string{"payment.confirm", "payment.confirm_devices"}},
+	{"promo.wrong_place_menu", "flow:back", []string{"menu.greeting"}},
+	{"trial.unavailable", "flow:back", []string{"menu.greeting"}},
+	{"devices.custom", "flow:back", []string{"devices.buy"}},
+	{"devices.number_invalid", "flow:back", []string{"devices.buy"}},
+	{"devices.busy", "flow:back", []string{"menu.greeting"}},
+	{"gift.busy", "flow:back", []string{"menu.greeting"}},
+	{"gift.unavailable", "flow:back", []string{"menu.greeting"}},
+}
+
+func init() {
+	// отказы промокода показываются и при оплате, и из меню: «Назад» ведёт на экран, откуда юзер ввёл код
+	for _, r := range promoRejects {
+		mapTransitions = append(mapTransitions, MapTransition{r, "flow:back", []string{"menu.greeting", "payment.confirm", "payment.confirm_devices"}})
+	}
 }
 
 // mapLinks — переходы без кнопки.
@@ -141,7 +159,6 @@ var mapLinks = func() []MapLink {
 		{"devices.custom", "devices.confirm", "число верное"},
 		{"devices.custom", "devices.number_invalid", "не число или вне границ"},
 		{"devices.number_invalid", "devices.confirm", "число верное"},
-		{"devices.custom", "devices.buy", "Назад"},
 		{"referral.menu", "referral.friend_bonus", "друг впервые оплатил"},
 		{"referral.menu", "referral.referrer_bonus", "друг впервые оплатил"},
 		{"login.message", "login.fallback", "Telegram не принял кнопку"},

@@ -190,7 +190,7 @@ func (h *handlers) showRequisites(ctx context.Context, b *bot.Bot, u *models.Upd
 	set := h.c.Settings(ctx)
 	vars := tariffVars(month, price)
 	vars["comments"] = commentsHTML(set.Comments)
-	show(ctx, b, u, nil, h.c.Text(ctx, "payment.requisites", vars))
+	show(ctx, b, u, h.kb(ctx, "", "payment.requisites").markup(), h.c.Text(ctx, "payment.requisites", vars))
 }
 
 // commentsHTML — Raw-переменная comments: строка «- <code>…</code>» на комментарий.

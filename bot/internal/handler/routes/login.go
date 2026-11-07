@@ -49,12 +49,16 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 		// Telegram не принимает, например, localhost в URL-кнопке (dev) и не делает такую ссылку кликабельной:
 		// шлём её моноширинным блоком (копируется тапом), тоже без превью.
 		stlog.Warn(ctx, "login button rejected, sending plain link", "error", err)
-		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
+		fb := &bot.SendMessageParams{
 			ChatID:             h.cfg.Telegram.AdminID,
 			Text:               h.c.Text(ctx, "login.fallback", map[string]string{"link": link}),
 			ParseMode:          models.ParseModeHTML,
 			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
-		})
+		}
+		if kb := h.kb(ctx, "", "login.fallback").markup(); kb != nil { // свои кнопки админа; без них клавиатуры нет
+			fb.ReplyMarkup = kb
+		}
+		_, err = b.SendMessage(ctx, fb)
 	}
 	if err != nil {
 		stlog.Warn(ctx, "failed to send login link", "error", err)

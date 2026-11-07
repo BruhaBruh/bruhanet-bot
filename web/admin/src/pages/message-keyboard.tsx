@@ -248,6 +248,7 @@ export function MessageKeyboardCard({ kb, cat, rows, busy, dirty, saving, tplTex
         />
       </TooltipProvider>
 
+      {rows.length === 0 && <p className="footnote text-text-secondary">Кнопок под этим сообщением пока нет: добавь свои (ссылку или переход в меню бота).</p>}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="gray" size="sm" disabled={busy || full} onClick={() => onRows(addButton(rows))}>
           + Кнопка

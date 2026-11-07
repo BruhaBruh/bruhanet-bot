@@ -38,7 +38,7 @@ func (h *handlers) trialOffered(ctx context.Context, id int64, user *api.UserIte
 }
 
 func (h *handlers) trialUnavailable(ctx context.Context, b *bot.Bot, u *models.Update) {
-	show(ctx, b, u, h.backKeyboard(ctx, routeMenu), h.c.Text(ctx, "trial.unavailable", nil))
+	show(ctx, b, u, h.backKeyboard(ctx, "trial.unavailable", routeMenu), h.c.Text(ctx, "trial.unavailable", nil))
 }
 
 func trialVars(days, devices int) map[string]string {

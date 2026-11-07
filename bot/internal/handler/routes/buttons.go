@@ -77,6 +77,9 @@ func (b *kbBuilder) markup() *models.InlineKeyboardMarkup {
 	if lay := b.c.MessageLayout(b.ctx, b.key); lay != nil {
 		return b.fromLayout(*lay)
 	}
+	if b.id == "" { // у сообщения нет кнопок по умолчанию: без сохранённых админом клавиатуры нет
+		return nil
+	}
 	k, ok := texts.LookupKeyboard(b.id)
 	if !ok {
 		stlog.Error(b.ctx, "unknown keyboard", "keyboard", b.id)
@@ -98,7 +101,7 @@ var routeData = map[string]string{
 // argKey — какую кнопку экрана питает привязанное действие (flow/copy): ключ в b.args.
 var argKey = map[string]string{
 	"flow:yes": "button.yes", "flow:no": "button.no", "flow:have_promo": "button.have_promo",
-	"link:login": "button.login", "flow:devices_custom": "button.devices_custom", "flow:drop_devices": "button.drop_devices", "flow:remove_promo": "button.remove_promo",
+	"link:login": "button.login", "flow:back": "button.back", "flow:devices_custom": "button.devices_custom", "flow:drop_devices": "button.drop_devices", "flow:remove_promo": "button.remove_promo",
 	"copy:subscription": "button.subscription", "copy:referral_link": "button.copy_link", "copy:gift_link": "button.copy_link",
 }
 

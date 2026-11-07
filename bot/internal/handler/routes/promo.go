@@ -37,8 +37,10 @@ type promoData struct {
 	Month int `json:"month"`
 }
 
-func (h *handlers) backKeyboard(ctx context.Context, data string) *models.InlineKeyboardMarkup {
-	return keyboard.Inline(keyboard.Row(callbackButton(ctx, h.c, "button.back", data, keyboard.StyleDefault)))
+// backKeyboard — одна «Назад» под сообщением key: служебная ячейка клавиатуры «back» (подпись, стиль и место правятся
+// в редакторе, куда вести — знает экран: data).
+func (h *handlers) backKeyboard(ctx context.Context, key, data string) *models.InlineKeyboardMarkup {
+	return h.kb(ctx, "back", key).callback("button.back", data, keyboard.StyleDefault).markup()
 }
 
 // havePromo — «Есть промокод» на экране «Верно?»: ждём код сообщением.
@@ -53,7 +55,7 @@ func (h *handlers) havePromo(ctx context.Context, b *bot.Bot, u *models.Update) 
 		h.showError(ctx, b, u)
 		return
 	}
-	show(ctx, b, u, h.backKeyboard(ctx, priceRoute.Data(month)), h.c.Text(ctx, "promo.enter_payment", nil))
+	show(ctx, b, u, h.backKeyboard(ctx, "promo.enter_payment", priceRoute.Data(month)), h.c.Text(ctx, "promo.enter_payment", nil))
 }
 
 // promoMenu — «Промокод» в главном меню: ждём код на дни.
@@ -63,7 +65,7 @@ func (h *handlers) promoMenu(ctx context.Context, b *bot.Bot, u *models.Update) 
 		h.showError(ctx, b, u)
 		return
 	}
-	show(ctx, b, u, h.backKeyboard(ctx, routeMenu), h.c.Text(ctx, "promo.enter_menu", nil))
+	show(ctx, b, u, h.backKeyboard(ctx, "promo.enter_menu", routeMenu), h.c.Text(ctx, "promo.enter_menu", nil))
 }
 
 // paymentPromoText — код, присланный в await_promo: показать тариф со скидкой.
@@ -315,7 +317,7 @@ func (h *handlers) rejectPromo(ctx context.Context, b *bot.Bot, u *models.Update
 		h.showError(ctx, b, u)
 		return
 	}
-	show(ctx, b, u, h.backKeyboard(ctx, back), h.c.Text(ctx, key, nil))
+	show(ctx, b, u, h.backKeyboard(ctx, key, back), h.c.Text(ctx, key, nil))
 }
 
 func promoErrorKey(err error, place promo.Place) string {
