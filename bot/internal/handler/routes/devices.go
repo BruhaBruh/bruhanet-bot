@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/go-telegram/bot"
@@ -22,16 +22,17 @@ import (
 	"github.com/bruhabruh/bruhanet/pkg/tgupdate"
 )
 
-const routeDevices = "devices"
+const (
+	routeDevices       = "devices"
+	routeDevicesBuy    = "devbuy" // меню докупки: варианты и «Своё число»
+	routeDevicesCustom = "devc"   // ожидание числа устройств сообщением
+)
 
 var (
 	devPickRoute  = callback.New[int]("dev")  // dev:<сколько> — экран подтверждения
 	devYesRoute   = callback.New[int]("devy") // devy:<сколько> — создать платёж
 	buyNoDevRoute = callback.New[int]("buyd") // buyd:<месяцы> — продление без доп. устройств
 )
-
-// deviceChoices — сколько устройств можно докупить за раз.
-var deviceChoices = []int{1, 2, 3, 5}
 
 func pluralDevices(n int) string {
 	return plural(n, "устройство", "устройства", "устройств")
@@ -96,8 +97,25 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 			h.c.Text(ctx, "devices.no_term", vars))
 		return
 	}
-	buttons := make([]keyboard.Button, 0, len(deviceChoices))
-	for _, n := range deviceChoices {
+	h.leavePromo(ctx, userID)
+	show(ctx, b, u, h.kb(ctx, "devices", "devices.menu").
+		callback("button.devices_buy", routeDevicesBuy, keyboard.StyleDefault).
+		callback("button.back", routeMenu, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.menu", vars))
+}
+
+// devicesBuyMenu — меню докупки: варианты из настроек с ценой до конца подписки и «Своё число».
+func (h *handlers) devicesBuyMenu(ctx context.Context, b *bot.Bot, u *models.Update) {
+	set := h.c.Settings(ctx)
+	user, extra, ok := h.deviceUser(ctx, b, u)
+	if !ok {
+		return
+	}
+	if devices.RemainingDays(user.ExpireAt, h.now()) == 0 { // подписка закончилась: экран «Устройства» объяснит
+		h.devices(ctx, b, u)
+		return
+	}
+	buttons := make([]keyboard.Button, 0, len(set.DeviceOptions))
+	for _, n := range set.DeviceOptions {
 		price, err := devices.ProratedPrice(set.DevicePrice, n, user.ExpireAt, h.now())
 		if err != nil {
 			break
@@ -106,9 +124,45 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 			map[string]string{"count": strconv.Itoa(n), "price": strconv.Itoa(price)}), devPickRoute.Data(n)).
 			Style(h.c.Style(ctx, "button.devices_add", keyboard.StyleDefault)))
 	}
-	h.leavePromo(ctx, userID)
-	show(ctx, b, u, h.kb(ctx, "devices", "devices.menu").block("@devices", keyboard.Grid(2, buttons...)).
-		callback("button.back", routeMenu, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.menu", vars))
+	h.leavePromo(ctx, tgupdate.UserID(u)) // выход из ожидания числа
+	vars := deviceVars(set, extra)
+	vars["max"] = strconv.Itoa(set.DeviceMax)
+	show(ctx, b, u, h.kb(ctx, "devices_buy", "devices.buy").block("@devices", keyboard.Grid(2, buttons...)).
+		callback("button.devices_custom", routeDevicesCustom, keyboard.StyleDefault).
+		callback("button.back", routeDevices, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.buy", vars))
+}
+
+// devicesCustom — «Своё число»: ждём сообщение с числом.
+func (h *handlers) devicesCustom(ctx context.Context, b *bot.Bot, u *models.Update) {
+	user, _, ok := h.deviceUser(ctx, b, u)
+	if !ok {
+		return
+	}
+	if devices.RemainingDays(user.ExpireAt, h.now()) == 0 {
+		h.devices(ctx, b, u)
+		return
+	}
+	if err := fsm.Put(ctx, fsm.For(h.fsm, tgupdate.UserID(u)), stateAwaitDevices, nil); err != nil {
+		stlog.Error(ctx, "failed to set devices state", "error", err)
+		h.showError(ctx, b, u)
+		return
+	}
+	show(ctx, b, u, h.backKeyboard(ctx, routeDevicesBuy), h.c.Text(ctx, "devices.custom", map[string]string{"max": strconv.Itoa(h.c.Settings(ctx).DeviceMax)}))
+}
+
+// devicesNumberText — число, присланное в ожидании: на подтверждение; не число или вне границ — подсказка и повторный ввод.
+func (h *handlers) devicesNumberText(ctx context.Context, b *bot.Bot, u *models.Update) {
+	if h.escapePromo(ctx, b, u) { // команда, фото или не текст выходят из ожидания
+		return
+	}
+	max := h.c.Settings(ctx).DeviceMax
+	n, err := strconv.Atoi(strings.TrimSpace(u.Message.Text))
+	if err != nil || n < 1 || n > max {
+		send(ctx, b, tgupdate.ChatID(u), h.backKeyboard(ctx, routeDevicesBuy), h.c.Text(ctx, "devices.number_invalid", map[string]string{"max": strconv.Itoa(max)}))
+		return
+	}
+	h.leavePromo(ctx, tgupdate.UserID(u))
+	h.confirmDevices(ctx, b, u, n)
 }
 
 // deviceUser — юзер панели и его доп. устройства; false — экран уже показан (меню или ошибка).
@@ -135,34 +189,54 @@ func (h *handlers) deviceUser(ctx context.Context, b *bot.Bot, u *models.Update)
 	return user, extra, true
 }
 
-// devicePrice — цена n устройств до конца подписки юзера; callback подделывается, поэтому n проверяется.
+// devicePrice — число устройств из callback и его цена до конца подписки; callback подделывается, поэтому n проверяется.
 func (h *handlers) devicePrice(ctx context.Context, b *bot.Bot, u *models.Update, route callback.Route[int]) (n, price int, ok bool) {
 	n, err := route.Parse(u.CallbackQuery.Data)
-	if err != nil || !slices.Contains(deviceChoices, n) {
+	if err != nil {
 		h.devices(ctx, b, u)
 		return 0, 0, false
+	}
+	price, ok = h.priceFor(ctx, b, u, n)
+	return n, price, ok
+}
+
+// priceFor — цена n устройств до конца подписки юзера; n вне 1..максимума из настроек и закончившаяся подписка — экран «Устройства».
+func (h *handlers) priceFor(ctx context.Context, b *bot.Bot, u *models.Update, n int) (int, bool) {
+	set := h.c.Settings(ctx)
+	if n < 1 || n > set.DeviceMax {
+		h.devices(ctx, b, u)
+		return 0, false
 	}
 	user, _, ok := h.deviceUser(ctx, b, u)
 	if !ok {
-		return 0, 0, false
+		return 0, false
 	}
-	price, err = devices.ProratedPrice(h.c.Settings(ctx).DevicePrice, n, user.ExpireAt, h.now())
+	price, err := devices.ProratedPrice(set.DevicePrice, n, user.ExpireAt, h.now())
 	if err != nil { // подписка закончилась, пока юзер выбирал
 		h.devices(ctx, b, u)
-		return 0, 0, false
+		return 0, false
 	}
-	return n, price, true
+	return price, true
 }
 
 // devicesPick — «+N»: подтверждение цены.
 func (h *handlers) devicesPick(ctx context.Context, b *bot.Bot, u *models.Update) {
-	n, price, ok := h.devicePrice(ctx, b, u, devPickRoute)
+	n, err := devPickRoute.Parse(u.CallbackQuery.Data)
+	if err != nil {
+		h.devices(ctx, b, u)
+		return
+	}
+	h.confirmDevices(ctx, b, u, n)
+}
+
+func (h *handlers) confirmDevices(ctx context.Context, b *bot.Bot, u *models.Update, n int) {
+	price, ok := h.priceFor(ctx, b, u, n)
 	if !ok {
 		return
 	}
 	show(ctx, b, u, h.kb(ctx, "devices_confirm", "devices.confirm").
 		callback("button.yes", devYesRoute.Data(n), keyboard.StyleSuccess).
-		callback("button.no", routeDevices, keyboard.StyleDanger).markup(),
+		callback("button.no", routeDevicesBuy, keyboard.StyleDanger).markup(),
 		h.c.Text(ctx, "devices.confirm", map[string]string{"count": devicesCount(n), "countShort": strconv.Itoa(n) + " устр.", "price": strconv.Itoa(price)}))
 }
 

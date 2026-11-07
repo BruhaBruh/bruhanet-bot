@@ -91,6 +91,7 @@ var (
 	varDevicePrice   = Var{Name: "devicePrice", Description: "Цена одного доп. устройства в месяц, ₽", Sample: "50", Max: 8}
 	varDevCountShort = Var{Name: "countShort", Description: "Сколько устройств добавляется, кратко: «2 устр.»", Sample: "2 устр.", Max: 12}
 	varDevCount      = Var{Name: "count", Description: "Сколько устройств добавляется, с единицей: «2 устройства»", Sample: "2 устройства", Max: 16}
+	varDevMax        = Var{Name: "max", Description: "Наибольшее число устройств за одну докупку (из настроек)", Sample: "10", Max: 4}
 	varDevTotal      = Var{Name: "price", Description: "Итоговая цена в рублях", Sample: "500", Max: 8}
 )
 
@@ -227,10 +228,22 @@ var registry = []Def{
 		shown("Когда админ отклонил оплату устройств, через очередь уведомлений", mainButtons...),
 	msg("devices.menu", groupPayment, "Устройства",
 		devicesHead+"Сейчас в подписке: <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
-			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц\n\n"+
-			"Цена считается до конца текущей подписки, срок не меняется. Сколько добавить?",
+			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц",
 		deviceVars...).
-		shown("По кнопке «Устройства» в главном меню, пока подписка действует", "button.devices_add", "button.back"),
+		shown("По кнопке «Устройства» в главном меню, пока подписка действует", "button.devices_buy", "button.back"),
+	msg("devices.buy", groupPayment, "Докупка устройств",
+		devicesHead+"Выбери, сколько устройств добавить, или нажми «Своё число» (до {{.max}}).\n"+
+			"Одно устройство — {{.devicePrice}} ₽ в месяц, цена считается до конца текущей подписки, срок не меняется.",
+		varDevicePrice, varDevMax).
+		shown("По кнопке «Докупить» на экране «Устройства»", "button.devices_add", "button.devices_custom", "button.back"),
+	msg("devices.custom", groupPayment, "Докупка: ввод своего числа",
+		devicesHead+"Пришли число от 1 до <b>{{.max}}</b>: сколько устройств добавить.",
+		varDevMax).
+		shown("По кнопке «Своё число»: бот ждёт сообщение с числом", "button.back"),
+	msg("devices.number_invalid", groupPayment, "Докупка: неверное число",
+		devicesHead+"Нужно целое число от 1 до <b>{{.max}}</b>. Попробуй ещё раз.",
+		varDevMax).
+		shown("Когда в ответ на «Своё число» пришло не число или число вне допустимого", "button.back"),
 	msg("devices.no_term", groupPayment, "Устройства: подписка закончилась",
 		devicesHead+"Сейчас в подписке: <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
 			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц\n\n"+
@@ -385,13 +398,15 @@ var registry = []Def{
 	btn("button.support", "Поддержка", "💬 Поддержка").on("url:supportUrl", StyleDanger, "Главное меню и сообщение об ошибке"),
 	btn("button.back", "Назад", "← Назад").on("menu | price | pay | devices | gift", StyleDefault, "Экраны ввода промокода, списка тарифов, «Информации», подарка и ошибки"),
 	btn("button.yes", "Да (подтвердить тариф)", "✅ Да").on("buy | buyp | devy | trialy | gbuy", StyleSuccess, "Подтверждение тарифа, со скидкой и без, покупки устройств, подарка и пробного периода"),
-	btn("button.no", "Нет (к выбору тарифа)", "✖️ Нет").on("pay | devices | menu | gift", StyleDanger, "Подтверждение тарифа, со скидкой и без, покупки устройств, подарка и пробного периода"),
+	btn("button.no", "Нет (к выбору тарифа)", "✖️ Нет").on("pay | devices | devbuy | menu | gift", StyleDanger, "Подтверждение тарифа, со скидкой и без, покупки устройств, подарка и пробного периода"),
 	btn("button.tariff", "Тариф в списке", "{{.months}} за {{.price}} ₽", varMonths, varMonthsShort, varPrice).on("price | gprice", StyleDefault, "Список тарифов и срок подарка, по кнопке на тариф"),
 	btn("button.service_down", "Сервис не работает", "⚠️ Сервис не работает").on(routeMenu, StyleDefault, "Вместо главного меню, когда панель недоступна"),
 	btn("button.promo", "Промокод (в меню)", "🏷 Промокод").on("promo", StyleDefault, "Главное меню"),
 	btn("button.devices", "Устройства (в меню)", "📱 Устройства").on("devices", StyleDefault, "Главное меню, если юзер есть в панели и продажа устройств включена"),
 	btn("button.devices_add", "Добавить устройства", "+{{.count}} — {{.price}} ₽", Var{Name: "count", Description: "Сколько устройств добавляется числом", Sample: "2", Max: 3}, varDevTotal).
 		on("dev", StyleDefault, "Экран «Устройства», по кнопке на количество"),
+	btn("button.devices_buy", "Докупить устройства", "➕ Докупить").on("devbuy", StyleDefault, "Экран «Устройства», пока подписка действует"),
+	btn("button.devices_custom", "Своё число устройств", "✏️ Своё число").on("devc", StyleDefault, "Меню докупки устройств"),
 	btn("button.drop_devices", "Без доп. устройств", "Без доп. устройств").on("buyd", StyleDefault, "Подтверждение тарифа, если у юзера есть доп. устройства"),
 	btn("button.trial", "Пробный период (в меню)", "🎁 Пробный период").on("trial", StyleDefault, "Главное меню, пока пробный включён в настройках и юзер на него имеет право"),
 	btn("button.referral", "Пригласить друга (в меню)", "🤝 Пригласить друга").on("referral", StyleDefault, "Главное меню, пока дни рефералки в настройках больше нуля"),

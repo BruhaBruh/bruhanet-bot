@@ -15,3 +15,6 @@ const (
 	stateAwaitPromoDays fsm.State = "await_promo_days"
 	statePromoPaying    fsm.State = "promo_paying"
 )
+
+// stateAwaitDevices — ожидание числа устройств сообщением («Своё число» в меню докупки).
+const stateAwaitDevices fsm.State = "await_devices"

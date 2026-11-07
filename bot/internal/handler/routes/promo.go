@@ -369,7 +369,7 @@ func (h *handlers) leavePromo(ctx context.Context, userID int64) {
 		return
 	}
 	// promo_paying — тоже: замок, оставленный упавшим процессом, иначе блокирует фото
-	if !slices.Contains([]fsm.State{stateAwaitPromo, stateAwaitPromoDays, statePromoPaying}, st) {
+	if !slices.Contains([]fsm.State{stateAwaitPromo, stateAwaitPromoDays, statePromoPaying, stateAwaitDevices}, st) {
 		return
 	}
 	next := fsm.StateNone

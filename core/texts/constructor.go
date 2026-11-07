@@ -74,6 +74,7 @@ var actions = []Action{
 	{ID: "route:pay", Title: "Оплата и продление", Kind: ActionRoute},
 	{ID: "route:promo", Title: "Промокод", Kind: ActionRoute},
 	{ID: "route:devices", Title: "Устройства", Kind: ActionRoute, Guard: "devices_sale_on"},
+	{ID: "route:devices_buy", Title: "Докупка устройств", Kind: ActionRoute, Guard: "devices_sale_on"},
 	{ID: "route:trial", Title: "Пробный период", Kind: ActionRoute, Guard: "trial_available"},
 	{ID: "route:gift", Title: "Подарить подписку", Kind: ActionRoute, Guard: "gifts_on"},
 	{ID: "route:referral", Title: "Пригласить друга", Kind: ActionRoute, Guard: "referral_on"},
@@ -84,6 +85,7 @@ var actions = []Action{
 	{ID: "flow:yes", Title: "Подтвердить", Kind: ActionFlow, Bound: true},
 	{ID: "flow:no", Title: "Отказаться", Kind: ActionFlow, Bound: true},
 	{ID: "flow:have_promo", Title: "Ввести промокод на тариф", Kind: ActionFlow, Bound: true},
+	{ID: "flow:devices_custom", Title: "Ввести число устройств", Kind: ActionFlow, Bound: true},
 	{ID: "flow:drop_devices", Title: "Тариф без дополнительных устройств", Kind: ActionFlow, Bound: true},
 	{ID: "flow:remove_promo", Title: "Убрать промокод", Kind: ActionFlow, Bound: true},
 	{ID: "template:tariffs", Title: "Тарифы", Kind: ActionTemplate, Bound: true},
@@ -230,12 +232,19 @@ func cellSpec(kbID, slot string) Cell {
 		c.Action = "route:trial"
 	case "button.devices":
 		c.Action = "route:devices"
+	case "button.devices_buy":
+		c.Action = "route:devices_buy"
+	case "button.devices_custom":
+		c.Action = "flow:devices_custom"
 	case "button.gift":
 		c.Action = "route:gift"
 	case "button.referral":
 		c.Action = "route:referral"
 	case "button.back":
 		c.Action = "route:menu"
+		if kbID == "devices_buy" { // «Назад» из меню докупки ведёт на экран «Устройства»
+			c.Action = "route:devices"
+		}
 	case "button.yes":
 		c.Action, c.Style = "flow:yes", StyleSuccess
 	case "button.no":

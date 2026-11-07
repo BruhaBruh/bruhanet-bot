@@ -56,11 +56,82 @@ func TestDevicesScreenPricesToTermEnd(t *testing.T) {
 	if !strings.Contains(text, "<b>7</b>") || !strings.Contains(text, "60 ₽") {
 		t.Fatalf("text: %s", text)
 	}
+	// экран «Устройства» — информация и «Докупить»; варианты с ценой живут в меню покупки
+	if !strings.Contains(kb, `"callback_data":"devbuy"`) || strings.Contains(kb, "+1") {
+		t.Fatalf("info keyboard: %s", kb)
+	}
+	e.process(t, tgtest.Callback(userID, "devbuy"))
+	kb = e.markup(t)
 	// 60 * n * 20 / 30
-	for _, want := range []string{"+1 — 40 ₽", "+2 — 80 ₽", "+3 — 120 ₽", "+5 — 200 ₽"} {
+	for _, want := range []string{"+1 — 40 ₽", "+2 — 80 ₽", "+3 — 120 ₽", "+5 — 200 ₽", `"callback_data":"devc"`} {
 		if !strings.Contains(kb, want) {
 			t.Errorf("no %q in %s", want, kb)
 		}
+	}
+}
+
+func TestDevicesBuyMenuUsesSettingsOptions(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.src.SetSettings(map[string][]byte{"devicePrice": []byte("60"), "deviceOptions": []byte(`[2,4]`), "deviceMax": []byte(`6`)})
+	e.process(t, tgtest.Callback(userID, "devbuy"))
+	kb := e.markup(t)
+	if !strings.Contains(kb, "+2 — 80 ₽") || !strings.Contains(kb, "+4 — 160 ₽") || strings.Contains(kb, "+1 ") || strings.Contains(kb, "+3 ") {
+		t.Fatalf("options: %s", kb)
+	}
+	if !strings.Contains(e.text(t), "до 6") {
+		t.Fatalf("text: %s", e.text(t))
+	}
+}
+
+func TestDevicesCustomNumber(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.process(t, tgtest.Callback(userID, "devc"))
+	if !strings.Contains(e.text(t), "от 1 до <b>10</b>") {
+		t.Fatalf("prompt: %s", e.text(t))
+	}
+	// не число и вне границ: подсказка, остаёмся в ожидании, платежа нет
+	for _, bad := range []string{"abc", "0", "-3", "11", "2.5", "99999999999999999999"} {
+		e.process(t, tgtest.Message(userID, bad))
+		if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Нужно целое число от 1 до <b>10</b>") {
+			t.Fatalf("%q: %s", bad, text)
+		}
+	}
+	if len(e.pay.All()) != 0 {
+		t.Fatal("payment created from a bad number")
+	}
+	// 60 * 7 * 20 / 30 = 280
+	e.process(t, tgtest.Message(userID, " 7 "))
+	text := e.last(t, "sendMessage").Params.Get("text")
+	if !strings.Contains(text, "7 устройств") || !strings.Contains(text, "280 ₽") {
+		t.Fatalf("confirm: %s", text)
+	}
+	// ожидание закончилось: следующее сообщение — обычный роутинг (меню), а не ввод числа
+	e.process(t, tgtest.Message(userID, "5"))
+	if strings.Contains(e.last(t, "sendMessage").Params.Get("text"), "устройств") {
+		t.Fatalf("still waiting for a number: %s", e.last(t, "sendMessage").Params.Get("text"))
+	}
+	e.process(t, tgtest.Callback(userID, "devy:7"))
+	if all := e.pay.All(); len(all) != 1 || all[0].ExtraDevices != 7 || all[0].Price != 280 {
+		t.Fatalf("payments: %+v", all)
+	}
+}
+
+func TestDevicesCustomCommandLeaves(t *testing.T) {
+	e := devicesEnv(t, 20*day)
+	e.process(t, tgtest.Callback(userID, "devc"))
+	e.process(t, tgtest.Message(userID, "/start"))
+	e.process(t, tgtest.Message(userID, "3"))
+	if strings.Contains(e.last(t, "sendMessage").Params.Get("text"), "устройств") {
+		t.Fatal("/start must leave the number prompt")
+	}
+}
+
+func TestDevicesCustomRefusedWhenExpired(t *testing.T) {
+	e := devicesEnv(t, -time.Hour)
+	e.process(t, tgtest.Callback(userID, "devc"))
+	e.process(t, tgtest.Message(userID, "3"))
+	if len(e.pay.All()) != 0 || strings.Contains(e.last(t, "sendMessage").Params.Get("text"), "280") {
+		t.Fatal("number accepted for an expired subscription")
 	}
 }
 
@@ -78,7 +149,7 @@ func TestDevicesScreenExpired(t *testing.T) {
 
 func TestDevicesForgedCount(t *testing.T) {
 	e := devicesEnv(t, 20*day)
-	for _, data := range []string{"devy:4", "devy:0", "devy:-1", "dev:99", "devy:x"} {
+	for _, data := range []string{"devy:11", "devy:0", "devy:-1", "dev:99", "devy:x"} {
 		e.process(t, tgtest.Callback(userID, data))
 	}
 	if len(e.pay.All()) != 0 {

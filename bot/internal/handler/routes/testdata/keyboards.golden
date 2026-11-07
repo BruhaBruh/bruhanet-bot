@@ -72,14 +72,13 @@
   [✅ Да | cb=buyp:1:1 | "success"] [✖️ Нет | cb=pay | "danger"]
   [✖️ Убрать промокод | cb=price:1 | ""]
 == devices.menu
-  [+1 — 40 ₽ | cb=dev:1 | ""] [+2 — 80 ₽ | cb=dev:2 | ""]
-  [+3 — 120 ₽ | cb=dev:3 | ""] [+5 — 200 ₽ | cb=dev:5 | ""]
+  [➕ Докупить | cb=devbuy | ""]
   [← Назад | cb=menu | ""]
 == devices.no_term
   [🔄 Продлить | cb=pay | "success"]
   [← Назад | cb=menu | ""]
 == devices.confirm
-  [✅ Да | cb=devy:2 | "success"] [✖️ Нет | cb=devices | "danger"]
+  [✅ Да | cb=devy:2 | "success"] [✖️ Нет | cb=devbuy | "danger"]
 == devices.busy
   [← Назад | cb=menu | ""]
 == gift.tariffs

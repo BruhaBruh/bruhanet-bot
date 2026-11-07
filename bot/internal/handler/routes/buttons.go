@@ -91,13 +91,13 @@ func (b *kbBuilder) markup() *models.InlineKeyboardMarkup {
 // routeData — действия `route:<имя>` конструктора: имя → callback data роута (allow-list; тест сверяет с каталогом).
 var routeData = map[string]string{
 	"menu": routeMenu, "info": routeInfo, "pay": routePay, "promo": routePromo, "devices": routeDevices,
-	"trial": routeTrial, "gift": routeGift, "referral": routeReferral,
+	"trial": routeTrial, "gift": routeGift, "referral": routeReferral, "devices_buy": routeDevicesBuy,
 }
 
 // argKey — какую кнопку экрана питает привязанное действие (flow/copy): ключ в b.args.
 var argKey = map[string]string{
 	"flow:yes": "button.yes", "flow:no": "button.no", "flow:have_promo": "button.have_promo",
-	"flow:drop_devices": "button.drop_devices", "flow:remove_promo": "button.remove_promo",
+	"flow:devices_custom": "button.devices_custom", "flow:drop_devices": "button.drop_devices", "flow:remove_promo": "button.remove_promo",
 	"copy:subscription": "button.subscription", "copy:referral_link": "button.copy_link", "copy:gift_link": "button.copy_link",
 }
 
