@@ -8,7 +8,8 @@ import { previewHtml, renderPreview } from '../editor/serialize'
 import { formatCount, formatShortDate } from '../format'
 import { useMe } from '../me'
 import type { Broadcast, TextVar } from '../types'
-import { delivered, statusTag, titleOf } from './broadcast-format'
+import { delivered, deleteMessage, statusTag, titleOf } from './broadcast-format'
+import { DeleteDialog } from './delete-dialog'
 
 const row = 'flex flex-wrap items-baseline justify-between gap-3 py-2 shadow-[inset_0_-0.5px_0_var(--separator)] last:shadow-none'
 
@@ -29,6 +30,7 @@ export default function BroadcastView() {
   const [data, setData] = useState<{ id?: string; broadcast?: Broadcast; failed?: boolean }>({})
   const [globals, setGlobals] = useState<TextVar[]>([])
   const [cancelling, setCancelling] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(
@@ -170,6 +172,11 @@ export default function BroadcastView() {
                 Отменить рассылку
               </Button>
             )}
+            {(editable || b.status === 'cancelled') && (
+              <Button variant="destructive" icon="trash" onClick={() => setDeleting(true)}>
+                Удалить
+              </Button>
+            )}
           </div>
         </div>
 
@@ -215,11 +222,23 @@ export default function BroadcastView() {
       {cancelling && (
         <Dialog
           title="Отменить рассылку?"
-          message="Она не уйдёт получателям. Вернуть отменённую нельзя — можно создать копию."
+          message="Она не уйдёт получателям, но останется в истории как отменённая. Вернуть её нельзя — можно создать копию. Чтобы убрать совсем, нажмите «Удалить»."
           actions={[
             { label: 'Не отменять', style: 'cancel', onClick: () => setCancelling(false) },
             { label: 'Отменить рассылку', style: 'destructive', onClick: () => void cancel() },
           ]}
+        />
+      )}
+      {deleting && (
+        <DeleteDialog
+          title="Удалить рассылку?"
+          message={deleteMessage(b)}
+          url={`/api/broadcasts/${b.id}`}
+          done="Рассылка удалена"
+          conflict="Рассылка уже запущена, удалить нельзя"
+          onClose={() => setDeleting(false)}
+          onDeleted={() => navigate('/broadcasts', { replace: true })}
+          onStale={() => void load()}
         />
       )}
     </>

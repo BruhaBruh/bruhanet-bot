@@ -35,3 +35,7 @@ export const statusTag = (b: Broadcast) => <StatusTag tone={TAGS[b.status].tone}
 export const whenOf = (b: Broadcast) => formatShortDate(b.status === 'scheduled' && b.scheduledAt ? b.scheduledAt : b.status === 'draft' ? b.updatedAt : b.createdAt)
 
 export const delivered = (b: Broadcast) => b.status === 'sending' || b.status === 'sent'
+
+/** Текст подтверждения удаления: у запланированной добавляем, что она не уйдёт. */
+export const deleteMessage = (b: Pick<Broadcast, 'status'>) =>
+  b.status === 'scheduled' ? 'Она не отправится. Это нельзя отменить.' : 'Это нельзя отменить.'

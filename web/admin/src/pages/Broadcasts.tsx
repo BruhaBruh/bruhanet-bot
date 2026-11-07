@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, DataTable, Icon, Input, RowAction, SegmentedControl, toast, type DataTableColumn } from '@/ui'
+import { Button, Card, DataTable, Icon, Input, RowAction, RowMenu, SegmentedControl, toast, type DataTableColumn } from '@/ui'
 import { get } from '../api'
 import { audienceLabel } from '../compose/audience'
-import { delivered, statusTag, stats, titleOf, whenOf } from './broadcast-format'
+import { delivered, deleteMessage, statusTag, stats, titleOf, whenOf } from './broadcast-format'
 import { formatCount } from '../format'
+import { DeleteDialog } from './delete-dialog'
 import type { Broadcast } from '../types'
 
 const DASH = '—'
@@ -132,6 +133,11 @@ export default function Broadcasts() {
     toast(`Копия «${titleOf(b)}» открыта в редакторе`, { icon: 'check' })
   }
 
+  const [deleting, setDeleting] = useState<Broadcast>()
+  // sending/sent — история со счётчиками, удалять нельзя
+  const deletable = (b: Broadcast) => b.status === 'draft' || b.status === 'scheduled' || b.status === 'cancelled'
+  const menu = (b: Broadcast) => deletable(b) && <RowMenu label="Действия с рассылкой" items={[{ label: 'Удалить', destructive: true, onSelect: () => setDeleting(b) }]} />
+
   const rows = data?.items ?? []
   const total = data?.total ?? 0
   const from = (page - 1) * PAGE_SIZE
@@ -187,7 +193,12 @@ export default function Broadcasts() {
                 }
               : undefined
           }
-          rowActions={(b) => <RowAction icon="copy" label="Дублировать" onClick={() => duplicate(b)} />}
+          rowActions={(b) => (
+            <span className="inline-flex gap-0.5">
+              <RowAction icon="copy" label="Дублировать" onClick={() => duplicate(b)} />
+              {menu(b)}
+            </span>
+          )}
           mobileRow={(b) => ({
             title: titleOf(b),
             // Счётчики — суть строки: переносятся, а не режутся.
@@ -199,11 +210,24 @@ export default function Broadcasts() {
                 {statusTag(b)}
                 <RowAction icon={b.status === 'draft' ? 'edit' : 'search'} label={b.status === 'draft' ? 'Изменить' : 'Открыть'} onClick={() => open(b)} />
                 <RowAction icon="copy" label="Дублировать" onClick={() => duplicate(b)} />
+                {menu(b)}
               </>
             ),
           })}
         />
       </div>
+      {deleting && (
+        <DeleteDialog
+          title="Удалить рассылку?"
+          message={deleteMessage(deleting)}
+          url={`/api/broadcasts/${deleting.id}`}
+          done="Рассылка удалена"
+          conflict="Рассылка уже запущена, удалить нельзя"
+          onClose={() => setDeleting(undefined)}
+          onDeleted={() => void load()}
+          onStale={() => void load()}
+        />
+      )}
     </>
   )
 }

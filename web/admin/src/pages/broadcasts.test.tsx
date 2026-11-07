@@ -274,6 +274,66 @@ describe('Broadcasts', () => {
   })
 })
 
+describe('Broadcasts delete', () => {
+  const menuOf = (title: string) => within(table().getByText(title).closest('tr')!).queryByRole('button', { name: 'Действия с рассылкой' })
+
+  it('only draft, scheduled and cancelled have «Удалить»; sent and sending do not', async () => {
+    stub({
+      1: {
+        items: [
+          item('a'),
+          item('b', { status: 'sending' }),
+          item('c', { status: 'draft' }),
+          item('d', { status: 'scheduled', scheduledAt: '2026-11-07T15:30:00Z' }),
+          item('e', { status: 'cancelled' }),
+        ],
+        total: 5,
+      },
+    })
+    await renderList()
+    expect([menuOf('Заголовок a'), menuOf('Заголовок b')]).toEqual([null, null])
+    for (const t of ['Заголовок c', 'Заголовок d', 'Заголовок e']) expect(menuOf(t), t).toBeTruthy()
+  })
+
+  it('confirms, sends one DELETE even on a double click, toasts and reloads the list', async () => {
+    let deleted = false
+    const fetchMock = stub({ 1: { items: [item('s', { status: 'scheduled', scheduledAt: '2026-11-07T15:30:00Z' })], total: 1 } }, (url, init) => {
+      if (init?.method === 'DELETE') {
+        deleted = true
+        return new Response(null, { status: 204 })
+      }
+      return deleted && url === '/api/broadcasts?page=1' ? json(200, { items: [], total: 0 }) : undefined
+    })
+    await renderList()
+    fireEvent.keyDown(menuOf('Заголовок s')!, { key: 'Enter' })
+    await flush()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }))
+    const d = screen.getByRole('alertdialog')
+    expect(d.textContent).toContain('Удалить рассылку?')
+    expect(d.textContent).toContain('Она не отправится.')
+    const ok = within(d).getByRole('button', { name: 'Удалить' })
+    fireEvent.click(ok)
+    fireEvent.click(ok)
+    await flush()
+    const dels = fetchMock.mock.calls.filter((c) => c[1]?.method === 'DELETE')
+    expect(dels.map((c) => c[0])).toEqual(['/api/broadcasts/s'])
+    expect(screen.getByText('Рассылка удалена')).toBeTruthy()
+    expect(screen.getAllByText('Рассылок ещё не было').length).toBeGreaterThan(0)
+  })
+
+  it('«Назад» deletes nothing', async () => {
+    const fetchMock = stub({ 1: { items: [item('c', { status: 'draft' })], total: 1 } })
+    await renderList()
+    fireEvent.keyDown(menuOf('Заголовок c')!, { key: 'Enter' })
+    await flush()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }))
+    expect(screen.getByRole('alertdialog').textContent).not.toContain('Она не отправится')
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Назад' }))
+    await flush()
+    expect(fetchMock.mock.calls.some((c) => c[1]?.method === 'DELETE')).toBe(false)
+  })
+})
+
 describe('BroadcastEdit', () => {
   async function openEdit(b: unknown) {
     vi.stubGlobal(
@@ -311,6 +371,35 @@ describe('BroadcastEdit', () => {
     await openEdit(item('b1', { id: 'b1', status: 'draft' }))
     expect(screen.getByText('Черновик сохраняется автоматически')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Сохранить изменения' })).toBeNull()
+  })
+
+  it('«Удалить» in the editor deletes and returns to the list', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return new Response(null, { status: 204 })
+      if (url === '/api/broadcasts/b1') return json(200, { broadcast: item('b1', { id: 'b1', status: 'draft' }) })
+      if (url.startsWith('/api/broadcasts/recipients')) return json(200, { all: 3, active: 1, no_subscription: 1, expiring: 1 })
+      if (url === '/api/texts') return json(200, { items: [], globals: [] })
+      return json(500, {})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={['/broadcasts/b1/edit']}>
+          <Routes>
+            <Route path="/broadcasts/:id/edit" element={<BroadcastEdit />} />
+            <Route path="/broadcasts" element={<p>список рассылок</p>} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    )
+    await flush()
+    await flush()
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Удалить' }))
+    await flush()
+    expect(fetchMock.mock.calls.filter((c) => c[1]?.method === 'DELETE').map((c) => c[0])).toEqual(['/api/broadcasts/b1'])
+    expect(screen.getByText('список рассылок')).toBeTruthy()
+    expect(screen.getByText('Рассылка удалена')).toBeTruthy()
   })
 
   it('an already started broadcast goes to its screen', async () => {

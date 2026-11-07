@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/ui'
@@ -33,8 +33,9 @@ const broadcast = (over = {}) => ({
   ...over,
 })
 
-function stub(get: () => Response, post: (url: string) => Response = () => json(200, { broadcast: broadcast() })) {
+function stub(get: () => Response, post: (url: string) => Response = () => json(200, { broadcast: broadcast() }), del: () => Response = () => json(204)) {
   const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
+    if (init.method === 'DELETE') return del()
     if (url === '/api/texts') return json(200, { items: [], globals: [{ name: 'name', description: '', sample: '<Иван>', raw: false, max: 64 }] })
     if (init.method === 'POST') return post(url)
     if (url === '/api/broadcasts/b1') return get()
@@ -181,5 +182,36 @@ describe('photo', () => {
     await open()
     expect(document.querySelector('img[src^="/api/photos/"]')).toBeNull()
     expect(screen.getByText(/file_id/)).toBeTruthy()
+  })
+
+  it('«Удалить» exists for scheduled, draft and cancelled only; deleting goes back to the list', async () => {
+    for (const status of ['sent', 'sending']) {
+      stub(() => json(200, { broadcast: broadcast({ status }) }))
+      await open()
+      expect(screen.queryByRole('button', { name: 'Удалить' }), status).toBeNull()
+      cleanup()
+    }
+    const fetchMock = stub(() => json(200, { broadcast: broadcast({ status: 'scheduled', total: 0, sent: 0, failed: 0, scheduledAt: '2026-11-07T15:30:00Z' }) }))
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+    const d = screen.getByRole('alertdialog')
+    expect(d.textContent).toContain('Она не отправится.')
+    const ok = within(d).getByRole('button', { name: 'Удалить' })
+    fireEvent.click(ok)
+    fireEvent.click(ok)
+    await flush()
+    expect(fetchMock.mock.calls.filter((c) => c[1]?.method === 'DELETE').map((c) => c[0])).toEqual(['/api/broadcasts/b1'])
+    expect(screen.getByText('список')).toBeTruthy()
+    expect(screen.getByText('Рассылка удалена')).toBeTruthy()
+  })
+
+  it('a 409 (already started) keeps the screen and explains', async () => {
+    stub(() => json(200, { broadcast: broadcast({ status: 'scheduled', total: 0 }) }), undefined, () => json(409, { error: 'not_deletable' }))
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Удалить' }))
+    await flush()
+    expect(screen.getByText('Рассылка уже запущена, удалить нельзя')).toBeTruthy()
+    expect(screen.queryByText('список')).toBeNull()
   })
 })

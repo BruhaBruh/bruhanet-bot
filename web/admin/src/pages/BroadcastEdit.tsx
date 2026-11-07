@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
 import { Button, Spinner } from '@/ui'
+import { deleteMessage } from './broadcast-format'
+import { DeleteDialog } from './delete-dialog'
 import { get } from '../api'
 import { announceSent } from '../compose/announce'
 import { Composer } from '../compose/Composer'
@@ -10,6 +12,7 @@ import type { Broadcast } from '../types'
 export default function BroadcastEdit() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [deleting, setDeleting] = useState(false)
   const [state, setState] = useState<{ id?: string; broadcast?: Broadcast; failed?: boolean }>({})
 
   useEffect(() => {
@@ -24,9 +27,12 @@ export default function BroadcastEdit() {
   }, [id])
 
   const back = (
-    <div className="-my-2 -ml-2">
+    <div className="-my-2 -ml-2 flex items-center justify-between gap-3">
       <Button variant="plain" icon="chevron-left" onClick={() => navigate(`/broadcasts/${id}`)}>
         К рассылке
+      </Button>
+      <Button variant="plain" icon="trash" onClick={() => setDeleting(true)}>
+        Удалить
       </Button>
     </div>
   )
@@ -50,6 +56,18 @@ export default function BroadcastEdit() {
         }}
         onSaved={() => navigate(`/broadcasts/${b.id}`, { replace: true })}
       />
+      {deleting && (
+        <DeleteDialog
+          title="Удалить рассылку?"
+          message={deleteMessage(b)}
+          url={`/api/broadcasts/${b.id}`}
+          done="Рассылка удалена"
+          conflict="Рассылка уже запущена, удалить нельзя"
+          onClose={() => setDeleting(false)}
+          onDeleted={() => navigate('/broadcasts', { replace: true })}
+          onStale={() => navigate(`/broadcasts/${b.id}`, { replace: true })}
+        />
+      )}
     </>
   )
 }
