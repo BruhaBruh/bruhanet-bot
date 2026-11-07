@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Card, Checkbox, DragHandle, Icon, Input, LayoutGrid, Select, Sheet, StyleSelect } from '@/ui'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/primitives/tooltip'
+import { MAX_ROWS } from '../lib/keyboard-layout'
 import { fromLayout, MAX_CELLS, countCells, patchCell, removeCell, templatesLeft, tplName, toLayout, addButton, addTemplate } from '../lib/message-keyboard'
 import type { CondRef, KbCatalogs, KbCellOut, MessageKeyboard } from '../types'
 
@@ -30,6 +31,7 @@ function ActionSheet({ c, cat, onApply, onClose }: { c: KbCellOut; cat: KbCatalo
             Отмена
           </Button>
           <Button
+            disabled={kind === 'url' && !/^https:\/\/\S+$/.test(link.trim())}
             onClick={() => {
               onApply(action)
               onClose()
@@ -131,8 +133,8 @@ export function MessageKeyboardCard({ kb, cat, rows, busy, dirty, saving, tplTex
   const name = (c: KbCellOut) => (c.template ? (tplOf(c)?.title ?? c.id) : c.label || c.effective?.preview || c.id)
   const blocks = cells.filter((c) => c.template).map((c) => c.id)
   const edit = (id: string, fn: (c: KbCellOut) => KbCellOut) => onRows(patchCell(rows, id, fn))
-  const free = templatesLeft(rows, cat.templates)
-  const full = countCells(rows) >= MAX_CELLS
+  const free = templatesLeft(rows, cat.templates.filter((t) => !kb.templates || kb.templates.includes(t.id)))
+  const full = countCells(rows) >= MAX_CELLS || rows.length >= MAX_ROWS
   const m = modal && byId(modal.id)
 
   return (
@@ -266,7 +268,7 @@ export function MessageKeyboardCard({ kb, cat, rows, busy, dirty, saving, tplTex
             />
           </div>
         )}
-        {full && <span className="footnote text-text-secondary">Не больше {MAX_CELLS} кнопок</span>}
+        {full && <span className="footnote text-text-secondary">Не больше {MAX_CELLS} кнопок и {MAX_ROWS} рядов</span>}
       </div>
 
       <p className="footnote text-text-secondary">

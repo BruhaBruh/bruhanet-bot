@@ -127,20 +127,21 @@ export default function Texts() {
   const tplKeys = [...new Set(kbRows.flat().flatMap((c) => (c.template ? (cat.templates.find((t) => t.id === tplName(c))?.key ?? []) : [])))]
   const layoutDirty = !!kb && !sameKb(kbRows, kb.rows)
   const kbDirty = layoutDirty || tplKeys.some(tplDirty)
+  const dropTplDraft = (k: string) => {
+    dropDraft(k)
+    setStyleDrafts((d) => {
+      const rest = { ...d }
+      delete rest[k]
+      return rest
+    })
+  }
   const dropKbDraft = (key: string) => {
     setKbDrafts((d) => {
       const rest = { ...d }
       delete rest[key]
       return rest
     })
-    tplKeys.forEach((k) => {
-      dropDraft(k)
-      setStyleDrafts((d) => {
-        const rest = { ...d }
-        delete rest[k]
-        return rest
-      })
-    })
+    tplKeys.forEach(dropTplDraft)
   }
   const condIds = kb ? usedConditions(kbRows, cat.actions) : []
   const fakeSet = new Set(fake)
@@ -217,6 +218,8 @@ export default function Texts() {
       'save',
       c,
       async () => {
+        // сначала раскладка: она проверяется сервером; подписи шаблонов общие для экранов и пишутся только после неё
+        if (layoutDirty) await put(`${path(c)}/keyboard`, payload(kbRows))
         for (const key of tplKeys) {
           const b = byKey(key)
           if (!b || !tplDirty(key)) continue
@@ -225,7 +228,6 @@ export default function Texts() {
           await put(path(b), { body, style })
           patch(key, body, style)
         }
-        if (layoutDirty) await put(`${path(c)}/keyboard`, payload(kbRows))
         dropKbDraft(c.key)
         toast('Клавиатура сохранена', { icon: 'check' })
         await refresh()
@@ -299,7 +301,14 @@ export default function Texts() {
                         separator,
                         on ? 'bg-accent-strong text-on-accent-strong' : 'bg-surface text-text hover:bg-cell-highlight',
                       )}
-                      onClick={() => setParams({ key: i.key })}
+                      onClick={() => {
+                        // подписи шаблонов и условия превью относятся к открытой клавиатуре: на другом сообщении их не переносим
+                        if (i.key !== cur?.key) {
+                          setFake([])
+                          tplKeys.forEach(dropTplDraft)
+                        }
+                        setParams({ key: i.key })
+                      }}
                     >
                       <span className="flex min-w-0 grow flex-col">
                         <span className="font-medium">{i.title}</span>

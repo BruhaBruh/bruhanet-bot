@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"unicode/utf8"
+	"unicode/utf16"
 
 	"github.com/go-telegram/bot/models"
 
@@ -285,7 +285,7 @@ func previewKeyboard(rows [][]struct {
 		}
 		row := make([]models.InlineKeyboardButton, 0, len(r))
 		for _, b := range r {
-			if b.Text == "" || utf8.RuneCountInString(b.Text) > maxPreviewText || !slices.Contains(texts.Styles, b.Style) {
+			if b.Text == "" || len(utf16.Encode([]rune(b.Text))) > maxPreviewText || !slices.Contains(texts.Styles, b.Style) {
 				return nil, false
 			}
 			row = append(row, models.InlineKeyboardButton{Text: b.Text, CallbackData: "preview", Style: b.Style})

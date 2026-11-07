@@ -2,6 +2,7 @@ package texts
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -12,5 +13,13 @@ func ValidHTTPSURL(raw string, max int) bool {
 		return false
 	}
 	u, err := url.Parse(raw)
-	return err == nil && u.Scheme == "https" && u.Host != "" && u.Hostname() != "" && u.User == nil && u.Opaque == ""
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.Hostname() == "" || u.User != nil || u.Opaque != "" {
+		return false
+	}
+	// Telegram отвечает 400 на сообщение с кнопкой, у которой порт вне диапазона: это бы потеряло всё сообщение.
+	if p := u.Port(); p != "" {
+		n, err := strconv.Atoi(p)
+		return err == nil && n >= 1 && n <= 65535
+	}
+	return true
 }

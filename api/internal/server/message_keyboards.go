@@ -26,7 +26,8 @@ type msgKeyboard struct {
 	Rows       [][]cellOut `json:"rows"`    // действующая клавиатура: сохранённая или по умолчанию
 	Default    [][]cellOut `json:"default"` // как строит код
 	Overridden bool        `json:"overridden"`
-	Locked     []string    `json:"locked"` // id служебных кнопок и шаблонов
+	Locked     []string    `json:"locked"`    // id служебных кнопок и шаблонов
+	Templates  []string    `json:"templates"` // шаблоны, которые можно ставить в это сообщение (те, что есть в клавиатуре по умолчанию)
 	// Inactive: сохранённая клавиатура не проходит проверку, бот её не применяет (показана клавиатура по умолчанию).
 	Inactive bool   `json:"inactive"`
 	Problem  string `json:"problem,omitempty"`
@@ -77,7 +78,12 @@ func messageKeyboards(stored map[string]texts.MsgLayout, over, styles, custom ma
 	out := map[string]*msgKeyboard{}
 	for _, key := range texts.MessagesWithKeyboard() {
 		def, locked, _ := texts.MessageDefault(key)
-		mk := &msgKeyboard{Locked: locked}
+		mk := &msgKeyboard{Locked: locked, Templates: []string{}}
+		for _, c := range slices.Concat(def.Rows...) {
+			if c.IsTemplate() {
+				mk.Templates = append(mk.Templates, c.Template())
+			}
+		}
 		if mk.Locked == nil {
 			mk.Locked = []string{}
 		}

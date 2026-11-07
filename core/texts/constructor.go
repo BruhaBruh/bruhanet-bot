@@ -149,7 +149,7 @@ var ErrBadMessageLayout = errors.New("invalid message keyboard")
 
 // badTitled — ошибка, где в русском тексте название (по-русски), а в английском — id.
 func badTitled(en, ru, id, title string) error {
-	return errors.Join(ErrBadMessageLayout, ErrBadLayout, &usererr.Error{En: fmt.Sprintf(en, id), Ru: fmt.Sprintf(ru, title)})
+	return errors.Join(ErrBadMessageLayout, errors.Join(ErrBadLayout, &usererr.Error{En: fmt.Sprintf(en, id), Ru: fmt.Sprintf(ru, title)}))
 }
 
 func badMsg(en, ru string, args ...any) error {

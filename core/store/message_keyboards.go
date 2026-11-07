@@ -62,6 +62,7 @@ func (s *Store) MigrateLegacyKeyboards(ctx context.Context) (int, error) {
 			return err
 		}
 		legacy := map[string]texts.Layout{}
+		var ids []string // только прочитанные и разобранные строки: остальное (битый JSON, вставленное позже) не трогаем
 		for rows.Next() {
 			var id string
 			var r, h []byte
@@ -72,15 +73,22 @@ func (s *Store) MigrateLegacyKeyboards(ctx context.Context) (int, error) {
 			var l texts.Layout
 			if json.Unmarshal(r, &l.Rows) == nil && json.Unmarshal(h, &l.Hidden) == nil {
 				legacy[id] = l
+				ids = append(ids, id)
 			}
 		}
 		rows.Close()
 		if err = rows.Err(); err != nil {
 			return err
 		}
+		invalid := false
 		for _, key := range texts.MessagesWithKeyboard() {
 			l, ok := texts.LegacyToLayout(key, legacy)
 			if !ok {
+				continue
+			}
+			// клавиатура, которую бот всё равно отбросит, не переносится; старые строки остаются для разбора
+			if texts.ValidateMessageLayout(key, l, nil, false) != nil {
+				invalid = true
 				continue
 			}
 			raw, err := json.Marshal(l.Rows)
@@ -93,7 +101,10 @@ func (s *Store) MigrateLegacyKeyboards(ctx context.Context) (int, error) {
 			}
 			n += int(tag.RowsAffected())
 		}
-		_, err = tx.Exec(ctx, `DELETE FROM text_keyboards`)
+		if invalid || len(ids) == 0 {
+			return nil
+		}
+		_, err = tx.Exec(ctx, `DELETE FROM text_keyboards WHERE keyboard_id = ANY($1)`, ids)
 		return err
 	})
 	return n, err

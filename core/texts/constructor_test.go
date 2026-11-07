@@ -284,3 +284,23 @@ func TestEqualAndClone(t *testing.T) {
 		t.Error("clone shares conditions")
 	}
 }
+
+// Проблемы клавиатуры показываются админу как есть: без служебной строки «Некорректное значение» перед причиной.
+func TestMessageLayoutProblemIsPlain(t *testing.T) {
+	for name, mut := range map[string]func(l *texts.MsgLayout){
+		"guard contradiction": func(l *texts.MsgLayout) {
+			l.Rows[3][0].Conditions = []texts.CondRef{{ID: "trial_available", Not: true}}
+		},
+		"condition twice": func(l *texts.MsgLayout) {
+			l.Rows[6][0].Conditions = []texts.CondRef{{ID: "gifts_on"}, {ID: "gifts_on", Not: true}}
+		},
+	} {
+		err := valid(t, "menu.greeting", mut)
+		if err == nil {
+			t.Fatalf("%s: want error", name)
+		}
+		if p := texts.Problem(err); p == "" || strings.Contains(p, usererr.Fallback) {
+			t.Errorf("%s: Problem = %q", name, p)
+		}
+	}
+}

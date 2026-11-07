@@ -377,7 +377,7 @@ describe('Texts', () => {
       expect((puts()[0].body as { rows: unknown[][] }).rows[0][1]).toMatchObject({ id: 'info', action: 'url:https://example.com/x', conditions: [{ id: 'in_panel', not: true }] })
     })
 
-    it('template: own button text is edited in the cell, preview shows the expanded result, saved before the layout', async () => {
+    it('template: own button text is edited in the cell, preview shows the expanded result, saved without touching the layout', async () => {
       replies['PUT /api/texts/button.tariff'] = json(204)
       await open('/texts?key=withKb')
       edit(screen.getByRole('textbox', { name: 'Текст кнопок шаблона Тарифы' }), '{{.months}} — {{.price}} ₽')
@@ -396,6 +396,23 @@ describe('Texts', () => {
       await flush()
       // текста button.devices_add нет в фикстуре: блок показывается названием шаблона
       expect(kbButtons()).toContain('Устройства')
+    })
+
+    it('texts are written only after the layout is accepted', async () => {
+      replies['PUT /api/texts/withKb/keyboard'] = json(400, { error: 'invalid', message: 'нельзя' })
+      replies['PUT /api/texts/button.tariff'] = json(204)
+      await open('/texts?key=withKb')
+      edit(screen.getByRole('textbox', { name: 'Текст кнопок шаблона Тарифы' }), 'X {{.price}}')
+      await click('+ Кнопка')
+      fireEvent.click(save())
+      await wait(10)
+      expect(puts().map((c) => c.url)).toEqual(['/api/texts/withKb/keyboard'])
+    })
+
+    it('only templates this message can have are offered', async () => {
+      replies['GET /api/texts'] = json(200, { items: [text('withKb', 'С клавиатурой', 'тело', { keyboard: menuKb({ templates: ['tariffs'] }) })], globals: [], ...catalogs })
+      await open('/texts?key=withKb')
+      expect(screen.queryByRole('combobox', { name: 'Добавить шаблон' })).toBeNull() // тарифы уже стоят, устройства сюда нельзя
     })
 
     it('template picker adds a template once', async () => {

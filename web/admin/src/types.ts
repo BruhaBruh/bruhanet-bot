@@ -137,6 +137,8 @@ export interface MessageKeyboard {
   default: KbCellOut[][]
   overridden: boolean
   locked: string[]
+  /** Шаблоны, допустимые в этом сообщении. */
+  templates?: string[]
   inactive?: boolean
   problem?: string
 }
