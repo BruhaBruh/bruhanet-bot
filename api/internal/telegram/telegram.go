@@ -122,3 +122,40 @@ func (c *Client) Chat(ctx context.Context, chatID int64) (username, name string,
 	}
 	return ch.Username, name, nil
 }
+
+// avatarMin — наименьший размер аватарки, который берём: меньше мылится на ретине.
+const avatarMin = 160
+
+// BotID — id бота (getMe): аватарку бота отдаёт getUserProfilePhotos по этому id.
+func (c *Client) BotID(ctx context.Context) (int64, error) {
+	u, err := c.b.GetMe(ctx)
+	if err != nil {
+		return 0, clean("telegram getMe", err)
+	}
+	return u.ID, nil
+}
+
+// ProfilePhoto — file_id текущей аватарки: самый маленький размер не меньше avatarMin, иначе самый большой.
+// Фото нет (или скрыто настройками приватности) — ErrNoPhoto.
+func (c *Client) ProfilePhoto(ctx context.Context, userID int64) (string, error) {
+	res, err := c.b.GetUserProfilePhotos(ctx, &bot.GetUserProfilePhotosParams{UserID: userID, Limit: 1})
+	if err != nil {
+		return "", clean("telegram getUserProfilePhotos", err)
+	}
+	if len(res.Photos) == 0 || len(res.Photos[0]) == 0 {
+		return "", ErrNoPhoto
+	}
+	var best *models.PhotoSize
+	for i, p := range res.Photos[0] {
+		side := min(p.Width, p.Height)
+		switch {
+		case best == nil:
+			best = &res.Photos[0][i]
+		case side >= avatarMin && (min(best.Width, best.Height) < avatarMin || side < min(best.Width, best.Height)):
+			best = &res.Photos[0][i]
+		case min(best.Width, best.Height) < avatarMin && side > min(best.Width, best.Height):
+			best = &res.Photos[0][i]
+		}
+	}
+	return best.FileID, nil
+}
