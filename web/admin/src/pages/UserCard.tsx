@@ -202,11 +202,11 @@ function UserCardInner({ id }: { id?: string }) {
           title="Подписка"
           rows={[
             [
-              'ID в панели',
+              'ID в панели', // кнопка 32px выше строки в 24px: -my-1.5 держит высоту строки как у соседних
               panel.id == null ? (
                 DASH
               ) : (
-                <span className="inline-flex items-center gap-1">
+                <span className="-my-1.5 flex items-center justify-end gap-1">
                   <code className="mono break-all">{panel.id}</code>
                   <RowAction icon="copy" label="Скопировать ID в панели" onClick={() => void copyId(panel.id!)} />
                 </span>
