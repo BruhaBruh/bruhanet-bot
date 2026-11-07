@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Cell, RowAction, Spinner } from '@/ui'
+import { Button, Cell, RowAction, Spinner, Tip } from '@/ui'
 import { get } from '../api'
 import { formatShortDate, plural } from '../format'
 import type { UserDevice, UserDevices } from '../types'
@@ -69,9 +69,11 @@ export function DevicesCard({ userId, reloadKey }: { userId: number; reloadKey: 
                 subtitle={
                   <span className="flex min-w-0 flex-col">
                     {(d.osVersion || d.userAgent) && (
-                      <span className="truncate" title={d.userAgent ?? undefined}>
-                        {[d.osVersion, d.userAgent && clip(d.userAgent)].filter(Boolean).join(' · ')}
-                      </span>
+                      <Tip label={d.userAgent ?? undefined}>
+                        <span className="truncate">
+                          {[d.osVersion, d.userAgent && clip(d.userAgent)].filter(Boolean).join(' · ')}
+                        </span>
+                      </Tip>
                     )}
                     <span>добавлено {formatShortDate(d.createdAt)}</span>
                     <span>последний раз {formatShortDate(d.updatedAt)}</span>

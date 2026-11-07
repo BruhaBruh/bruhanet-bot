@@ -20,6 +20,7 @@ import { Fragment, createContext, useContext, useState, type ReactNode } from 'r
 import { cn } from '@/lib/utils'
 import { dropSide, moveSlot, type Layout, type Target } from '../lib/keyboard-layout'
 import { Icon } from './icon'
+import { Tip } from './tip'
 
 export interface LayoutGridProps {
   layout: Layout
@@ -153,18 +154,19 @@ export function DragHandle() {
   const h = useContext(HandleContext)
   if (!h) return null
   return (
-    <button
-      type="button"
-      ref={h.setActivatorNodeRef}
-      aria-label={`Перетащить: ${h.label}`}
-      title="Перетащить"
-      disabled={h.disabled}
-      {...h.listeners}
-      {...h.attributes}
-      className="focus-ring inline-flex size-6 flex-none cursor-grab touch-none items-center justify-center rounded-sm text-text-secondary hover:bg-cell-highlight disabled:cursor-default disabled:opacity-40"
-    >
-      <Icon name="grip" size={16} strokeWidth={3} />
-    </button>
+    <Tip label="Перетащить">
+      <button
+        type="button"
+        ref={h.setActivatorNodeRef}
+        aria-label={`Перетащить: ${h.label}`}
+        disabled={h.disabled}
+        {...h.listeners}
+        {...h.attributes}
+        className="focus-ring inline-flex size-6 flex-none cursor-grab touch-none items-center justify-center rounded-sm text-text-secondary hover:bg-cell-highlight disabled:cursor-default disabled:opacity-40"
+      >
+        <Icon name="grip" size={16} strokeWidth={3} />
+      </button>
+    </Tip>
   )
 }
 

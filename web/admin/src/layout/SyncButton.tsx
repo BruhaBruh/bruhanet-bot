@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, toast } from '@/ui'
+import { Button, Tip, toast } from '@/ui'
 import { ApiError, get, post } from '../api'
 import { formatCount, formatShortDate } from '../format'
 
@@ -38,13 +38,8 @@ export function SyncButton({ onSynced }: { onSynced: () => void }) {
   }
 
   return (
-    <Button
-      variant="gray"
-      icon="refresh"
-      aria-label={LABEL}
-      title={last ? `${LABEL}. Последняя: ${formatShortDate(last)}` : LABEL}
-      loading={busy}
-      onClick={() => void sync()}
-    />
+    <Tip label={last ? `${LABEL}. Последняя: ${formatShortDate(last)}` : LABEL}>
+      <Button variant="gray" icon="refresh" aria-label={LABEL} loading={busy} onClick={() => void sync()} />
+    </Tip>
   )
 }

@@ -341,7 +341,10 @@ describe('Texts', () => {
       const id = screen.getAllByText('pay').find((e) => e.tagName === 'CODE')!
       expect(id.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(screen.getAllByText('→ Оплата').length).toBe(1)
-      expect(screen.getByRole('combobox', { name: 'Стиль кнопки Оплатить' }).getAttribute('title')).toBe('Успех')
+      const styleTrigger = screen.getByRole('combobox', { name: 'Стиль кнопки Оплатить' })
+      expect(styleTrigger.hasAttribute('title')).toBe(false) // подсказка — Tooltip, не title
+      act(() => styleTrigger.focus())
+      expect((await screen.findAllByText('Успех')).length).toBeGreaterThan(0)
       expect(screen.getByRole('img', { name: /Нужна для работы бота: Оплатить/ })).toBeTruthy()
       expect(screen.queryByRole('button', { name: 'Убрать: Оплатить' })).toBeNull()
       expect((screen.getByRole('button', { name: 'Действие: Оплатить' }) as HTMLButtonElement).disabled).toBe(true)

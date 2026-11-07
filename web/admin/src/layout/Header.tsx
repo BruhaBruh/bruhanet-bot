@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { TgAvatar, Button, SearchField } from '@/ui'
+import { TgAvatar, Button, SearchField, Tip } from '@/ui'
 import { useMe } from '../me'
 import { useTheme } from '../theme'
 import { SyncButton } from './SyncButton'
@@ -25,7 +25,9 @@ export function Header({ title, onLogout, onSynced }: { title: string; onLogout:
       <form role="search" className="order-last w-full lg:order-none lg:w-70" onSubmit={search}>
         <SearchField name="q" placeholder="Поиск пользователей" />
       </form>
-      <Button variant="gray" icon={theme === 'dark' ? 'sun' : 'moon'} aria-label={themeLabel} title={themeLabel} onClick={toggle} />
+      <Tip label={themeLabel}>
+        <Button variant="gray" icon={theme === 'dark' ? 'sun' : 'moon'} aria-label={themeLabel} onClick={toggle} />
+      </Tip>
       <SyncButton onSynced={onSynced} />
       {/* На телефоне аватар уступает место заголовку. */}
       {who && (
@@ -38,7 +40,9 @@ export function Header({ title, onLogout, onSynced }: { title: string; onLogout:
         </div>
       )}
       {/* На телефоне сайдбара нет, а выйти надо. */}
-      <Button variant="gray" icon="logout" aria-label="Выйти" title="Выйти" className="md:hidden" onClick={onLogout} />
+      <Tip label="Выйти">
+        <Button variant="gray" icon="logout" aria-label="Выйти" className="md:hidden" onClick={onLogout} />
+      </Tip>
     </header>
   )
 }

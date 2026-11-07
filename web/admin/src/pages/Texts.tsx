@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Checkbox, Dialog, Input, MessageBubble, SearchField, SegmentedControl, Spinner, StatusTag, toast } from '@/ui'
+import { Button, Card, Checkbox, Dialog, Input, MessageBubble, SearchField, SegmentedControl, Spinner, Tip, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
@@ -328,12 +328,9 @@ export default function Texts() {
                       </span>
                       {i.inactive && <StatusTag tone="destructive">не применяется</StatusTag>}
                       {(i.overridden || dirty) && (
-                        <span
-                          role="img"
-                          aria-label={dirty ? 'Есть несохранённые изменения' : 'Изменено'}
-                          title={dirty ? 'Есть несохранённые изменения' : 'Изменено'}
-                          className={cn('size-2 flex-none rounded-full', on ? 'bg-on-accent-strong' : 'bg-warning')}
-                        />
+                        <Tip label={dirty ? 'Есть несохранённые изменения' : 'Изменено'}>
+                          <span role="img" aria-label={dirty ? 'Есть несохранённые изменения' : 'Изменено'} className={cn('size-2 flex-none rounded-full', on ? 'bg-on-accent-strong' : 'bg-warning')} />
+                        </Tip>
                       )}
                     </button>
                   )

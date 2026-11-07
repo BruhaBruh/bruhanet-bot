@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { TgAvatar, Button, Card, DataTable, RowAction, Spinner, StatusTag, toast, type Tone } from '@/ui'
+import { TgAvatar, Button, Card, DataTable, RowAction, Spinner, StatusTag, Tip, toast, type Tone } from '@/ui'
 import { ApiError, get } from '../api'
 import { snippet } from '../editor/serialize'
 import { formatCount, formatFullDay, formatRub, formatShortDate, panelStatusLabels, panelStatusTones } from '../format'
@@ -61,9 +61,9 @@ function DeviceFact({ base, extra, panel }: { base: number; extra: number; panel
     <span className="inline-flex flex-wrap items-baseline justify-end gap-x-2">
       <span>{`${base} + ${extra} = ${total}`}</span>
       {panel !== undefined && panel !== total && (
-        <span className="rounded-xs bg-warning-tint px-1.5 text-warning-strong" title="Лимит в Remnawave отличается от нашего: правили вручную?">
-          в панели: {panel}
-        </span>
+        <Tip label="Лимит в Remnawave отличается от нашего: правили вручную?">
+          <span className="rounded-xs bg-warning-tint px-1.5 text-warning-strong">в панели: {panel}</span>
+        </Tip>
       )}
     </span>
   )

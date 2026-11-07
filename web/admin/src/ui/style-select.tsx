@@ -1,6 +1,7 @@
 import { Select as SelectPrimitive } from 'radix-ui'
 import { cn } from '@/lib/utils'
 import { Icon } from './icon'
+import { Tip } from './tip'
 
 import { STYLE_OPTIONS } from './style-options'
 
@@ -22,17 +23,18 @@ export function StyleSelect({ value, onChange, disabled, className, ...props }: 
   const enc = (v: string) => v || 'default'
   return (
     <SelectPrimitive.Root value={enc(value)} onValueChange={(v) => onChange(v === 'default' ? '' : v)} disabled={disabled}>
-      <SelectPrimitive.Trigger
-        aria-label={props['aria-label']}
-        title={STYLE_OPTIONS.find((o) => o.value === value)?.label}
-        className={cn(
-          'focus-ring inline-flex h-(--size-cell) flex-none cursor-pointer items-center gap-1.5 rounded-md bg-[var(--field-bg,var(--surface))] px-3 disabled:cursor-default disabled:opacity-40',
-          className,
-        )}
-      >
-        <Dot value={value} />
-        <Icon name="chevron-down" size={14} strokeWidth={2} className="text-text-secondary" />
-      </SelectPrimitive.Trigger>
+      <Tip label={STYLE_OPTIONS.find((o) => o.value === value)?.label}>
+        <SelectPrimitive.Trigger
+          aria-label={props['aria-label']}
+          className={cn(
+            'focus-ring inline-flex h-(--size-cell) flex-none cursor-pointer items-center gap-1.5 rounded-md bg-[var(--field-bg,var(--surface))] px-3 disabled:cursor-default disabled:opacity-40',
+            className,
+          )}
+        >
+          <Dot value={value} />
+          <Icon name="chevron-down" size={14} strokeWidth={2} className="text-text-secondary" />
+        </SelectPrimitive.Trigger>
+      </Tip>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content position="popper" sideOffset={6} align="end" className="admin-table z-50 flex min-w-40 flex-col rounded-lg bg-surface-elevated p-1 shadow-popover">
           <SelectPrimitive.Viewport>

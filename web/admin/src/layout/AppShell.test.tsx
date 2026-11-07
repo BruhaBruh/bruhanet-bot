@@ -159,7 +159,10 @@ describe('AppShell', () => {
       stubSync(() => json(200, {}))
       await renderAt('/')
       expect(screen.queryByRole('button', { name: 'Уведомления' })).toBeNull()
-      expect(syncButton().getAttribute('title')).toMatch(/^Синхронизировать с панелью\. Последняя: 5 окт.*13:00$/)
+      // подсказка — наш Tooltip (не атрибут title): открывается по фокусу
+      expect(syncButton().hasAttribute('title')).toBe(false)
+      act(() => syncButton().focus())
+      expect((await screen.findAllByText(/^Синхронизировать с панелью\. Последняя: 5 окт.*13:00$/)).length).toBeGreaterThan(0)
     })
 
     it('syncs once on a double click, toasts the count and reloads the screen', async () => {
@@ -173,7 +176,8 @@ describe('AppShell', () => {
       expect(posts(f)).toHaveLength(1)
       expect(screen.getByText(/^Синхронизировано: 1\s200$/)).toBeTruthy()
       expect((syncButton() as HTMLButtonElement).disabled).toBe(false)
-      expect(syncButton().getAttribute('title')).toContain('1 нояб')
+      act(() => syncButton().focus())
+      expect((await screen.findAllByText(/Последняя: 1 нояб/)).length).toBeGreaterThan(0)
       expect(f.mock.calls.filter(([u]) => u.startsWith('/api/users?')).length).toBe(before + 1)
     })
 
