@@ -396,10 +396,12 @@ func (j *reminderJob) follow(ctx context.Context, every time.Duration, at func(c
 	}
 }
 
-// cleanPhotos — один проход по cron: сбой только в лог, следующий проход повторит.
-func cleanPhotos(ctx context.Context, st interface {
+type photoCleaner interface {
 	DeleteStalePhotos(ctx context.Context, before time.Time) (int, error)
-}, now func() time.Time) {
+}
+
+// cleanPhotos — один проход по cron: сбой только в лог, следующий проход повторит.
+func cleanPhotos(ctx context.Context, st photoCleaner, now func() time.Time) {
 	n, err := st.DeleteStalePhotos(ctx, now().Add(-photoTTL))
 	if err != nil {
 		stlog.Error(ctx, "photo cleanup failed", "error", err)

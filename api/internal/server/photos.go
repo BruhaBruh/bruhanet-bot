@@ -91,5 +91,5 @@ func (s *server) photo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	_, _ = w.Write(data)
+	_, _ = w.Write(data) //nolint:gosec // G705: тип — image/* из списка загрузки, nosniff
 }
