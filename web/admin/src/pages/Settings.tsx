@@ -179,7 +179,7 @@ export default function Settings() {
   return (
     <form
       noValidate
-      className="admin-body flex max-w-215 flex-col gap-4 text-text"
+      className="admin-body flex flex-col gap-4 text-text"
       onSubmit={(e) => {
         e.preventDefault()
         void save()
@@ -199,6 +199,8 @@ export default function Settings() {
         </div>
       )}
 
+      {/* Карточки в 1–3 колонки по ширине экрана: колонки CSS, карточки не рвутся */}
+      <div className="gap-4 xl:columns-2 min-[1800px]:columns-3 [&>*]:mb-4 [&>*]:break-inside-avoid">
       <Card title="Тарифы" aside="пользователь выбирает срок при оплате" className="gap-2.5">
         <div className="admin-label hidden gap-2 px-0.5 text-text-secondary md:flex">
           <span className="grow basis-40">Срок</span>
@@ -414,6 +416,7 @@ export default function Settings() {
         </div>
         <span className="footnote text-text-secondary">Имя — латиница, цифры и _, первая буква. Значение — простой текст без разметки, до 96 символов. Переменную из сохранённого текста удалить нельзя.</span>
       </Card>
+      </div>
 
       {error && (
         <div role="alert" className="text-destructive-strong">

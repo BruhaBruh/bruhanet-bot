@@ -108,7 +108,7 @@ function Shell() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Header title={customTitle ?? pageTitle(pathname)} onLogout={logout} onSynced={() => setSyncKey((k) => k + 1)} />
-        <main className="flex w-full max-w-320 grow flex-col gap-6 px-4 pt-4 pb-[calc(var(--size-tab-bar)+var(--space-6))] md:px-8 md:pt-6 md:pb-10">
+        <main className="flex w-full grow flex-col gap-6 px-4 pt-4 pb-[calc(var(--size-tab-bar)+var(--space-6))] md:px-8 md:pt-6 md:pb-10">
           <Suspense fallback={<Spinner className="self-center p-8" />}>
             <Outlet context={context} />
           </Suspense>
