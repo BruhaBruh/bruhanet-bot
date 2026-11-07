@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Checkbox, Dialog, Input, MessageBubble, SearchField, SegmentedControl, Spinner, Tip, StatusTag, toast } from '@/ui'
+import { Button, Card, Checkbox, Dialog, Icon, Input, MessageBubble, SearchField, SegmentedControl, Spinner, Tip, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
@@ -36,6 +36,8 @@ export default function Texts() {
   const [q, setQ] = useState('')
   // вкладка списка: сообщения или «части» (короткие тексты, которые подставляются в другие сообщения, например статусы)
   const [tabPick, setTabPick] = useState<'message' | 'plain'>()
+  // свёрнутость групп списка: явный выбор админа; по умолчанию открыта только группа выбранного сообщения
+  const [groupToggled, setGroupToggled] = useState<Record<string, boolean>>({})
   // черновики по ключу: переключение между текстами не теряет правки, но и не переносит их
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   // подписи кнопок шаблонов (button.tariff…) — стиль; текст лежит в drafts
@@ -296,48 +298,62 @@ export default function Texts() {
         {/* Длинный список прокручивается сам: не отодвигает редактор и на компьютере закреплён рядом с ним. */}
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-lg:max-h-72">
           {!groups.size && <p className="admin-body px-1 text-text-secondary">Ничего не найдено</p>}
-          {[...groups].map(([group, list]) => (
-            <div key={group} className="flex flex-col gap-1.5">
-              <span className="admin-label px-1 text-text-secondary">{group}</span>
-              <div className="flex flex-col overflow-hidden rounded-lg bg-surface shadow-card">
-                {list.map((i) => {
-                  const on = i.key === cur?.key
-                  const dirty = isDirty(i)
-                  return (
-                    <button
-                      key={i.key}
-                      type="button"
-                      aria-current={on ? 'page' : undefined}
-                      className={cn(
-                        'admin-body focus-ring flex cursor-pointer items-center gap-2.5 px-3.5 py-2.5 text-left focus-visible:-outline-offset-2',
-                        separator,
-                        on ? 'bg-accent-strong text-on-accent-strong' : 'bg-surface text-text hover:bg-cell-highlight',
-                      )}
-                      onClick={() => {
-                        // подписи шаблонов и условия превью относятся к открытой клавиатуре: на другом сообщении их не переносим
-                        if (i.key !== cur?.key) {
-                          setFake([])
-                          tplKeys.forEach(dropTplDraft)
-                        }
-                        setParams({ key: i.key })
-                      }}
-                    >
-                      <span className="flex min-w-0 grow flex-col">
-                        <span className="font-medium">{i.title}</span>
-                        <span className={cn('caption-1 truncate font-mono', !on && 'opacity-75')}>{i.key}</span>
-                      </span>
-                      {i.inactive && <StatusTag tone="destructive">не применяется</StatusTag>}
-                      {(i.overridden || dirty) && (
-                        <Tip label={dirty ? 'Есть несохранённые изменения' : 'Изменено'}>
-                          <span role="img" aria-label={dirty ? 'Есть несохранённые изменения' : 'Изменено'} className={cn('size-2 flex-none rounded-full', on ? 'bg-on-accent-strong' : 'bg-warning')} />
-                        </Tip>
-                      )}
-                    </button>
-                  )
-                })}
+          {[...groups].map(([group, list]) => {
+            // поиск раскрывает все группы с совпадениями; иначе — выбор админа или группа выбранного сообщения
+            const open = s ? true : (groupToggled[group] ?? group === cur?.group)
+            return (
+              <div key={group} className="flex flex-col gap-1.5">
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  className="admin-label focus-ring flex cursor-pointer items-center gap-1 rounded-sm px-1 text-left text-text-secondary"
+                  onClick={() => setGroupToggled((t) => ({ ...t, [group]: !open }))}
+                >
+                  <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} strokeWidth={2.4} />
+                  {group}
+                </button>
+                {open && (
+                  <div className="flex flex-col overflow-hidden rounded-lg bg-surface shadow-card">
+                    {list.map((i) => {
+                      const on = i.key === cur?.key
+                      const dirty = isDirty(i)
+                      return (
+                        <button
+                          key={i.key}
+                          type="button"
+                          aria-current={on ? 'page' : undefined}
+                          className={cn(
+                            'admin-body focus-ring flex cursor-pointer items-center gap-2.5 px-3.5 py-2.5 text-left focus-visible:-outline-offset-2',
+                            separator,
+                            on ? 'bg-accent-strong text-on-accent-strong' : 'bg-surface text-text hover:bg-cell-highlight',
+                        )}
+                        onClick={() => {
+                          // подписи шаблонов и условия превью относятся к открытой клавиатуре: на другом сообщении их не переносим
+                          if (i.key !== cur?.key) {
+                            setFake([])
+                            tplKeys.forEach(dropTplDraft)
+                          }
+                          setParams({ key: i.key })
+                        }}
+                      >
+                        <span className="flex min-w-0 grow flex-col">
+                          <span className="font-medium">{i.title}</span>
+                          <span className={cn('caption-1 truncate font-mono', !on && 'opacity-75')}>{i.key}</span>
+                        </span>
+                        {i.inactive && <StatusTag tone="destructive">не применяется</StatusTag>}
+                        {(i.overridden || dirty) && (
+                          <Tip label={dirty ? 'Есть несохранённые изменения' : 'Изменено'}>
+                            <span role="img" aria-label={dirty ? 'Есть несохранённые изменения' : 'Изменено'} className={cn('size-2 flex-none rounded-full', on ? 'bg-on-accent-strong' : 'bg-warning')} />
+                          </Tip>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </nav>
 

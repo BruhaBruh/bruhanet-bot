@@ -49,12 +49,13 @@ var Styles = []string{StyleDefault, StylePrimary, StyleSuccess, StyleDanger}
 
 const (
 	groupMenu     = "Меню"
-	groupPayment  = "Оплата"
+	groupPayment  = "Оплата тарифа"
+	groupDevices  = "Устройства"
 	groupPromo    = "Промокоды"
 	groupTrial    = "Пробный период"
 	groupReferral = "Рефералка"
 	groupGift     = "Подарки"
-	groupReminder = "Напоминания"
+	groupReminder = "Уведомления"
 	groupError    = "Ошибки"
 	groupLogin    = "Вход"
 	groupButton   = "Кнопки"
@@ -207,7 +208,7 @@ var registry = []Def{
 		"<b>❌ Платёж отклонён</b>\n\nСрок подписки вернулся к прежнему. Если это ошибка, напиши в поддержку.").
 		shown("Когда админ отклонил платёж, через очередь уведомлений", mainButtons...),
 
-	msg("payment.confirm_devices", groupPayment, "Подтверждение тарифа с доп. устройствами",
+	msg("payment.confirm_devices", groupDevices, "Подтверждение тарифа с доп. устройствами",
 		confirmHead+"Тариф: <b>{{.months}}</b> — {{.tariff}} ₽\n"+
 			"Доп. устройства: {{.devices}} × {{.devicePrice}} ₽ × {{.monthsCount}} = {{.addon}} ₽\n\n"+
 			"Итого: <b>{{.price}} ₽</b>\n\nВсё верно?",
@@ -220,54 +221,54 @@ var registry = []Def{
 		varDevTotal).
 		shown("После выбора тарифа в списке, если у юзера есть доп. устройства (они входят в цену)",
 			"button.yes", "button.no", "button.drop_devices", "button.have_promo"),
-	msg("payment.devices_confirmed", groupPayment, "Устройства добавлены",
+	msg("payment.devices_confirmed", groupDevices, "Устройства добавлены",
 		"<b>✅ Платёж подтверждён</b>\n\nДобавлено устройств: <b>{{.devices}}</b>",
 		Var{Name: "devices", Description: "Сколько устройств добавлено", Sample: "2", Max: 4}).
 		shown("Когда админ подтвердил оплату устройств, через очередь уведомлений", mainButtons...),
-	msg("payment.devices_declined", groupPayment, "Оплата устройств отклонена",
+	msg("payment.devices_declined", groupDevices, "Оплата устройств отклонена",
 		"<b>❌ Платёж отклонён</b>\n\nКоличество устройств не изменилось.").
 		shown("Когда админ отклонил оплату устройств, через очередь уведомлений", mainButtons...),
-	msg("devices.menu", groupPayment, "Устройства",
+	msg("devices.menu", groupDevices, "Устройства",
 		devicesHead+"Подключено: <b>{{.connected}}</b> из <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
 			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц",
 		slices.Concat(deviceVars, []Var{varConnected})...).
 		shown("По кнопке «Устройства» в главном меню, пока подписка действует", "button.devices_buy", "button.devices_clear", "button.devices_miniapp", "button.back"),
-	msg("devices.clear_confirm", groupPayment, "Очистка устройств: подтверждение",
+	msg("devices.clear_confirm", groupDevices, "Очистка устройств: подтверждение",
 		devicesHead+"Отключить все подключённые устройства (сейчас <b>{{.connected}}</b>)? Потом их можно подключить заново, лимит подписки: <b>{{.limit}}</b>.\n\nВсё верно?",
 		varConnected, Var{Name: "limit", Description: "Сколько устройств в подписке", Sample: "7", Max: 4}).
 		shown("По кнопке «Очистить устройства» на экране «Устройства»", "button.yes", "button.no"),
-	msg("devices.cleared", groupPayment, "Устройства очищены",
+	msg("devices.cleared", groupDevices, "Устройства очищены",
 		"<b>✅ Устройства очищены</b>\n\nВсе устройства отключены от подписки. Подключай заново: можно до <b>{{.limit}}</b>.",
 		Var{Name: "limit", Description: "Сколько устройств в подписке", Sample: "7", Max: 4}).
 		shown("После подтверждения очистки устройств", "button.back"),
-	msg("devices.buy", groupPayment, "Докупка устройств",
+	msg("devices.buy", groupDevices, "Докупка устройств",
 		devicesHead+"Выбери, сколько устройств добавить, или нажми «Своё число» (до {{.max}}).\n"+
 			"Одно устройство — {{.devicePrice}} ₽ в месяц, цена считается до конца текущей подписки, срок не меняется.",
 		varDevicePrice, varDevMax).
 		shown("По кнопке «Докупить» на экране «Устройства»", "button.devices_add", "button.devices_custom", "button.back"),
-	msg("devices.limit", groupPayment, "Докупка: предел устройств",
+	msg("devices.limit", groupDevices, "Докупка: предел устройств",
 		devicesHead+"У тебя уже максимум устройств: <b>{{.limit}}</b>. Докупить больше нельзя.",
 		Var{Name: "limit", Description: "Сколько устройств сейчас в подписке", Sample: "100", Max: 4}).
 		shown("Когда сумма базовых и купленных устройств достигла предела панели (100)", "button.back"),
-	msg("devices.custom", groupPayment, "Докупка: ввод своего числа",
+	msg("devices.custom", groupDevices, "Докупка: ввод своего числа",
 		devicesHead+"Пришли число от 1 до <b>{{.max}}</b>: сколько устройств добавить.",
 		varDevMax).
 		shown("По кнопке «Своё число»: бот ждёт сообщение с числом", "button.back"),
-	msg("devices.number_invalid", groupPayment, "Докупка: неверное число",
+	msg("devices.number_invalid", groupDevices, "Докупка: неверное число",
 		devicesHead+"Нужно целое число от 1 до <b>{{.max}}</b>. Попробуй ещё раз.",
 		varDevMax).
 		shown("Когда в ответ на «Своё число» пришло не число или число вне допустимого", "button.back"),
-	msg("devices.no_term", groupPayment, "Устройства: подписка закончилась",
+	msg("devices.no_term", groupDevices, "Устройства: подписка закончилась",
 		devicesHead+"Сейчас в подписке: <b>{{.limit}}</b> (базовых {{.base}} + дополнительных {{.extra}})\n"+
 			"Каждое дополнительное устройство: <b>{{.devicePrice}} ₽</b> в месяц\n\n"+
 			"Подписка закончилась, поэтому докупить устройства можно после продления. Уже купленные войдут в цену тарифа.",
 		deviceVars...).
 		shown("По кнопке «Устройства», когда подписка закончилась", "button.renew", "button.back"),
-	msg("devices.confirm", groupPayment, "Подтверждение покупки устройств",
+	msg("devices.confirm", groupDevices, "Подтверждение покупки устройств",
 		devicesHead+"Добавить <b>{{.count}}</b> до конца подписки за <b>{{.price}} ₽</b>?\nСрок подписки не изменится.\n\nВсё верно?",
 		varDevCount, varDevCountShort, varDevTotal).
 		shown("После выбора количества устройств", "button.yes", "button.no"),
-	msg("devices.requisites", groupPayment, "Реквизиты для оплаты устройств",
+	msg("devices.requisites", groupDevices, "Реквизиты для оплаты устройств",
 		"<b>💸 Оплата устройств: {{.count}}</b>\n\n"+requisitesTail,
 		varDevCount, varDevCountShort, varDevTotal,
 		Var{
@@ -276,14 +277,9 @@ var registry = []Def{
 			Sample: "- <code>На кофе</code>\n- <code>Перекус</code>\n- <code>Одолжил</code>\n- <code>Вернул долг</code>",
 		}).
 		shown("По «Да» на подтверждении покупки устройств, когда платёж создан; кнопок нет, бот ждёт фото"),
-	msg("devices.busy", groupPayment, "Устройства: есть незавершённая оплата",
+	msg("devices.busy", groupDevices, "Устройства: есть незавершённая оплата",
 		devicesHead+"Сначала заверши текущую оплату: пришли фото платежа или нажми «Нет» на экране тарифа. Потом можно докупить устройства.").
 		shown("Когда юзер хочет докупить устройства, а у него уже есть открытая оплата", "button.back"),
-
-	msg("grant.days", groupPayment, "Админ добавил дни",
-		"<b>🎁 Подписка продлена</b>\n\nАдмин добавил дней: <b>{{.days}}</b>\nДействует до: <b>{{.expireAt}}</b>",
-		Var{Name: "days", Description: "Сколько дней добавил администратор", Sample: "7", Max: 4}).
-		shown("Когда админ выдал дни из панели, через очередь уведомлений", mainButtons...),
 
 	msg("promo.enter_payment", groupPromo, "Ввод промокода при оплате", promoHead+"Пришли промокод сообщением.").
 		shown("По кнопке «Есть промокод» на подтверждении тарифа", "button.back"),
@@ -392,6 +388,11 @@ var registry = []Def{
 	msg("gift.unavailable", groupGift, "Подарок недоступен", giftHead+"Этот подарок недоступен.").
 		shown("Когда ссылка подарка не сработала (причину не раскрываем: нет такого, уже использован, отменён, нельзя юзеру)", "button.back"),
 
+	msg("grant.days", groupReminder, "Админ добавил дни",
+		"<b>🎁 Подписка продлена</b>\n\nАдмин добавил дней: <b>{{.days}}</b>\nДействует до: <b>{{.expireAt}}</b>",
+		Var{Name: "days", Description: "Сколько дней добавил администратор", Sample: "7", Max: 4}).
+		shown("Когда админ выдал дни из панели, через очередь уведомлений", mainButtons...),
+
 	msg("reminder.week", groupReminder, "Подписка скоро закончится (первый порог)",
 		reminderHead+"Продли заранее, чтобы не потерять доступ."+reminderTail).
 		shown("Раз в день, когда до конца подписки осталось меньше первого порога из настроек; один раз на дату окончания", "button.renew", "button.subscription"),
@@ -399,15 +400,15 @@ var registry = []Def{
 		"<b>⏰ Подписка заканчивается</b>\n\nОна закончится в течение суток. Продли сейчас, чтобы доступ не прервался."+reminderTail).
 		shown("Раз в день, когда до конца подписки осталось меньше второго порога из настроек; один раз на дату окончания", "button.renew", "button.subscription"),
 
-	msg("error.generic", groupError, "Ошибка", "<b>⚠️ Что-то пошло не так</b>\n\nНе получилось выполнить запрос. Попробуй ещё раз или напиши в поддержку.").
-		shown("Когда запрос юзера не удалось выполнить: сбой панели, базы или сохранения", "button.back", "button.support"),
-
 	msg("login.message", groupLogin, "Вход в админ-панель", "Привет! Вы администратор {{.name}}. Нажмите кнопку ниже, чтобы войти в админ-панель.").
 		shown("По /login от админа (и по ссылке входа со страницы панели)", "button.login"),
 	msg("login.fallback", groupLogin, "Вход: ссылка вместо кнопки",
 		"Привет! Вы администратор {{.name}}. Telegram не принял кнопку, поэтому ссылка здесь: нажми на неё, чтобы скопировать, и открой в браузере.\n\n<code>{{.link}}</code>",
 		Var{Name: "link", Description: "Ссылка входа с одноразовым токеном", Sample: "http://localhost:5173/auth?token=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE", Max: 100}).
 		shown("Вместо сообщения с кнопкой, если Telegram не принял адрес (например, localhost при разработке)"),
+
+	msg("error.generic", groupError, "Ошибка", "<b>⚠️ Что-то пошло не так</b>\n\nНе получилось выполнить запрос. Попробуй ещё раз или напиши в поддержку.").
+		shown("Когда запрос юзера не удалось выполнить: сбой панели, базы или сохранения", "button.back", "button.support"),
 
 	btn("button.info", "Информация", "ℹ️ Информация").on(routeInfo, StylePrimary, "Главное меню, если юзер есть в панели"),
 	btn("button.pay", "Оплатить", "💳 Оплатить").on(routePay, StyleDefault, "Главное меню, если юзер есть в панели"),
@@ -455,7 +456,7 @@ func Reserved(name string) bool {
 		slices.ContainsFunc(registry, func(d Def) bool { return slices.ContainsFunc(d.Vars, has) })
 }
 
-// Registry — все тексты по группам: Меню, Оплата, Промокоды, Напоминания, Ошибки, Кнопки.
+// Registry — все тексты по группам: Меню, Оплата тарифа, Устройства, Промокоды, Пробный период, Рефералка, Подарки, Уведомления, Вход, Ошибки, Кнопки.
 func Registry() []Def {
 	out := slices.Clone(registry)
 	for i := range out {

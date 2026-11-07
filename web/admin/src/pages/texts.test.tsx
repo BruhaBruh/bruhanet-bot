@@ -319,6 +319,28 @@ describe('Texts', () => {
     expect(list().queryByText('Текст A')).toBeNull()
   })
 
+  it('groups collapse: only the group of the selected message is open, a click toggles, search opens matches', async () => {
+    const reply = JSON.parse(JSON.stringify((await (replies['GET /api/texts']() as Response).json())))
+    reply.items.push({ ...text('dev1', 'Докупка', 'x', { group: 'Устройства' }) })
+    reply.items.push({ ...text('dev2', 'Очистка', 'y', { group: 'Устройства' }) })
+    replies['GET /api/texts'] = json(200, reply)
+    await open('/texts?key=a')
+    const group = (name: string) => within(screen.getByRole('navigation', { name: 'Сообщения бота' })).getByRole('button', { name })
+    expect(group('Меню').getAttribute('aria-expanded')).toBe('true')
+    expect(group('Устройства').getAttribute('aria-expanded')).toBe('false')
+    expect(list().queryByText('Докупка')).toBeNull()
+    fireEvent.click(group('Устройства'))
+    expect(group('Устройства').getAttribute('aria-expanded')).toBe('true')
+    expect(list().getByText('Докупка')).toBeTruthy()
+    fireEvent.click(group('Меню')) // группу выбранного тоже можно свернуть
+    expect(list().queryByText('Текст A')).toBeNull()
+    // поиск раскрывает все группы с совпадениями, выбор админа временно не мешает
+    fireEvent.click(group('Устройства')) // свернули
+    expect(list().queryByText('Очистка')).toBeNull()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'очистка' } })
+    expect(list().getByText('Очистка')).toBeTruthy()
+  })
+
   it('«Когда отправляется» comes from the registry', async () => {
     await open('/texts?key=b')
     expect(screen.getByText('Когда B')).toBeTruthy()
