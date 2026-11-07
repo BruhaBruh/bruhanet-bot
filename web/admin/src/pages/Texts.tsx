@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { cn } from '@/lib/utils'
-import { Button, Card, Checkbox, Dialog, Input, MessageBubble, SearchField, Spinner, StatusTag, toast } from '@/ui'
+import { Button, Card, Checkbox, Dialog, Input, MessageBubble, SearchField, SegmentedControl, Spinner, StatusTag, toast } from '@/ui'
 import { ApiError, del, get, post, put } from '../api'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
@@ -34,6 +34,8 @@ export default function Texts() {
   const [globals, setGlobals] = useState<TextVar[]>([])
   const [loadError, setLoadError] = useState(false)
   const [q, setQ] = useState('')
+  // вкладка списка: сообщения или «части» (короткие тексты, которые подставляются в другие сообщения, например статусы)
+  const [tabPick, setTabPick] = useState<'message' | 'plain'>()
   // черновики по ключу: переключение между текстами не теряет правки, но и не переносит их
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   // подписи кнопок шаблонов (button.tariff…) — стиль; текст лежит в drafts
@@ -160,9 +162,11 @@ export default function Texts() {
       : [row.map((c) => ({ text: (c.label ? renderPlain(c.label, samples) : c.effective?.preview) || c.id, style: previewStyle(c.style || c.effective?.style || '') }))],
   )
 
+  const tab = tabPick ?? (cur?.kind === 'plain' ? 'plain' : 'message')
   const s = q.trim().toLowerCase()
   const groups = new Map<string, TextItem[]>()
   for (const i of editable) {
+    if (i.kind !== tab) continue
     if (s && ![i.title, i.key, draftOf(i)].some((v) => v.toLowerCase().includes(s))) continue
     groups.set(i.group, [...(groups.get(i.group) ?? []), i])
   }
@@ -272,7 +276,22 @@ export default function Texts() {
         />
       )}
       <nav aria-label="Сообщения бота" className="flex min-w-0 grow basis-70 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-7.5rem)]">
-        <SearchField placeholder="Найти сообщение" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
+        <SegmentedControl
+          block
+          value={tab}
+          options={[
+            { value: 'message', label: 'Сообщения' },
+            { value: 'plain', label: 'Части' },
+          ]}
+          onChange={(v) => {
+            const next = v as 'message' | 'plain'
+            setTabPick(next)
+            const first = editable.find((i) => i.kind === next)
+            if (first && cur?.kind !== next) setParams({ key: first.key })
+          }}
+        />
+        {tab === 'plain' && <p className="footnote px-1 text-text-secondary">Короткие тексты, которые подставляются в другие сообщения (например, статус подписки).</p>}
+        <SearchField placeholder={tab === 'plain' ? 'Найти часть' : 'Найти сообщение'} value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ('')} />
         {/* Длинный список прокручивается сам: не отодвигает редактор и на компьютере закреплён рядом с ним. */}
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-lg:max-h-72">
           {!groups.size && <p className="admin-body px-1 text-text-secondary">Ничего не найдено</p>}

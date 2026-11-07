@@ -292,6 +292,33 @@ describe('Texts', () => {
     expect(preview().textContent).toContain('Привет, Иван')
   })
 
+  it('plain parts live on their own tab; opening a part by link selects it', async () => {
+    const withParts = JSON.parse(JSON.stringify((await (replies['GET /api/texts']() as Response).json())))
+    withParts.items.push({ ...text('st', 'Статус: активна', 'Активна', { kind: 'plain' }) })
+    replies['GET /api/texts'] = json(200, withParts)
+    await open('/texts')
+    expect(list().queryByText('Статус: активна')).toBeNull()
+    expect(list().getByText('Текст A')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Части' }))
+    await flush()
+    expect(list().getByText('Статус: активна')).toBeTruthy()
+    expect(list().queryByText('Текст A')).toBeNull()
+    expect(screen.getByText(/подставляются в другие сообщения/)).toBeTruthy()
+    // обратно: открывается первое сообщение
+    fireEvent.click(screen.getByRole('radio', { name: 'Сообщения' }))
+    await flush()
+    expect(list().getByText('Текст A')).toBeTruthy()
+  })
+
+  it('a part opened by key shows the parts tab', async () => {
+    const withParts = JSON.parse(JSON.stringify((await (replies['GET /api/texts']() as Response).json())))
+    withParts.items.push({ ...text('st', 'Статус: активна', 'Активна', { kind: 'plain' }) })
+    replies['GET /api/texts'] = json(200, withParts)
+    await open('/texts?key=st')
+    expect(list().getByText('Статус: активна')).toBeTruthy()
+    expect(list().queryByText('Текст A')).toBeNull()
+  })
+
   it('«Когда отправляется» comes from the registry', async () => {
     await open('/texts?key=b')
     expect(screen.getByText('Когда B')).toBeTruthy()
