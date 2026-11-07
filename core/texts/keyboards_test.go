@@ -89,7 +89,7 @@ func TestValidateLayout(t *testing.T) {
 			[]string{"button.pay", "button.info"}, []string{"button.support", "button.subscription"}, []string{"button.trial"},
 			[]string{"button.promo", "button.devices"}, []string{"button.gift"}, []string{"button.referral"}), true},
 		{"three in a row", menu, all([]string{"button.info", "button.pay", "button.promo"}, []string{"button.subscription", "button.support"}, []string{"button.trial", "button.devices", "button.gift", "button.referral"}), false},
-		{"duplicate", menu, all(menu.Default[0], []string{"button.info"}), false},
+		{"duplicate", menu, all(menu.Default[1], []string{"button.info"}), false},
 		{"unknown", menu, all([]string{"button.nope"}), false},
 		{"other keyboard's button", menu, all([]string{"button.back"}), false},
 		{"empty row", menu, all([]string{}), false},

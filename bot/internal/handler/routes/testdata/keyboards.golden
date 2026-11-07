@@ -1,9 +1,7 @@
 == menu: not in panel, trial+referral on
-  [🛒 Купить | cb=pay | "success"]
-  [🎁 Пробный период | cb=trial | ""]
+  [🛒 Купить | cb=pay | "success"] [🎁 Пробный период | cb=trial | ""]
   [🏷 Промокод | cb=promo | ""] [💬 Поддержка | url=https://t.me/support | "danger"]
-  [🎁 Подарить | cb=gift | ""]
-  [🤝 Пригласить друга | cb=referral | ""]
+  [🎁 Подарить | cb=gift | ""] [🤝 Пригласить друга | cb=referral | ""]
 == menu: not in panel, trial+referral off
   [🛒 Купить | cb=pay | "success"]
   [🏷 Промокод | cb=promo | ""] [💬 Поддержка | url=https://t.me/support | "danger"]
@@ -12,21 +10,18 @@
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
   [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
-  [🎁 Подарить | cb=gift | ""]
-  [🤝 Пригласить друга | cb=referral | ""]
+  [🎁 Подарить | cb=gift | ""] [🤝 Пригласить друга | cb=referral | ""]
 == menu: in panel, devices on, trial not offered
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
   [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
-  [🎁 Подарить | cb=gift | ""]
-  [🤝 Пригласить друга | cb=referral | ""]
+  [🎁 Подарить | cb=gift | ""] [🤝 Пригласить друга | cb=referral | ""]
 == menu: in panel, expired (trial offered)
+  [🎁 Пробный период | cb=trial | ""]
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
-  [🎁 Пробный период | cb=trial | ""]
   [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
-  [🎁 Подарить | cb=gift | ""]
-  [🤝 Пригласить друга | cb=referral | ""]
+  [🎁 Подарить | cb=gift | ""] [🤝 Пригласить друга | cb=referral | ""]
 == menu: in panel, everything off
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
@@ -41,8 +36,8 @@
   [🔄 Продлить | cb=pay | ""] [🔗 Подписка | copy=https://sub.example/42 | "success"]
   [← Назад | cb=menu | ""]
 == error.generic
+  [💬 Поддержка | url=https://t.me/support | "danger"]
   [← Назад | cb=menu | ""]
-  [💬 Поддержка | url=https://t.me/support | ""]
 == tariffs
   [1 месяц за 150 ₽ | cb=price:1 | ""] [6 месяцев за 800 ₽ | cb=price:6 | ""]
   [12 месяцев за 1600 ₽ | cb=price:12 | ""]
@@ -108,16 +103,13 @@
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
   [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
-  [🎁 Подарить | cb=gift | ""]
-  [🤝 Пригласить друга | cb=referral | ""]
+  [🎁 Подарить | cb=gift | ""] [🤝 Пригласить друга | cb=referral | ""]
 == payment.confirmed
   [ℹ️ Информация | cb=info | "primary"] [💳 Оплатить | cb=pay | ""]
   [🔗 Подписка | copy=https://sub.example/42 | "success"] [💬 Поддержка | url=https://t.me/support | "danger"]
   [🏷 Промокод | cb=promo | ""] [📱 Устройства | cb=devices | ""]
-  [🎁 Подарить | cb=gift | ""]
-  [🤝 Пригласить друга | cb=referral | ""]
+  [🎁 Подарить | cb=gift | ""] [🤝 Пригласить друга | cb=referral | ""]
 == payment.declined (not in panel)
   [🛒 Купить | cb=pay | "success"]
   [🏷 Промокод | cb=promo | ""] [💬 Поддержка | url=https://t.me/support | "danger"]
-  [🎁 Подарить | cb=gift | ""]
-  [🤝 Пригласить друга | cb=referral | ""]
+  [🎁 Подарить | cb=gift | ""] [🤝 Пригласить друга | cb=referral | ""]

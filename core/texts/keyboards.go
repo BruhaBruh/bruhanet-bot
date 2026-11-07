@@ -256,12 +256,12 @@ var keyboards = []Keyboard{
 	kb("menu", "Главное меню", mainMenuMessages(), slices.Concat(
 		rm("button.info", "button.pay", "button.subscription", "button.support", "button.trial", "button.promo", "button.devices", "button.gift", "button.referral")),
 		nil,
-		row("button.info", "button.pay"), row("button.subscription", "button.support"), row("button.trial"),
-		row("button.promo", "button.devices"), row("button.gift"), row("button.referral")),
+		row("button.trial"), row("button.info", "button.pay"), row("button.subscription", "button.support"),
+		row("button.promo", "button.devices"), row("button.gift", "button.referral")),
 	kb("menu_new", "Главное меню, когда юзера нет в панели", mainMenuMessages(), slices.Concat(
 		fx("button.buy"), rm("button.trial", "button.promo", "button.support", "button.gift", "button.referral")),
 		nil,
-		row("button.buy"), row("button.trial"), row("button.promo", "button.support"), row("button.gift"), row("button.referral")),
+		row("button.buy", "button.trial"), row("button.promo", "button.support"), row("button.gift", "button.referral")),
 	kb("info", "Информация о подписке", []string{"menu.info"},
 		slices.Concat(rm("button.renew", "button.subscription"), fx("button.back")), nil,
 		row("button.renew", "button.subscription"), row("button.back")),
@@ -280,7 +280,7 @@ var keyboards = []Keyboard{
 		fx("button.yes", "button.no", "button.remove_promo"), nil, yesNo, row("button.remove_promo")),
 	kb("devices", "Устройства", []string{"devices.menu"},
 		slices.Concat(fx("button.devices_buy", "button.back"), rm("button.devices_clear", "button.devices_miniapp")), nil,
-		row("button.devices_buy"), row("button.devices_clear"), row("button.devices_miniapp"), row("button.back")),
+		row("button.devices_buy"), row("button.devices_clear", "button.devices_miniapp"), row("button.back")),
 	kb("devices_clear_confirm", "Очистка устройств: подтверждение", []string{"devices.clear_confirm"}, fx(yesNo...), nil, yesNo),
 	kb("devices_buy", "Докупка устройств", []string{"devices.buy"},
 		fx("button.devices_custom", "button.back"), []string{blockDevices},
@@ -301,7 +301,7 @@ var keyboards = []Keyboard{
 	}, fx("button.back"), nil, row("button.back")),
 	kb("login", "Вход в админ-панель", []string{"login.message"}, fx("button.login"), nil, row("button.login")),
 	kb("error", "Ошибка", []string{"error.generic"},
-		slices.Concat(fx("button.back"), rm("button.support")), nil, row("button.back"), row("button.support")),
+		slices.Concat(fx("button.back"), rm("button.support")), nil, row("button.support"), row("button.back")),
 	kb("reminder", "Напоминания об окончании", []string{"reminder.week", "reminder.day"},
 		rm("button.renew", "button.subscription"), nil, row("button.renew", "button.subscription")),
 }

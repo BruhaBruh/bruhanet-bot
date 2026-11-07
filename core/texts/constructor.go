@@ -228,9 +228,6 @@ func cellSpec(kbID, slot string) Cell {
 		}
 	case "button.support":
 		c.Action, c.Style = "link:support", StyleDanger
-		if kbID == "error" {
-			c.Style = StyleDefault
-		}
 	case "button.promo":
 		c.Action = "route:promo"
 	case "button.trial":
@@ -318,14 +315,12 @@ func menuDefault() ([]Keyboard, MsgLayout) {
 	out := func(c Cell) Cell { c.Conditions = notInPanel(); return c }
 	renamed := func(c Cell, id string) Cell { c.ID = id; return c }
 	return ks, MsgLayout{Rows: [][]Cell{
-		{out(cellSpec("menu_new", "button.buy"))},
+		{out(cellSpec("menu_new", "button.buy")), cellSpec("menu", "button.trial")},
+		{out(renamed(cellSpec("menu_new", "button.promo"), "promo_new")), out(renamed(cellSpec("menu_new", "button.support"), "support_new"))},
 		{in(cellSpec("menu", "button.info")), in(cellSpec("menu", "button.pay"))},
 		{in(cellSpec("menu", "button.subscription")), in(cellSpec("menu", "button.support"))},
-		{cellSpec("menu", "button.trial")},
-		{out(renamed(cellSpec("menu_new", "button.promo"), "promo_new")), out(renamed(cellSpec("menu_new", "button.support"), "support_new"))},
 		{in(cellSpec("menu", "button.promo")), in(cellSpec("menu", "button.devices"))},
-		{cellSpec("menu", "button.gift")},
-		{cellSpec("menu", "button.referral")},
+		{cellSpec("menu", "button.gift"), cellSpec("menu", "button.referral")},
 	}}
 }
 

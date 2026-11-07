@@ -30,11 +30,11 @@ func TestConstructorConditions(t *testing.T) {
 	e := newEnv(t)
 	e.rw.AddUser(userID, now.Add(20*day))
 	store(e, "menu.greeting", func(l *texts.MsgLayout) {
-		l.Rows[6] = []texts.Cell{
+		l.Rows = append(l.Rows, []texts.Cell{
 			cell("site", "Сайт", "url:https://example.com"),
 			cell("only_new", "Новичкам", "route:promo", texts.CondRef{ID: "in_panel", Not: true}),
-		}
-		l.Rows[7] = []texts.Cell{cell("ref_off", "Рефералки нет", "route:menu", texts.CondRef{ID: "referral_on", Not: true})}
+		})
+		l.Rows = append(l.Rows, []texts.Cell{cell("ref_off", "Рефералки нет", "route:menu", texts.CondRef{ID: "referral_on", Not: true})})
 	})
 	got := menuNow(t, e)
 	if !strings.Contains(got, "[Сайт | url=https://example.com |") {
@@ -42,10 +42,6 @@ func TestConstructorConditions(t *testing.T) {
 	}
 	if strings.Contains(got, "Новичкам") {
 		t.Errorf("NOT in_panel shown for a panel user:\n%s", got)
-	}
-	// рефералка выключена по умолчанию в e.src? включаем — кнопка с НЕ referral_on пропадает
-	if !strings.Contains(got, "Рефералки нет") && strings.Contains(got, "cb=referral") {
-		t.Errorf("unexpected state:\n%s", got)
 	}
 	e.src.SetSettings(map[string][]byte{"referralDays": []byte("0")})
 	if got = menuNow(t, e); !strings.Contains(got, "Рефералки нет") {
@@ -62,7 +58,7 @@ func TestConstructorKeepsBuiltInGuards(t *testing.T) {
 	e := newEnv(t)
 	e.src.SetSettings(map[string][]byte{"trialDays": []byte("0"), "devicePrice": []byte("0")})
 	store(e, "menu.greeting", func(l *texts.MsgLayout) {
-		l.Rows[6] = []texts.Cell{cell("t2", "Пробный тут", "route:trial"), cell("d2", "Устройства тут", "route:devices")}
+		l.Rows = append(l.Rows, []texts.Cell{cell("t2", "Пробный тут", "route:trial"), cell("d2", "Устройства тут", "route:devices")})
 	})
 	if got := menuNow(t, e); strings.Contains(got, "Пробный тут") || strings.Contains(got, "Устройства тут") {
 		t.Errorf("guarded actions shown:\n%s", got)

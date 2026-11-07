@@ -89,44 +89,50 @@ func TestValidateMessageLayout(t *testing.T) {
 		wantOK bool
 	}{
 		{"default", "menu.greeting", func(l *texts.MsgLayout) {}, true},
-		{"add custom url button", "menu.greeting", func(l *texts.MsgLayout) { l.Rows[6] = append(l.Rows[6], custom) }, true},
+		{"add custom url button", "menu.greeting", func(l *texts.MsgLayout) { l.Rows = append(l.Rows, []texts.Cell{custom}) }, true},
 		{"http url", "menu.greeting", func(l *texts.MsgLayout) {
 			c := custom
 			c.Action = "url:http://example.com"
-			l.Rows[6] = append(l.Rows[6], c)
+			l.Rows = append(l.Rows, []texts.Cell{c})
 		}, false},
 		{"javascript url", "menu.greeting", func(l *texts.MsgLayout) {
 			c := custom
 			c.Action = "url:javascript:alert(1)"
-			l.Rows[6] = append(l.Rows[6], c)
+			l.Rows = append(l.Rows, []texts.Cell{c})
 		}, false},
-		{"three in a row", "menu.greeting", func(l *texts.MsgLayout) { l.Rows[1] = append(l.Rows[1], custom) }, false},
-		{"nine rows", "menu.greeting", func(l *texts.MsgLayout) { l.Rows = append(l.Rows, []texts.Cell{custom}) }, false},
+		{"three in a row", "menu.greeting", func(l *texts.MsgLayout) { l.Rows[2] = append(l.Rows[2], custom) }, false},
+		{"nine rows", "menu.greeting", func(l *texts.MsgLayout) {
+			for _, id := range []string{"n1", "n2", "n3"} { // 6 рядов по умолчанию + 3 = 9
+				c := custom
+				c.ID = id
+				l.Rows = append(l.Rows, []texts.Cell{c})
+			}
+		}, false},
 		{"empty row", "menu.greeting", func(l *texts.MsgLayout) { l.Rows = append(l.Rows, nil) }, false},
 		{"duplicate id", "menu.greeting", func(l *texts.MsgLayout) {
 			c := custom
 			c.ID = "gift"
-			l.Rows[6] = append(l.Rows[6], c)
+			l.Rows = append(l.Rows, []texts.Cell{c})
 		}, false},
 		{"bad id", "menu.greeting", func(l *texts.MsgLayout) {
 			c := custom
 			c.ID = "Bad ID"
-			l.Rows[6] = append(l.Rows[6], c)
+			l.Rows = append(l.Rows, []texts.Cell{c})
 		}, false},
 		{"unknown action", "menu.greeting", func(l *texts.MsgLayout) { l.Rows[2][0].Action = "route:admin" }, false},
 		{"unknown condition", "menu.greeting", func(l *texts.MsgLayout) {
-			l.Rows[6][0].Conditions = []texts.CondRef{{ID: "nope"}}
+			l.Rows[5][0].Conditions = []texts.CondRef{{ID: "nope"}}
 		}, false},
 		{"condition twice / contradiction", "menu.greeting", func(l *texts.MsgLayout) {
-			l.Rows[6][0].Conditions = []texts.CondRef{{ID: "gifts_on"}, {ID: "gifts_on", Not: true}}
+			l.Rows[5][0].Conditions = []texts.CondRef{{ID: "gifts_on"}, {ID: "gifts_on", Not: true}}
 		}, false},
 		{"contradicts action guard", "menu.greeting", func(l *texts.MsgLayout) {
-			l.Rows[3][0].Conditions = []texts.CondRef{{ID: "trial_available", Not: true}}
+			l.Rows[0][1].Conditions = []texts.CondRef{{ID: "trial_available", Not: true}}
 		}, false},
 		{"not condition ok", "menu.greeting", func(l *texts.MsgLayout) {
-			l.Rows[3][0].Conditions = []texts.CondRef{{ID: "referral_on", Not: true}}
+			l.Rows[0][1].Conditions = []texts.CondRef{{ID: "referral_on", Not: true}}
 		}, true},
-		{"remove removable", "menu.greeting", func(l *texts.MsgLayout) { l.Rows = slices.Delete(l.Rows, 7, 8) }, true},
+		{"remove removable", "menu.greeting", func(l *texts.MsgLayout) { l.Rows[5] = l.Rows[5][:1] }, true},
 		{"remove locked buy", "menu.greeting", func(l *texts.MsgLayout) { l.Rows = slices.Delete(l.Rows, 0, 1) }, false},
 		{"locked changes action", "menu.greeting", func(l *texts.MsgLayout) { l.Rows[0][0].Action = "route:info" }, false},
 		{"locked gets condition", "menu.greeting", func(l *texts.MsgLayout) {
@@ -152,22 +158,22 @@ func TestValidateMessageLayout(t *testing.T) {
 		{"empty label without key", "menu.greeting", func(l *texts.MsgLayout) {
 			c := custom
 			c.Label = ""
-			l.Rows[6] = append(l.Rows[6], c)
+			l.Rows = append(l.Rows, []texts.Cell{c})
 		}, false},
 		{"label too long", "menu.greeting", func(l *texts.MsgLayout) {
 			c := custom
 			c.Label = strings.Repeat("я", 65)
-			l.Rows[6] = append(l.Rows[6], c)
+			l.Rows = append(l.Rows, []texts.Cell{c})
 		}, false},
 		{"label unknown var", "menu.greeting", func(l *texts.MsgLayout) {
 			c := custom
 			c.Label = "{{.nope}}"
-			l.Rows[6] = append(l.Rows[6], c)
+			l.Rows = append(l.Rows, []texts.Cell{c})
 		}, false},
 		{"label with global var", "menu.greeting", func(l *texts.MsgLayout) {
 			c := custom
 			c.Label = "Привет {{.username}}"
-			l.Rows[6] = append(l.Rows[6], c)
+			l.Rows = append(l.Rows, []texts.Cell{c})
 		}, true},
 		{"bad style", "menu.greeting", func(l *texts.MsgLayout) { l.Rows[2][0].Style = "red" }, false},
 		{"tariffs template removed", "payment.tariffs", func(l *texts.MsgLayout) { l.Rows = l.Rows[1:] }, false},
@@ -294,10 +300,10 @@ func TestEqualAndClone(t *testing.T) {
 func TestMessageLayoutProblemIsPlain(t *testing.T) {
 	for name, mut := range map[string]func(l *texts.MsgLayout){
 		"guard contradiction": func(l *texts.MsgLayout) {
-			l.Rows[3][0].Conditions = []texts.CondRef{{ID: "trial_available", Not: true}}
+			l.Rows[0][1].Conditions = []texts.CondRef{{ID: "trial_available", Not: true}}
 		},
 		"condition twice": func(l *texts.MsgLayout) {
-			l.Rows[6][0].Conditions = []texts.CondRef{{ID: "gifts_on"}, {ID: "gifts_on", Not: true}}
+			l.Rows[5][0].Conditions = []texts.CondRef{{ID: "gifts_on"}, {ID: "gifts_on", Not: true}}
 		},
 	} {
 		err := valid(t, "menu.greeting", mut)
