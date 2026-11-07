@@ -25,6 +25,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
+	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
 const adminID = 1
@@ -62,6 +63,7 @@ type fakeStore struct {
 	lastDays     int
 	lastBF       model.BroadcastFilter
 	styles       map[string]string
+	layouts      map[string]texts.Layout
 	directs      []model.DirectMessage
 	photos       map[uuid.UUID]fakePhoto
 
@@ -218,6 +220,31 @@ func (f *fakeStore) SetTextStyle(_ context.Context, key string, style *string) e
 	} else {
 		f.styles[key] = *style
 	}
+	return nil
+}
+
+func (f *fakeStore) KeyboardLayouts(context.Context) (map[string]texts.Layout, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]texts.Layout{}
+	maps.Copy(out, f.layouts)
+	return out, nil
+}
+
+func (f *fakeStore) SaveKeyboardLayout(_ context.Context, id string, l texts.Layout) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.layouts == nil {
+		f.layouts = map[string]texts.Layout{}
+	}
+	f.layouts[id] = l
+	return nil
+}
+
+func (f *fakeStore) DeleteKeyboardLayout(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.layouts, id)
 	return nil
 }
 

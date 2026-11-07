@@ -48,6 +48,8 @@ type textItem struct {
 	Buttons    []string  `json:"buttons"`
 	Route      string    `json:"route,omitempty"`
 	Style      string    `json:"style"`
+	// Keyboards: клавиатуры под сообщением с действующей раскладкой (пусто — у сообщения нет настраиваемых кнопок).
+	Keyboards []kbItem `json:"keyboards"`
 	// Inactive: сохранённый текст не проходит проверку, бот его не применяет (та же texts.ValidateStored).
 	Inactive bool   `json:"inactive"`
 	Problem  string `json:"problem,omitempty"`
@@ -101,10 +103,16 @@ func (s *server) texts(w http.ResponseWriter, r *http.Request) {
 		internal(w, r, "list texts", err)
 		return
 	}
+	layouts, err := s.Store.KeyboardLayouts(r.Context())
+	if err != nil {
+		internal(w, r, "list texts", err)
+		return
+	}
+	kbs := keyboardItems(layouts, over, styles, cur.Vars)
 	reg := texts.Registry()
 	items := make([]textItem, 0, len(reg))
 	for _, d := range reg {
-		it := textItem{Key: d.Key, Group: d.Group, Title: d.Title, Kind: string(d.Kind), Default: d.Default, Body: d.Default, Vars: toTextVars(d.Vars), When: d.When, Buttons: append([]string{}, d.Buttons...), Route: d.Route, Style: d.Style}
+		it := textItem{Key: d.Key, Group: d.Group, Title: d.Title, Kind: string(d.Kind), Default: d.Default, Body: d.Default, Vars: toTextVars(d.Vars), When: d.When, Buttons: append([]string{}, d.Buttons...), Route: d.Route, Style: d.Style, Keyboards: keyboardsFor(kbs, d.Key)}
 		if st, ok := styles[d.Key]; ok {
 			it.Style = st
 		}

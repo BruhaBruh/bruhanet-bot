@@ -17,6 +17,7 @@ import (
 
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/settings"
+	"github.com/bruhabruh/bruhanet/core/texts"
 )
 
 // Store — методы core/store, которыми пользуется api.
@@ -49,6 +50,9 @@ type Store interface {
 	ClearTextBody(ctx context.Context, key string) error
 	TextStyles(ctx context.Context) (map[string]string, error)
 	SetTextStyle(ctx context.Context, key string, style *string) error
+	KeyboardLayouts(ctx context.Context) (map[string]texts.Layout, error)
+	SaveKeyboardLayout(ctx context.Context, id string, l texts.Layout) error
+	DeleteKeyboardLayout(ctx context.Context, id string) error
 	SettingsRaw(ctx context.Context) (map[string][]byte, error)
 	SetSettings(ctx context.Context, values map[string][]byte) error
 	Enqueue(ctx context.Context, m model.OutboxMessage) error
@@ -162,6 +166,8 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("PUT /api/texts/{key}", s.putText)
 	apiMux.HandleFunc("DELETE /api/texts/{key}", s.deleteText)
 	apiMux.HandleFunc("POST /api/texts/{key}/test", s.testText)
+	apiMux.HandleFunc("PUT /api/keyboards/{id}", s.putKeyboard)
+	apiMux.HandleFunc("DELETE /api/keyboards/{id}", s.deleteKeyboard)
 	apiMux.HandleFunc("GET /api/settings", s.settings)
 	apiMux.HandleFunc("PUT /api/settings", s.putSettings)
 	apiMux.HandleFunc("POST /api/broadcasts/preview-send", s.previewBroadcast)
