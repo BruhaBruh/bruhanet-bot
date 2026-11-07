@@ -104,6 +104,7 @@ func newApp(logger *slog.Logger, conf *config.Config) (app.App, error) {
 			Panel:    panel,
 			Telegram: tg,
 			Identity: tg,
+			Avatars:  tg,
 			Defaults: defaults,
 			Squad:    conf.Remnawave.InternalSquadId,
 			AdminID:  conf.Telegram.AdminID,

@@ -98,6 +98,8 @@ type Deps struct {
 	Store    Store
 	Panel    Panel
 	Telegram PhotoSender
+	// Avatars — аватарки из Telegram; nil — /api/avatars/* всегда 404.
+	Avatars AvatarSource
 	// Identity — getMe/getChat для /api/me и /auth/bot; nil — имена пустые.
 	Identity Identity
 	// Defaults — настройки по умолчанию из env (те же PAYMENT_*/SUPPORT_URL, что у бота).
@@ -122,13 +124,14 @@ type server struct {
 	secure     bool
 	botCache   lazyWho
 	adminCache lazyWho
+	avatars    *avatarCache
 }
 
 func New(d Deps) http.Handler {
 	if d.PanelTimeout == 0 {
 		d.PanelTimeout = 5 * time.Second
 	}
-	s := &server{Deps: d, secure: strings.HasPrefix(d.BaseURL, "https://")}
+	s := &server{Deps: d, secure: strings.HasPrefix(d.BaseURL, "https://"), avatars: newAvatarCache()}
 	// default-deny: всё под /api/ живёт в apiMux и проходит jsonOnly (дёшево, без БД) и сессию.
 	// Тот же *Request уходит во вложенный мукс, он перезаписывает r.Pattern — метрика видит точный шаблон.
 	apiMux := http.NewServeMux()
@@ -141,6 +144,7 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("POST /api/sync", s.runSync)
 	apiMux.HandleFunc("GET /api/payments", s.payments)
 	apiMux.HandleFunc("GET /api/payments/{id}/photo", s.paymentPhoto)
+	apiMux.HandleFunc("GET /api/avatars/{id}", s.avatarImage)
 	apiMux.HandleFunc("POST /api/payments/{id}/confirm", s.resolvePayment(true))
 	apiMux.HandleFunc("POST /api/payments/{id}/decline", s.resolvePayment(false))
 	apiMux.HandleFunc("GET /api/texts", s.texts)
