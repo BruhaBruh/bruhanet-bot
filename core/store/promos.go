@@ -114,7 +114,7 @@ func (s *Store) EnablePromo(ctx context.Context, id int64) error {
 // PromoActivations — кто и когда активировал код, новые первыми.
 func (s *Store) PromoActivations(ctx context.Context, id int64) ([]model.PromoActivation, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT a.id, a.promo_id, a.telegram_id, coalesce(u.username, ''), a.payment_id, a.created_at
+		SELECT a.id, a.promo_id, a.telegram_id, coalesce(u.username, ''), trim(concat_ws(' ', u.first_name, u.last_name)), a.payment_id, a.created_at
 		FROM promo_activations a LEFT JOIN users u ON u.telegram_id = a.telegram_id
 		WHERE a.promo_id = $1 ORDER BY a.id DESC`, id)
 	if err != nil {
@@ -124,7 +124,7 @@ func (s *Store) PromoActivations(ctx context.Context, id int64) ([]model.PromoAc
 	out := []model.PromoActivation{}
 	for rows.Next() {
 		var a model.PromoActivation
-		if err = rows.Scan(&a.ID, &a.PromoID, &a.TelegramID, &a.Username, &a.PaymentID, &a.CreatedAt); err != nil {
+		if err = rows.Scan(&a.ID, &a.PromoID, &a.TelegramID, &a.Username, &a.Name, &a.PaymentID, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

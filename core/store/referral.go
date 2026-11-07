@@ -122,9 +122,9 @@ func (s *Store) UserReferral(ctx context.Context, id int64) (model.UserReferral,
 	err := s.pool.QueryRow(ctx, `
 		SELECT (SELECT count(*) FROM users WHERE referred_by = $1),
 		       (SELECT count(*) FROM referral_rewards WHERE referrer_id = $1),
-		       u.referred_by, coalesce(ru.username, '')
+		       u.referred_by, coalesce(ru.username, ''), trim(concat_ws(' ', ru.first_name, ru.last_name))
 		FROM users u LEFT JOIN users ru ON ru.telegram_id = u.referred_by WHERE u.telegram_id = $1`, id).
-		Scan(&r.Invited, &r.Paid, &r.ReferredBy, &r.ReferredByUsername)
+		Scan(&r.Invited, &r.Paid, &r.ReferredBy, &r.ReferredByUsername, &r.ReferredByName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.UserReferral{}, ErrNotFound
 	}

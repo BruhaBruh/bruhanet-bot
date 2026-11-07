@@ -51,6 +51,7 @@ type PromoActivation struct {
 	PromoID    int64     `json:"promoId"`
 	TelegramID int64     `json:"telegramId"`
 	Username   string    `json:"username"`
+	Name       string    `json:"name"`
 	PaymentID  *int64    `json:"paymentId"`
 	CreatedAt  time.Time `json:"createdAt"`
 }

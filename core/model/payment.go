@@ -24,6 +24,7 @@ type Payment struct {
 	ID             int64         `json:"id"`
 	TelegramID     int64         `json:"telegramId"`
 	Username       string        `json:"username"`
+	Name           string        `json:"name"` // имя и фамилия юзера из users; пусто, если неизвестны
 	Month          int           `json:"month"`
 	Price          int           `json:"price"`
 	Status         PaymentStatus `json:"status"`
@@ -100,4 +101,5 @@ type UserReferral struct {
 	Paid               int    `json:"paid"`
 	ReferredBy         *int64 `json:"referredBy"`
 	ReferredByUsername string `json:"referredByUsername"`
+	ReferredByName     string `json:"referredByName"`
 }

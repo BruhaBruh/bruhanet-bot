@@ -28,14 +28,14 @@ func NewGiftCode() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-const giftCols = `g.id, g.code, g.months, g.status, g.buyer_id, coalesce(b.username, ''), g.payment_id, g.created_by_admin,
-	g.redeemed_by, coalesce(r.username, ''), g.redeemed_at, g.created_at`
+const giftCols = `g.id, g.code, g.months, g.status, g.buyer_id, coalesce(b.username, ''), trim(concat_ws(' ', b.first_name, b.last_name)), g.payment_id, g.created_by_admin,
+	g.redeemed_by, coalesce(r.username, ''), trim(concat_ws(' ', r.first_name, r.last_name)), g.redeemed_at, g.created_at`
 
 const giftFrom = ` FROM gifts g LEFT JOIN users b ON b.telegram_id = g.buyer_id LEFT JOIN users r ON r.telegram_id = g.redeemed_by`
 
 func scanGift(row pgx.Row) (g model.Gift, err error) {
-	err = row.Scan(&g.ID, &g.Code, &g.Months, &g.Status, &g.BuyerID, &g.BuyerName, &g.PaymentID, &g.ByAdmin,
-		&g.RedeemedBy, &g.RedeemedName, &g.RedeemedAt, &g.CreatedAt)
+	err = row.Scan(&g.ID, &g.Code, &g.Months, &g.Status, &g.BuyerID, &g.BuyerName, &g.BuyerFullName, &g.PaymentID, &g.ByAdmin,
+		&g.RedeemedBy, &g.RedeemedName, &g.RedeemedFullName, &g.RedeemedAt, &g.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}

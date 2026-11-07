@@ -342,3 +342,22 @@ func TestPaymentPromoCode(t *testing.T) {
 		t.Fatalf("resolved = %+v, err = %v", res, err)
 	}
 }
+
+func TestListPaymentsCarriesUserName(t *testing.T) {
+	s := testStore(t)
+	ctx := t.Context()
+	at := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	if err := s.TouchUser(ctx, model.UserSeen{TelegramID: 1, FirstName: "Анна", LastName: "К", At: at}); err != nil {
+		t.Fatal(err)
+	}
+	addPayment(t, s, 1, model.PaymentPending, 100, at, nil)
+	addUser(t, s, 2, "") // имени нет
+	addPayment(t, s, 2, model.PaymentPending, 100, at, nil)
+	ps, _, err := s.ListPayments(ctx, model.PaymentFilter{Limit: 10})
+	if err != nil || len(ps) != 2 {
+		t.Fatalf("%v %v", ps, err)
+	}
+	if ps[1].Name != "Анна К" || ps[0].Name != "" {
+		t.Fatalf("names: %q %q", ps[1].Name, ps[0].Name)
+	}
+}
