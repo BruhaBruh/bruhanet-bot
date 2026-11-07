@@ -147,7 +147,7 @@ func (h *handlers) submitPhoto(ctx context.Context, b *bot.Bot, u *models.Update
 	if stats.UnpaidAdvances < limit && p.Kind == model.KindTariff {
 		h.grantAdvance(ctx, b, u, p)
 	} else {
-		send(ctx, b, u.Message.Chat.ID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))
+		send(ctx, b, u.Message.Chat.ID, h.mainKeyboard(ctx, p.TelegramID, "payment.photo_sent"), h.c.Text(ctx, "payment.photo_sent", nil))
 	}
 	// кнопки — только после выдачи аванса: быстрый клик админа не перезапишет grantAdvance
 	_, err = b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{
@@ -189,10 +189,10 @@ func (h *handlers) grantAdvance(ctx context.Context, b *bot.Bot, u *models.Updat
 	case panelErr != nil:
 		stlog.Error(ctx, "failed to grant advance day", "error", panelErr)
 	default:
-		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent_advance", map[string]string{"advance": advanceText(h.c.Settings(ctx).AdvanceHours)}))
+		send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID, "payment.photo_sent_advance"), h.c.Text(ctx, "payment.photo_sent_advance", map[string]string{"advance": advanceText(h.c.Settings(ctx).AdvanceHours)}))
 		return
 	}
-	send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID), h.c.Text(ctx, "payment.photo_sent", nil))
+	send(ctx, b, chatID, h.mainKeyboard(ctx, p.TelegramID, "payment.photo_sent"), h.c.Text(ctx, "payment.photo_sent", nil))
 }
 
 // forwardPhoto досылает админу лишнее фото платежа на проверке; юзеру не отвечаем.

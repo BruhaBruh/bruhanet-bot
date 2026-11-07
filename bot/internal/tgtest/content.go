@@ -16,6 +16,7 @@ type Source struct {
 	contacts map[int64]model.UserContact
 	styles   map[string]string
 	layouts  map[string]texts.Layout
+	msgKbs   map[string]texts.MsgLayout
 }
 
 // SetLayouts — раскладки клавиатур «из админки».
@@ -29,6 +30,19 @@ func (s *Source) KeyboardLayouts(context.Context) (map[string]texts.Layout, erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.layouts, nil
+}
+
+// SetMessageKeyboards — клавиатуры сообщений «из админки».
+func (s *Source) SetMessageKeyboards(l map[string]texts.MsgLayout) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.msgKbs = l
+}
+
+func (s *Source) MessageKeyboards(context.Context) (map[string]texts.MsgLayout, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.msgKbs, nil
 }
 
 func (s *Source) SetStyles(styles map[string]string) {

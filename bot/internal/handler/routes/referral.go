@@ -44,7 +44,7 @@ func (h *handlers) referral(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	link := "https://t.me/" + name + "?start=" + refPrefix + strconv.FormatInt(tgupdate.UserID(u), 10)
-	show(ctx, b, u, newKB(ctx, h.c, "referral").
+	show(ctx, b, u, h.kb(ctx, "referral", "referral.menu").
 		copy("button.copy_link", link, keyboard.StyleSuccess).
 		callback("button.back", routeMenu, keyboard.StyleDefault).markup(),
 		h.c.Text(ctx, "referral.menu", map[string]string{"days": strconv.Itoa(set.ReferralDays), "link": link}))

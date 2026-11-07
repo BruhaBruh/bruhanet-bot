@@ -18,7 +18,7 @@ func (h *handlers) info(ctx context.Context, b *bot.Bot, u *models.Update) {
 	telegramID := tgupdate.UserID(u)
 	user, err := h.rw.GetUser(ctx, telegramID)
 	if errors.Is(err, remnawave.ErrUserNotFound) {
-		show(ctx, b, u, newKB(ctx, h.c, "info_new").
+		show(ctx, b, u, newKB(ctx, h.c, "info_new", "menu.info_not_bought").inPanel(false).
 			callback("button.buy", routePay, keyboard.StyleSuccess).
 			callback("button.back", routeMenu, keyboard.StyleDefault).markup(),
 			h.c.Text(ctx, "menu.info_not_bought", nil))
@@ -36,7 +36,7 @@ func (h *handlers) info(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	traffic := formatBytes(user.UserTraffic.UsedTrafficBytes) + " из " + allowed
 
-	show(ctx, b, u, newKB(ctx, h.c, "info").
+	show(ctx, b, u, newKB(ctx, h.c, "info", "menu.info").known(telegramID, user, h.trialOffered).
 		callback("button.renew", routePay, keyboard.StyleDefault).
 		copy("button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess).
 		callback("button.back", routeMenu, keyboard.StyleDefault).markup(),

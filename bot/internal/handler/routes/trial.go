@@ -60,7 +60,7 @@ func (h *handlers) trial(ctx context.Context, b *bot.Bot, u *models.Update) {
 	case !ok:
 		h.trialUnavailable(ctx, b, u)
 	default:
-		show(ctx, b, u, newKB(ctx, h.c, "trial_confirm").
+		show(ctx, b, u, h.kb(ctx, "trial_confirm", "trial.confirm").
 			callback("button.yes", routeTrialYes, keyboard.StyleSuccess).
 			callback("button.no", routeMenu, keyboard.StyleDanger).markup(),
 			h.c.Text(ctx, "trial.confirm", trialVars(set.TrialDays, set.TrialDevices)))

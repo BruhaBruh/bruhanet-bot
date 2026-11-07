@@ -60,6 +60,19 @@ func dumpMarkup(t *testing.T, kb *models.InlineKeyboardMarkup) string {
 
 // Раскладка клавиатур без единой правки из админки — побайтно как до появления настраиваемых раскладок.
 func TestKeyboardsGolden(t *testing.T) {
+	goldenCheck(t, true)
+}
+
+// Клавиатура по умолчанию из конструктора, «сохранённая» у каждого сообщения, даёт те же 41 клавиатуру побайтно:
+// путь конструктора (условия, действия, шаблоны) равен коду.
+func TestKeyboardsGoldenViaConstructor(t *testing.T) {
+	defaultsAsStored = true
+	t.Cleanup(func() { defaultsAsStored = false })
+	goldenCheck(t, false)
+}
+
+func goldenCheck(t *testing.T, canUpdate bool) {
+	t.Helper()
 	var out strings.Builder
 	add := func(name, dump string) { out.WriteString("== " + name + "\n" + dump) }
 	sent := func(e *env) string { return dumpKeyboard(t, e.last(t, "sendMessage").Params.Get("reply_markup")) }
@@ -161,7 +174,7 @@ func TestKeyboardsGolden(t *testing.T) {
 	add("payment.declined (not in panel)", dumpMarkup(t, kb))
 
 	const path = "testdata/keyboards.golden"
-	if *update {
+	if *update && canUpdate {
 		if err := os.WriteFile(path, []byte(out.String()), 0o644); err != nil {
 			t.Fatal(err)
 		}

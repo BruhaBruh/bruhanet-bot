@@ -2,9 +2,12 @@ package texts
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/bruhabruh/bruhanet/core/usererr"
 )
 
 // Конструктор клавиатур: у каждого сообщения (ключ текста реестра) своя клавиатура из кнопок
@@ -139,6 +142,11 @@ type MsgLayout struct {
 
 // ErrBadMessageLayout — клавиатура сообщения не проходит проверку.
 var ErrBadMessageLayout = errors.New("invalid message keyboard")
+
+// badTitled — ошибка, где в русском тексте название (по-русски), а в английском — id.
+func badTitled(en, ru, id, title string) error {
+	return errors.Join(ErrBadMessageLayout, ErrBadLayout, &usererr.Error{En: fmt.Sprintf(en, id), Ru: fmt.Sprintf(ru, title)})
+}
 
 func badMsg(en, ru string, args ...any) error {
 	return errors.Join(ErrBadMessageLayout, bad(en, ru, args...))
@@ -444,7 +452,7 @@ func ValidateMessageLayout(key string, l MsgLayout, custom map[string]string, st
 		ids[c.ID] = true
 		if a, _ := LookupAction(c.Action); a.Bound {
 			if bound[c.Action] {
-				return badMsg("action %q is used twice", "действие «%s» уже стоит на другой кнопке", a.Title)
+				return badTitled("action %q is used twice", "действие «%s» уже стоит на другой кнопке", c.Action, a.Title)
 			}
 			bound[c.Action] = true
 		}
@@ -454,9 +462,9 @@ func ValidateMessageLayout(key string, l MsgLayout, custom map[string]string, st
 		d := defByID[id]
 		switch {
 		case !present:
-			return badMsg("required button %q is missing", "кнопку «%s» нельзя убрать", cellTitle(d))
+			return badTitled("required button %q is missing", "кнопку «%s» нельзя убрать", id, cellTitle(d))
 		case c.Action != d.Action || !slices.Equal(c.Conditions, d.Conditions):
-			return badMsg("required button %q changed action or conditions", "у кнопки «%s» нельзя менять действие и условия", cellTitle(d))
+			return badTitled("required button %q changed action or conditions", "у кнопки «%s» нельзя менять действие и условия", id, cellTitle(d))
 		}
 	}
 	return nil
@@ -525,11 +533,11 @@ func validateCell(c Cell, defByID, defByAction map[string]Cell, custom map[strin
 			return badMsg("unknown condition %q", "неизвестное условие %q", cr.ID)
 		}
 		if seen[cr.ID] {
-			return badMsg("condition %q is listed twice", "условие «%s» указано дважды", conditionTitle(cr.ID))
+			return badTitled("condition %q is listed twice", "условие «%s» указано дважды", cr.ID, conditionTitle(cr.ID))
 		}
 		seen[cr.ID] = true
 		if guard != "" && cr.ID == guard && cr.Not {
-			return badMsg("condition %q contradicts the action guard", "кнопка не может показаться никогда: условие «НЕ %s» противоречит встроенному ограничению действия", conditionTitle(cr.ID))
+			return badTitled("condition %q contradicts the action guard", "кнопка не может показаться никогда: условие «НЕ %s» противоречит встроенному ограничению действия", cr.ID, conditionTitle(cr.ID))
 		}
 	}
 	return nil
@@ -554,7 +562,7 @@ func validateAction(c Cell, defByAction map[string]Cell) (string, error) {
 	}
 	if a.Bound {
 		if d, has := defByAction[c.Action]; !has || d.ID != c.ID {
-			return "", badMsg("action %q is not available here", "действие «%s» здесь недоступно", a.Title)
+			return "", badTitled("action %q is not available here", "действие «%s» здесь недоступно", c.Action, a.Title)
 		}
 	}
 	return a.Guard, nil

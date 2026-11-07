@@ -28,6 +28,12 @@ var (
 	buyRoute   = callback.New[int]("buy")
 )
 
+// tariffsKey / confirmKey — сообщение, под которым стоит клавиатура экрана.
+var (
+	tariffsKey = map[string]string{"tariffs": "payment.tariffs", "gift_tariffs": "gift.tariffs"}
+	confirmKey = map[string]string{"confirm": "payment.confirm", "confirm_devices": "payment.confirm_devices"}
+)
+
 func (h *handlers) tariffs(ctx context.Context, b *bot.Bot, u *models.Update) {
 	show(ctx, b, u, h.tariffKeyboard(ctx), h.c.Text(ctx, "payment.tariffs", nil))
 }
@@ -45,7 +51,7 @@ func (h *handlers) tariffKeyboardFor(ctx context.Context, kb string, route callb
 		buttons = append(buttons, keyboard.Callback(h.c.Text(ctx, "button.tariff", tariffVars(m, prices[m])), route.Data(m)).
 			Style(h.c.Style(ctx, "button.tariff", keyboard.StyleDefault)))
 	}
-	return newKB(ctx, h.c, kb).block("@tariffs", keyboard.Grid(2, buttons...)).
+	return h.kb(ctx, kb, tariffsKey[kb]).block("@tariffs", keyboard.Grid(2, buttons...)).
 		callback("button.back", routeMenu, keyboard.StyleDefault).markup()
 }
 
@@ -74,7 +80,7 @@ func (h *handlers) price(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	confirm := func(id string) *kbBuilder {
-		return newKB(ctx, h.c, id).
+		return h.kb(ctx, id, confirmKey[id]).
 			callback("button.yes", buyRoute.Data(month), keyboard.StyleSuccess).
 			callback("button.no", routePay, keyboard.StyleDanger).
 			callback("button.have_promo", havePromoRoute.Data(month), keyboard.StyleDefault)

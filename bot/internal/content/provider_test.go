@@ -34,6 +34,7 @@ type fakeSource struct {
 	contactCalls int
 	styles       map[string]string
 	layouts      map[string]texts.Layout
+	msgKbs       map[string]texts.MsgLayout
 }
 
 func (f *fakeSource) TextOverrides(ctx context.Context) (map[string]string, error) {
@@ -77,6 +78,12 @@ func (f *fakeSource) KeyboardLayouts(context.Context) (map[string]texts.Layout, 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.layouts, f.err
+}
+
+func (f *fakeSource) MessageKeyboards(context.Context) (map[string]texts.MsgLayout, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.msgKbs, f.err
 }
 
 func (f *fakeSource) set(fn func(f *fakeSource)) {
@@ -445,5 +452,47 @@ func TestLayoutSnapshot(t *testing.T) {
 	clk.t = clk.t.Add(time.Minute)
 	if p.Layout(ctx, "menu") == nil {
 		t.Fatal("layout not loaded after recovery")
+	}
+}
+
+func TestProviderMessageKeyboards(t *testing.T) {
+	def, _, _ := texts.MessageDefault("referral.menu")
+	good := def.Clone()
+	good.Rows[0][0].Label = "Скопировать мне"
+	bad := def.Clone()
+	bad.Rows = bad.Rows[:1] // без обязательной «Назад»
+	src := &fakeSource{msgKbs: map[string]texts.MsgLayout{"referral.menu": good, "menu.info": bad, "ghost": good}}
+	p, clk, ctx, buf := setup(src)
+
+	if l := p.MessageLayout(ctx, "referral.menu"); l == nil || l.Rows[0][0].Label != good.Rows[0][0].Label {
+		t.Fatalf("referral layout = %+v", l)
+	}
+	if p.MessageLayout(ctx, "menu.info") != nil || p.MessageLayout(ctx, "ghost") != nil || p.MessageLayout(ctx, "error.generic") != nil {
+		t.Fatal("invalid, unknown or unsaved keyboard must fall back to the default")
+	}
+	if strings.Count(buf.String(), "using default") != 1 {
+		t.Fatalf("log: %s", buf)
+	}
+	clk.t = clk.t.Add(time.Minute)
+	src.set(func(f *fakeSource) { f.msgKbs = map[string]texts.MsgLayout{"menu.info": bad} })
+	if p.MessageLayout(ctx, "referral.menu") != nil {
+		t.Fatal("deleted keyboard still applied")
+	}
+	if strings.Count(buf.String(), "using default") != 1 {
+		t.Fatalf("warned again: %s", buf)
+	}
+}
+
+func TestProviderLabel(t *testing.T) {
+	p, _, ctx, _ := setup(&fakeSource{})
+	ctx = content.ForUser(ctx, 7)
+	if got := p.Label(ctx, "Мой ID {{.telegramId}}"); got != "Мой ID 7" {
+		t.Errorf("label = %q", got)
+	}
+	if got := p.Label(ctx, strings.Repeat("я", 80)); len([]rune(got)) > 64 {
+		t.Errorf("label not clipped: %d", len([]rune(got)))
+	}
+	if got := p.Label(ctx, "{{.nope}}"); got != "•" {
+		t.Errorf("empty label = %q", got)
 	}
 }

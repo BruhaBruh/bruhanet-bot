@@ -90,7 +90,7 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	vars := deviceVars(set, extra)
 	if devices.RemainingDays(user.ExpireAt, h.now()) == 0 {
-		show(ctx, b, u, newKB(ctx, h.c, "devices_no_term").
+		show(ctx, b, u, h.kb(ctx, "devices_no_term", "devices.no_term").
 			callback("button.renew", routePay, keyboard.StyleSuccess).
 			callback("button.back", routeMenu, keyboard.StyleDefault).markup(),
 			h.c.Text(ctx, "devices.no_term", vars))
@@ -107,7 +107,7 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 			Style(h.c.Style(ctx, "button.devices_add", keyboard.StyleDefault)))
 	}
 	h.leavePromo(ctx, userID)
-	show(ctx, b, u, newKB(ctx, h.c, "devices").block("@devices", keyboard.Grid(2, buttons...)).
+	show(ctx, b, u, h.kb(ctx, "devices", "devices.menu").block("@devices", keyboard.Grid(2, buttons...)).
 		callback("button.back", routeMenu, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.menu", vars))
 }
 
@@ -160,7 +160,7 @@ func (h *handlers) devicesPick(ctx context.Context, b *bot.Bot, u *models.Update
 	if !ok {
 		return
 	}
-	show(ctx, b, u, newKB(ctx, h.c, "devices_confirm").
+	show(ctx, b, u, h.kb(ctx, "devices_confirm", "devices.confirm").
 		callback("button.yes", devYesRoute.Data(n), keyboard.StyleSuccess).
 		callback("button.no", routeDevices, keyboard.StyleDanger).markup(),
 		h.c.Text(ctx, "devices.confirm", map[string]string{"count": devicesCount(n), "price": strconv.Itoa(price)}))

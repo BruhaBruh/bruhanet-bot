@@ -40,7 +40,7 @@ func (h *handlers) start(ctx context.Context, b *bot.Bot, u *models.Update) {
 		return
 	}
 	h.leavePromo(ctx, tgupdate.UserID(u))
-	show(ctx, b, u, h.mainKeyboard(ctx, tgupdate.UserID(u)), h.c.Text(ctx, "menu.greeting", nil))
+	show(ctx, b, u, h.mainKeyboard(ctx, tgupdate.UserID(u), "menu.greeting"), h.c.Text(ctx, "menu.greeting", nil))
 }
 
 // startPayload — аргумент deep link в «/start <payload>»; нет аргумента или это не /start — пусто.
@@ -102,20 +102,27 @@ func isPrivate(u *models.Update) bool {
 	return true
 }
 
-func (h *handlers) mainKeyboard(ctx context.Context, telegramID int64) *models.InlineKeyboardMarkup {
-	return mainKeyboard(ctx, h.c, h.rw, telegramID, h.trialOffered)
+func (h *handlers) mainKeyboard(ctx context.Context, telegramID int64, key string) *models.InlineKeyboardMarkup {
+	return mainKeyboard(ctx, h.c, h.rw, telegramID, key, h.trialOffered)
+}
+
+// kb — построитель клавиатуры сообщения key для получателя из контекста; юзер панели читается лениво, только если
+// условие кнопки этого просит.
+func (h *handlers) kb(ctx context.Context, id, key string) *kbBuilder {
+	return newKB(ctx, h.c, id, key).viaPanel(h.rw, h.trialOffered)
 }
 
 // trialOffer решает, показывать ли «Пробный период» (user — юзер панели, nil — юзера там нет);
 // nil — не показывать (уведомления из очереди идут юзерам, у которых он уже не нужен).
 type trialOffer func(ctx context.Context, telegramID int64, user *api.UserItemInfo) bool
 
-func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64, trial trialOffer) *models.InlineKeyboardMarkup {
+// key — сообщение, под которым стоит клавиатура (её раскладка из конструктора).
+func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegramID int64, key string, trial trialOffer) *models.InlineKeyboardMarkup {
 	set := c.Settings(ctx)
 	user, err := rw.GetUser(ctx, telegramID)
 	switch {
 	case errors.Is(err, remnawave.ErrUserNotFound):
-		kb := newKB(ctx, c, "menu_new").
+		kb := newKB(ctx, c, "menu_new", key).known(telegramID, nil, trial).
 			callback("button.buy", routePay, keyboard.StyleSuccess).
 			callback("button.promo", routePromo, keyboard.StyleDefault).
 			url("button.support", set.SupportURL, keyboard.StyleDanger)
@@ -128,7 +135,7 @@ func mainKeyboard(ctx context.Context, c *content.Provider, rw Remnawave, telegr
 		stlog.Error(ctx, "failed to get remnawave user", "error", err)
 		return keyboard.Inline(keyboard.Row(callbackButton(ctx, c, "button.service_down", routeMenu, keyboard.StyleDefault)))
 	}
-	kb := newKB(ctx, c, "menu").
+	kb := newKB(ctx, c, "menu", key).known(telegramID, user, trial).
 		callback("button.info", routeInfo, keyboard.StylePrimary).
 		callback("button.pay", routePay, keyboard.StyleDefault).
 		copy("button.subscription", user.SubscriptionUrl, keyboard.StyleSuccess).

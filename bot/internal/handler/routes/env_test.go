@@ -17,6 +17,7 @@ import (
 	coreconfig "github.com/bruhabruh/bruhanet/core/config"
 	"github.com/bruhabruh/bruhanet/core/model"
 	"github.com/bruhabruh/bruhanet/core/settings"
+	"github.com/bruhabruh/bruhanet/core/texts"
 	"github.com/bruhabruh/bruhanet/pkg/fsm"
 )
 
@@ -42,6 +43,9 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	return newEnvWithStore(t, fsm.NewInMemory())
 }
+
+// defaultsAsStored: у каждого сообщения «сохранена» клавиатура по умолчанию из конструктора (тест равенства путей).
+var defaultsAsStored bool
 
 func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 	t.Helper()
@@ -69,6 +73,14 @@ func newEnvWithStore(t *testing.T, store fsm.Storage) *env {
 	// пробный и рефералка по умолчанию выключены (settings.Defaults); тесты этих функций идут с включёнными
 	def := settings.Defaults(cfg.Payment.Prices, cfg.Payment.Phone, cfg.Payment.Bank, cfg.Support.URL)
 	def.TrialDays, def.ReferralDays = 3, 7
+	if defaultsAsStored {
+		all := map[string]texts.MsgLayout{}
+		for _, key := range texts.MessagesWithKeyboard() {
+			l, _, _ := texts.MessageDefault(key)
+			all[key] = l
+		}
+		e.src.SetMessageKeyboards(all)
+	}
 	e.c = content.New(e.src, def, 0,
 		func() time.Time { return now })
 	b, err := handler.New(logger, cfg, handler.Deps{

@@ -17,7 +17,7 @@ func ReminderMessage(ctx context.Context, c *content.Provider, kind string, expi
 	if kind == "day" {
 		key = "reminder.day"
 	}
-	return c.Text(ctx, key, map[string]string{"expireAt": formatTime(expireAt)}), newKB(ctx, c, "reminder").
+	return c.Text(ctx, key, map[string]string{"expireAt": formatTime(expireAt)}), newKB(ctx, c, "reminder", key).inPanel(true).
 		callback("button.renew", routePay, keyboard.StyleSuccess).
 		copy("button.subscription", subURL, keyboard.StylePrimary).markup()
 }
@@ -33,5 +33,5 @@ func PaymentNotice(ctx context.Context, c *content.Provider, rw Remnawave, teleg
 	if devices > 0 {
 		vars["devices"] = strconv.Itoa(devices)
 	}
-	return c.Text(ctx, key, vars), mainKeyboard(ctx, c, rw, telegramID, nil)
+	return c.Text(ctx, key, vars), mainKeyboard(ctx, c, rw, telegramID, key, nil)
 }

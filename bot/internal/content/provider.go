@@ -27,6 +27,7 @@ type Source interface {
 	UserContact(ctx context.Context, id int64) (model.UserContact, error)
 	TextStyles(ctx context.Context) (map[string]string, error)
 	KeyboardLayouts(ctx context.Context) (map[string]texts.Layout, error)
+	MessageKeyboards(ctx context.Context) (map[string]texts.MsgLayout, error)
 }
 
 // recipient — чьи данные подставлять в общие переменные текста; fromUpdate — имя уже известно из апдейта.
@@ -79,8 +80,9 @@ func FormatTime(t time.Time) string {
 type snapshot struct {
 	texts    map[string]string // только прошедшие texts.Validate
 	settings settings.Settings
-	styles   map[string]string       // сохранённые стили кнопок, только из texts.Styles
-	layouts  map[string]texts.Layout // сохранённые раскладки клавиатур, только прошедшие ValidateLayout
+	styles   map[string]string          // сохранённые стили кнопок, только из texts.Styles
+	layouts  map[string]texts.Layout    // сохранённые раскладки клавиатур, только прошедшие ValidateLayout
+	msgKbs   map[string]texts.MsgLayout // клавиатуры сообщений из конструктора, только прошедшие ValidateMessageLayout
 }
 
 // defaultRefreshTimeout — сколько ждать БД при обновлении кеша.
@@ -100,6 +102,7 @@ type Provider struct {
 	loadedAt   time.Time
 	refreshing bool
 	warned     map[string]string // key → тело, о невалидности которого уже предупредили; трогает только refresh
+	warnedMsg  map[string]string // ключ сообщения → клавиатура (json), о невалидности которой уже предупредили; трогает только refresh
 	warnedKb   map[string]string // id клавиатуры → раскладка (json), о невалидности которой уже предупредили; трогает только refresh
 	fitWarned  sync.Map          // key → struct{}: о подписи, не влезшей в лимит, предупредили
 }
@@ -231,6 +234,34 @@ func (p *Provider) Layout(ctx context.Context, id string) *texts.Layout {
 	return nil
 }
 
+// MessageLayout — клавиатура сообщения key из конструктора; nil — админ её не менял (или она не проходит проверку):
+// клавиатура по умолчанию из кода.
+func (p *Provider) MessageLayout(ctx context.Context, key string) *texts.MsgLayout {
+	if l, ok := p.current(ctx).msgKbs[key]; ok {
+		return &l
+	}
+	return nil
+}
+
+// Label — собственная подпись кнопки из конструктора: общие переменные подставлены, влезает в лимит кнопки
+// (иначе обрезана; пустая — «•»: Telegram отвергает пустую подпись вместе со всей клавиатурой).
+func (p *Provider) Label(ctx context.Context, raw string) string {
+	out := texts.RenderPlain(raw, p.values(ctx, p.current(ctx).settings, raw, nil))
+	if !texts.FitsPlain(out) {
+		out = texts.ClipPlain(out)
+	}
+	if strings.TrimSpace(out) == "" {
+		return "•"
+	}
+	return out
+}
+
+// RecipientID — telegram id получателя текста из контекста (0 — не задан).
+func RecipientID(ctx context.Context) int64 {
+	r, _ := ctx.Value(recipientKey{}).(recipient)
+	return r.id
+}
+
 func (p *Provider) Settings(ctx context.Context) settings.Settings {
 	return p.current(ctx).settings
 }
@@ -289,7 +320,36 @@ func (p *Provider) refresh(ctx context.Context) {
 	} else {
 		next.layouts = p.validLayouts(ctx, stored)
 	}
+	if stored, err := p.src.MessageKeyboards(ctx); err != nil {
+		stlog.Warn(ctx, "failed to load message keyboards, using cached", "error", err)
+	} else {
+		next.msgKbs = p.validMessageKeyboards(ctx, stored, next.settings.Vars)
+	}
 	p.snap.Store(&next)
+}
+
+// validMessageKeyboards отбрасывает клавиатуры сообщений, не прошедшие texts.ValidateMessageLayout (без лимитов рядов:
+// перенесённые из старых раскладок могут их превышать); бот строит клавиатуру по умолчанию. warn — один раз на пару
+// (сообщение, клавиатура).
+func (p *Provider) validMessageKeyboards(ctx context.Context, stored map[string]texts.MsgLayout, custom map[string]string) map[string]texts.MsgLayout {
+	out := make(map[string]texts.MsgLayout, len(stored))
+	warned := map[string]string{}
+	for key, l := range stored {
+		if _, _, ok := texts.MessageDefault(key); !ok {
+			continue
+		}
+		if err := texts.ValidateMessageLayout(key, l, custom, false); err != nil {
+			raw, _ := json.Marshal(l)
+			if prev, ok := p.warnedMsg[key]; !ok || prev != string(raw) {
+				stlog.Warn(ctx, "invalid message keyboard, using default", "key", key, "error", err)
+			}
+			warned[key] = string(raw)
+			continue
+		}
+		out[key] = l
+	}
+	p.warnedMsg = warned
+	return out
 }
 
 // validLayouts отбрасывает раскладки, не прошедшие texts.Keyboard.ValidateLayout (бот работает на расположении по

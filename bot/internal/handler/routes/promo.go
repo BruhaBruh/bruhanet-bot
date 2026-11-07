@@ -99,7 +99,7 @@ func (h *handlers) paymentPromoText(ctx context.Context, b *bot.Bot, u *models.U
 	vars := tariffVars(d.Month, promo.Apply(base, p))
 	vars["base"] = strconv.Itoa(base)
 	vars["code"] = p.Code
-	send(ctx, b, tgupdate.ChatID(u), newKB(ctx, h.c, "confirm_promo").
+	send(ctx, b, tgupdate.ChatID(u), h.kb(ctx, "confirm_promo", "promo.confirm_discount").
 		callback("button.yes", buyPromoRoute.Data(d.Month, p.ID), keyboard.StyleSuccess).
 		callback("button.no", routePay, keyboard.StyleDanger).
 		callback("button.remove_promo", priceRoute.Data(d.Month), keyboard.StyleDefault).markup(),
@@ -149,7 +149,7 @@ func (h *handlers) menuPromoText(ctx context.Context, b *bot.Bot, u *models.Upda
 		return
 	}
 	h.leavePromo(ctx, from.ID)
-	send(ctx, b, tgupdate.ChatID(u), h.mainKeyboard(ctx, from.ID), h.c.Text(ctx, "promo.days_granted",
+	send(ctx, b, tgupdate.ChatID(u), h.mainKeyboard(ctx, from.ID, "promo.days_granted"), h.c.Text(ctx, "promo.days_granted",
 		map[string]string{"days": strconv.Itoa(p.Value), "expireAt": formatTime(expireAt)}))
 }
 
@@ -228,7 +228,7 @@ func (h *handlers) payByPromo(ctx context.Context, b *bot.Bot, u *models.Update,
 	vars := tariffVars(pay.Month, pay.Price)
 	vars["expireAt"] = formatTime(payflow.ExtendedExpire(pay.PrevExpireAt, at, pay.Month))
 	text := h.c.Text(ctx, "promo.paid_by_promo", vars)
-	kb := h.mainKeyboard(ctx, pay.TelegramID)
+	kb := h.mainKeyboard(ctx, pay.TelegramID, "promo.paid_by_promo")
 	var written, old time.Time // срок, который мы пытались записать, и прежний
 	squad := h.cfg.Remnawave.InternalSquadId
 	_, err := h.pay.ResolvePayment(ctx, pay.ID, model.PaymentConfirmed, at, func(x model.Payment) ([]model.OutboxMessage, error) {

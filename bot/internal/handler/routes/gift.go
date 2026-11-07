@@ -61,7 +61,7 @@ func (h *handlers) giftPrice(ctx context.Context, b *bot.Bot, u *models.Update) 
 		h.gift(ctx, b, u)
 		return
 	}
-	show(ctx, b, u, newKB(ctx, h.c, "gift_confirm").
+	show(ctx, b, u, h.kb(ctx, "gift_confirm", "gift.confirm").
 		callback("button.yes", giftBuyRoute.Data(month), keyboard.StyleSuccess).
 		callback("button.no", routeGift, keyboard.StyleDanger).markup(),
 		h.c.Text(ctx, "gift.confirm", tariffVars(month, price)))
@@ -149,9 +149,9 @@ func GiftNotice(ctx context.Context, c *content.Provider, rw Remnawave, botName 
 	if m.TextKey == "gift.ready" {
 		link := giftLink(botName, m.GiftCode)
 		vars["link"] = link
-		return c.Text(ctx, m.TextKey, vars), newKB(ctx, c, "gift_ready").
+		return c.Text(ctx, m.TextKey, vars), newKB(ctx, c, "gift_ready", m.TextKey).viaPanel(rw, nil).
 			copy("button.copy_link", link, keyboard.StyleSuccess).
 			callback("button.back", routeMenu, keyboard.StyleDefault).markup()
 	}
-	return c.Text(ctx, m.TextKey, vars), mainKeyboard(ctx, c, rw, m.ChatID, nil)
+	return c.Text(ctx, m.TextKey, vars), mainKeyboard(ctx, c, rw, m.ChatID, m.TextKey, nil)
 }
