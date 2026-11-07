@@ -642,7 +642,7 @@ describe('Composer', () => {
       const { r, setText, click } = await setup()
       await setText('hi')
       await addButton('Сайт', 'https://e.com/x')
-      fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Стиль кнопки 1' })).getByRole('radio', { name: 'Основная (синяя)' }))
+      fireEvent.change(screen.getByRole('combobox', { name: 'Стиль кнопки 1' }), { target: { value: 'primary' } })
       fireEvent.click(screen.getByRole('switch', { name: 'Без звука' }))
       await flush()
       const aside = within(r.container).getByRole('complementary', { name: 'Превью сообщения' })
@@ -683,15 +683,64 @@ describe('Composer', () => {
       expect(disabled(btn(SEND))).toBe(false)
     })
 
-    it('at most 3 buttons; delete frees a slot; text input is capped at 64', async () => {
+    it('at most 6 buttons; delete frees a slot; text input is capped at 64', async () => {
       await setup()
-      for (let i = 1; i <= 3; i++) await addButton(`b${i}`, 'https://e.com')
+      for (let i = 1; i <= 6; i++) await addButton(`b${i}`, 'https://e.com')
       expect((screen.getByRole('button', { name: 'Добавить кнопку' }) as HTMLButtonElement).disabled).toBe(true)
       expect((screen.getByRole('textbox', { name: 'Текст кнопки 1' }) as HTMLInputElement).maxLength).toBe(64)
       fireEvent.click(screen.getByRole('button', { name: 'Удалить кнопку 2' }))
       await flush()
       expect((screen.getByRole('button', { name: 'Добавить кнопку' }) as HTMLButtonElement).disabled).toBe(false)
-      expect(screen.getAllByRole('textbox', { name: /^Текст кнопки/ })).toHaveLength(2)
+      expect(screen.getAllByRole('textbox', { name: /^Текст кнопки/ })).toHaveLength(5)
+    })
+
+    it('url field is above the text field, style is a select', async () => {
+      await setup()
+      await addButton('a', 'https://e.com')
+      const url = screen.getByRole('textbox', { name: 'Ссылка кнопки 1' })
+      const text = screen.getByRole('textbox', { name: 'Текст кнопки 1' })
+      expect(url.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      const select = screen.getByRole('combobox', { name: 'Стиль кнопки 1' })
+      expect(Array.from((select as HTMLSelectElement).options).map((o) => o.value)).toEqual(['', 'primary', 'success', 'danger'])
+      expect(screen.queryByRole('radiogroup', { name: 'Стиль кнопки 1' })).toBeNull()
+    })
+
+    it('inline switch: off for the first, max two per row, groups the preview and the payload', async () => {
+      replies['POST /api/broadcasts'] = [json(201, { broadcast: { id: 'b1' } })]
+      const { r, setText, click } = await setup()
+      await setText('hi')
+      for (const n of ['a', 'b', 'c']) await addButton(n, 'https://e.com')
+      const sw = (n: number) => screen.getByRole('switch', { name: `Кнопка ${n} в строке с предыдущей` }) as HTMLButtonElement
+      expect(sw(1).disabled).toBe(true)
+      fireEvent.click(sw(2))
+      await flush()
+      // в строке a+b уже две: третья не может встать рядом
+      expect(sw(2).getAttribute('aria-checked')).toBe('true')
+      expect(sw(3).disabled).toBe(true)
+      const aside = within(r.container).getByRole('complementary', { name: 'Превью сообщения' })
+      const rows = Array.from(aside.querySelectorAll('button')).filter((b) => ['a', 'b', 'c'].includes(b.textContent ?? ''))
+      expect(rows[0].parentElement).toBe(rows[1].parentElement)
+      expect(rows[2].parentElement).not.toBe(rows[0].parentElement)
+      await click(SEND)
+      await click(CONFIRM)
+      expect(posts()[0].body).toMatchObject({
+        buttons: [
+          { text: 'a', url: 'https://e.com', style: '' },
+          { text: 'b', url: 'https://e.com', style: '', inline: true },
+          { text: 'c', url: 'https://e.com', style: '' },
+        ],
+      })
+      expect((posts()[0].body as { buttons: { inline?: boolean }[] }).buttons[0].inline).toBeUndefined()
+    })
+
+    it('deleting the first button of a pair clears the orphan inline flag', async () => {
+      await setup()
+      for (const n of ['a', 'b']) await addButton(n, 'https://e.com')
+      fireEvent.click(screen.getByRole('switch', { name: 'Кнопка 2 в строке с предыдущей' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Удалить кнопку 1' }))
+      await flush()
+      const first = screen.getByRole('switch', { name: 'Кнопка 1 в строке с предыдущей' })
+      expect(first.getAttribute('aria-checked')).toBe('false')
     })
 
     it('changing buttons or silent renews the idempotency key', async () => {

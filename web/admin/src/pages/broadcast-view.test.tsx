@@ -85,6 +85,25 @@ describe('BroadcastView', () => {
     expect(screen.getByRole('button', { name: 'Дублировать' })).toBeTruthy()
   })
 
+  it('groups inline buttons into one preview row', async () => {
+    stub(() =>
+      json(200, {
+        broadcast: broadcast({
+          buttons: [
+            { text: 'Один', url: 'https://e.com', style: '' },
+            { text: 'Два', url: 'https://e.com', style: '', inline: true },
+            { text: 'Три', url: 'https://e.com', style: '' },
+          ],
+        }),
+      }),
+    )
+    await open()
+    const aside = screen.getByRole('complementary', { name: 'Сообщение' })
+    const one = within(aside).getByText('Один').closest('button')!
+    expect(within(aside).getByText('Два').closest('button')!.parentElement).toBe(one.parentElement)
+    expect(within(aside).getByText('Три').closest('button')!.parentElement).not.toBe(one.parentElement)
+  })
+
   it('scheduled: time in МСК, no counters, edit and cancel with confirmation', async () => {
     const fetchMock = stub(() => json(200, { broadcast: broadcast({ status: 'scheduled', scheduledAt: '2026-11-07T15:30:00Z', total: 0, sent: 0, failed: 0, finishedAt: null }) }))
     await open()

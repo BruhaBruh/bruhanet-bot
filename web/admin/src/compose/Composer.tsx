@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { TgAvatar, Button, Card, Dialog, Icon, Input, MessageBubble, Radio, RadioGroup, Switch, toast } from '@/ui'
+import { TgAvatar, Button, Card, Dialog, Icon, Input, MessageBubble, Radio, RadioGroup, Select, Switch, toast } from '@/ui'
 import { ApiError, get, post, put } from '../api'
 import { previewHtml, renderPreview, varLabel, visibleText, worstLen } from '../editor/serialize'
 import { TgEditor, type TgEditorHandle } from '../editor/TgEditor'
 import { VarChips } from '../editor/VarChips'
 import { formatCount, plural } from '../format'
 import { useMe } from '../me'
+import { STYLE_OPTIONS, buttonRows, canInline, normalizeInline, previewStyle } from '../lib/button-rows'
 import type { Audience, Broadcast, BroadcastButton, DirectMessage, TextVar } from '../types'
 import { AUDIENCES, audienceLabel, daysValid, DEFAULT_DAYS, MAX_DAYS, MIN_DAYS } from './audience'
 import { PhotoPicker } from './PhotoPicker'
@@ -37,14 +38,7 @@ export type ComposerProps =
   | { mode: 'direct'; userId: number; onSent?(m: DirectMessage): void }
 
 type Counts = Partial<Record<Audience, number>>
-// Стили кнопок бота; цвета — как у кнопок в превью.
-const BUTTON_STYLES: { value: BroadcastButton['style']; label: string; className: string }[] = [
-  { value: '', label: 'Обычная', className: 'bg-keyboard-btn-bg shadow-[inset_0_0_0_1px_var(--separator)]' },
-  { value: 'primary', label: 'Основная (синяя)', className: 'bg-accent-strong' },
-  { value: 'success', label: 'Успех (зелёная)', className: 'bg-success-strong' },
-  { value: 'danger', label: 'Опасная (красная)', className: 'bg-destructive-strong' },
-]
-const MAX_BUTTONS = 3
+const MAX_BUTTONS = 6
 const MAX_BUTTON_TEXT = 64
 const HTTPS_URL = /^https:\/\/[^\s/?#]+\S*$/i
 
@@ -160,7 +154,7 @@ export function Composer(props: ComposerProps) {
   }
   function changeButtons(next: BroadcastButton[]) {
     draftChanged()
-    setButtons(next)
+    setButtons(normalizeInline(next))
   }
   function changeButton(i: number, patch: Partial<BroadcastButton>) {
     changeButtons(buttons.map((b, j) => (j === i ? { ...b, ...patch } : b)))
@@ -384,9 +378,9 @@ export function Composer(props: ComposerProps) {
       <div className={cn('flex flex-col justify-end bg-chat-bg px-3 py-4', isBroadcast && 'min-h-90')}>
         <MessageBubble
           time="сейчас"
-          keyboard={buttons
-            .filter((b) => b.text.trim() !== '')
-            .map((b) => [{ text: b.text, url: b.url || undefined, style: b.style || 'default' }])}
+          keyboard={buttonRows(buttons)
+            .map((row) => row.filter(({ item }) => item.text.trim() !== '').map(({ item }) => ({ text: item.text, url: item.url || undefined, style: previewStyle(item.style) })))
+            .filter((row) => row.length > 0)}
           media={
             photo &&
             (photoUrl || photoId ? (
@@ -481,55 +475,40 @@ export function Composer(props: ComposerProps) {
           {chips}
         </Card>
 
-        <Card title="Кнопки под сообщением" aside="до 3 кнопок · каждая на своей строке">
-          {buttons.length > 0 && (
-            <div className="admin-label flex gap-2 px-0.5 text-text-secondary max-md:hidden">
-              <span className="flex-[1_1_--spacing(40)]">Текст</span>
-              <span className="flex-[1.6_1_--spacing(55)]">Ссылка</span>
-              <span className="w-35 flex-none">Стиль</span>
-              <span className="w-10 flex-none" />
-            </div>
-          )}
-          {buttons.map((b, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-2">
-              <Input
-                className="min-w-0 flex-[1_1_--spacing(40)]"
-                placeholder="Текст кнопки"
-                aria-label={`Текст кнопки ${i + 1}`}
-                maxLength={MAX_BUTTON_TEXT}
-                disabled={busy}
-                value={b.text}
-                onChange={(e) => changeButton(i, { text: e.target.value })}
-              />
-              <Input
-                className="min-w-0 flex-[1.6_1_--spacing(55)]"
-                placeholder="https://"
-                aria-label={`Ссылка кнопки ${i + 1}`}
-                inputMode="url"
-                disabled={busy}
-                value={b.url}
-                onChange={(e) => changeButton(i, { url: e.target.value })}
-              />
-              <div role="radiogroup" aria-label={`Стиль кнопки ${i + 1}`} className="flex w-35 flex-none items-center gap-1.5">
-                {BUTTON_STYLES.map((st) => (
-                  <button
-                    key={st.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={b.style === st.value}
-                    aria-label={st.label}
-                    title={st.label}
+        <Card title="Кнопки под сообщением" aside="до 6 кнопок · по 2 в строке">
+          {buttonRows(buttons).map((row) => (
+            <div key={row[0].index} className="grid gap-3 md:grid-cols-2">
+              {row.map(({ item: b, index: i }) => (
+                <div key={i} className="flex min-w-0 flex-col gap-2 rounded-md bg-fill-tertiary p-3">
+                  <Input
+                    placeholder="https://"
+                    aria-label={`Ссылка кнопки ${i + 1}`}
+                    inputMode="url"
                     disabled={busy}
-                    onClick={() => changeButton(i, { style: st.value })}
-                    className={cn(
-                      'focus-ring size-7 cursor-pointer rounded-full disabled:cursor-default disabled:opacity-40',
-                      st.className,
-                      b.style === st.value && 'outline-2 outline-offset-2 outline-accent',
-                    )}
+                    value={b.url}
+                    onChange={(e) => changeButton(i, { url: e.target.value })}
                   />
-                ))}
-              </div>
-              <Button variant="gray" icon="trash" aria-label={`Удалить кнопку ${i + 1}`} disabled={busy} onClick={() => changeButtons(buttons.filter((_, j) => j !== i))} />
+                  <Input
+                    placeholder="Текст кнопки"
+                    aria-label={`Текст кнопки ${i + 1}`}
+                    maxLength={MAX_BUTTON_TEXT}
+                    disabled={busy}
+                    value={b.text}
+                    onChange={(e) => changeButton(i, { text: e.target.value })}
+                  />
+                  <Select aria-label={`Стиль кнопки ${i + 1}`} disabled={busy} options={STYLE_OPTIONS} value={b.style} onChange={(v) => changeButton(i, { style: v as BroadcastButton['style'] })} />
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      aria-label={`Кнопка ${i + 1} в строке с предыдущей`}
+                      checked={!!b.inline}
+                      disabled={busy || !canInline(buttons, i)}
+                      onChange={(v) => changeButton(i, { inline: v || undefined })}
+                    />
+                    <span className="footnote grow text-text-secondary">В строке с предыдущей</span>
+                    <Button variant="gray" icon="trash" aria-label={`Удалить кнопку ${i + 1}`} disabled={busy} onClick={() => changeButtons(buttons.filter((_, j) => j !== i))} />
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
           {buttonsIssue && (

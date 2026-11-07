@@ -4,6 +4,7 @@ import { TgAvatar, Button, Card, Dialog, Icon, MessageBubble, Spinner, toast } f
 import { ApiError, get, post } from '../api'
 import { audienceLabel } from '../compose/audience'
 import { formatSchedule, isoToMskLocal } from '../compose/schedule'
+import { buttonRows, previewStyle } from '../lib/button-rows'
 import { previewHtml, renderPreview } from '../editor/serialize'
 import { formatCount, formatShortDate } from '../format'
 import { useMe } from '../me'
@@ -193,7 +194,7 @@ export default function BroadcastView() {
             <div className="flex min-h-60 flex-col justify-end bg-chat-bg px-3 py-4">
               <MessageBubble
                 time={b.createdAt ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(b.createdAt)) : ''}
-                keyboard={b.buttons.map((x) => [{ text: x.text, url: x.url, style: x.style || 'default' }])}
+                keyboard={buttonRows(b.buttons).map((row) => row.map(({ item: x }) => ({ text: x.text, url: x.url, style: previewStyle(x.style) })))}
                 media={
                   b.photoId ? (
                     <img src={`/api/photos/${b.photoId}`} alt="Фото рассылки" className="block aspect-video w-full min-w-60 object-cover" />

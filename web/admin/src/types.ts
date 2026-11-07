@@ -174,6 +174,7 @@ export interface BroadcastButton {
   text: string
   url: string
   style: '' | 'primary' | 'success' | 'danger'
+  inline?: boolean // в одной строке с предыдущей кнопкой
 }
 
 export interface DirectMessage {
