@@ -49,9 +49,12 @@ services:
       LOG_JSON: "true"
       API_ADDR: ":8090"
       API_OBSERVABILITY_ADDR: ":8091"
+      # Mini App слушает только при заданном MINIAPP_ORIGIN (nginx app.bruhanet.ru → 127.0.0.1:8092)
+      MINIAPP_ADDR: "${MINIAPP_ORIGIN:+:8092}"
     command: ["/app/api"]
     ports:
       - 127.0.0.1:8090:8090
+      - 127.0.0.1:8092:8092
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "/app/api", "healthcheck"]

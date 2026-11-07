@@ -55,6 +55,30 @@ server {
 
 Одноразовый токен из `/auth?token=…` попадает в access-лог nginx. Это безвредно (токен живёт 5 минут и используется один раз), но при желании можно отключить лог для этого пути: добавить `location = /auth { access_log off; proxy_pass http://127.0.0.1:8090; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }`.
 
+## Mini App «Кабинет»
+
+Подписка, подключение, устройства, друзья и промокоды внутри Telegram. Тот же сервис `api` слушает второй порт `127.0.0.1:8092`, но только когда в `.env` задан `MINIAPP_ORIGIN=https://app.bruhanet.ru` (пусто — выключено). Адрес `MINIAPP_ORIGIN` и настройка «Ссылка на MiniApp» в админке должны совпадать. Вход — по подписи `initData` (токен бота), без cookie и сессий.
+
+```nginx
+limit_req_zone $binary_remote_addr zone=miniapp:10m rate=10r/s;
+
+server {
+    listen 443 ssl;
+    server_name app.bruhanet.ru;
+
+    # ssl_certificate / ssl_certificate_key — как у панели
+
+    location / {
+        limit_req zone=miniapp burst=30 nodelay;
+        proxy_pass http://127.0.0.1:8092;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+В BotFather можно задать Menu Button на этот адрес. Кнопки внутри бота открываются как `web_app`: Mini App не открывается по обычной ссылке-кнопке (без неё нет `initData`). Локально Telegram принимает только https, поэтому для проверки в Telegram нужен туннель; вёрстку можно смотреть в `pnpm -C web/miniapp dev` на моках.
+
 ## Postgres, бэкап и восстановление
 
 Платежи и очередь уведомлений (outbox) лежат в Postgres (сервис `postgres`, том `postgres-data`). Пароль — `POSTGRES_PASSWORD` в `.env` (только латиница и цифры: значение идёт в URL; `install.sh` сгенерирует сам). Схему накатывает one-shot сервис `migrate` (`bot migrate`), бот стартует только после него. `install.sh` на существующем `.env` допишет недостающие ключи из `.env.example`, остальное не тронет.

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 	_ "time/tzdata"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/bruhabruh/bruhanet/api/internal/config"
+	"github.com/bruhabruh/bruhanet/api/internal/miniappweb"
 	"github.com/bruhabruh/bruhanet/api/internal/server"
 	"github.com/bruhabruh/bruhanet/api/internal/telegram"
 	"github.com/bruhabruh/bruhanet/api/internal/web"
@@ -97,26 +99,40 @@ func newApp(logger *slog.Logger, conf *config.Config) (app.App, error) {
 	if cronWarning != "" {
 		logger.Warn(cronWarning)
 	}
+	deps := server.Deps{
+		Store:      st,
+		Panel:      panel,
+		Telegram:   tg,
+		Identity:   tg,
+		Avatars:    tg,
+		Defaults:   defaults,
+		Squad:      conf.Remnawave.InternalSquadId,
+		AdminID:    conf.Telegram.AdminID,
+		BaseURL:    conf.Admin.BaseURL,
+		Now:        time.Now,
+		Static:     web.FS(),
+		BotToken:   conf.Telegram.Token,
+		MiniOrigin: strings.TrimRight(conf.MiniApp.Origin, "/"),
+		MiniStatic: miniappweb.FS(),
+	}
+	var mini *http.Server
+	if conf.MiniApp.Addr != "" {
+		mini = &http.Server{
+			Addr:              conf.MiniApp.Addr,
+			Handler:           server.NewMiniApp(deps),
+			ReadHeaderTimeout: 5 * time.Second,
+			BaseContext:       func(net.Listener) context.Context { return ctx },
+		}
+	}
+
 	srv := &http.Server{
-		Addr: conf.Addr,
-		Handler: server.New(server.Deps{
-			Store:    st,
-			Panel:    panel,
-			Telegram: tg,
-			Identity: tg,
-			Avatars:  tg,
-			Defaults: defaults,
-			Squad:    conf.Remnawave.InternalSquadId,
-			AdminID:  conf.Telegram.AdminID,
-			BaseURL:  conf.Admin.BaseURL,
-			Now:      time.Now,
-			Static:   web.FS(),
-		}),
+		Addr:              conf.Addr,
+		Handler:           server.New(deps),
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}
 
-	fatal := make(chan error, 2)
+	fatal := make(chan error, 3)
 	serve := func(name string, s *http.Server) lifecycle.Lifecycle {
 		return lifecycle.New(
 			func(context.Context) error {
@@ -162,6 +178,7 @@ func newApp(logger *slog.Logger, conf *config.Config) (app.App, error) {
 			},
 		)),
 		app.WithComponent("http", serve("http server", srv)),
+		app.WithComponent("miniapp", miniComponent(mini, serve)),
 		app.WithStarted(func() { logger.Info("service started", "addr", conf.Addr) }),
 	), nil
 }
@@ -204,4 +221,12 @@ func healthcheck(addr string) int {
 		return 1
 	}
 	return 0
+}
+
+// miniComponent — Mini App слушает только при MINIAPP_ADDR; без него компонент пустой.
+func miniComponent(mini *http.Server, serve func(string, *http.Server) lifecycle.Lifecycle) lifecycle.Lifecycle {
+	if mini == nil {
+		return lifecycle.New(func(context.Context) error { return nil }, func(context.Context) error { return nil })
+	}
+	return serve("miniapp server", mini)
 }
