@@ -107,7 +107,7 @@ func setup(src *fakeSource) (*content.Provider, *clock, context.Context, *bytes.
 
 func TestDefaultsAndEscaping(t *testing.T) {
 	p, _, ctx, _ := setup(&fakeSource{})
-	if got := p.Text(ctx, "menu.greeting", map[string]string{"name": "a<b>&"}); got != "Здравствуйте, <b>a&lt;b&gt;&amp;</b>" {
+	if got := p.Text(ctx, "menu.greeting", map[string]string{"name": "a<b>&"}); got != "Привет, <b>a&lt;b&gt;&amp;</b> 👋\n\nВыбери, что нужно, кнопками ниже." {
 		t.Fatalf("greeting = %q", got)
 	}
 	if got := p.Text(ctx, "button.tariff", map[string]string{"months": "3 месяца", "price": "500"}); got != "3 месяца за 500 ₽" {
@@ -160,7 +160,7 @@ func TestSourceErrorKeepsLast(t *testing.T) {
 
 	// БД недоступна с самого старта — значения по умолчанию
 	p2, _, ctx2, _ := setup(&fakeSource{err: errors.New("db down")})
-	if got := p2.Button(ctx2, "button.pay"); got != "Оплатить" {
+	if got := p2.Button(ctx2, "button.pay"); got != "💳 Оплатить" {
 		t.Fatalf("default = %q", got)
 	}
 	if got := p2.Settings(ctx2).Bank; got != "Т-Банк" {
@@ -174,10 +174,10 @@ func TestInvalidOverrideFallsBack(t *testing.T) {
 		raw:   map[string][]byte{"prices": []byte(`{"1":0}`), "bank": []byte(`"Сбер"`)},
 	}
 	p, _, ctx, buf := setup(src)
-	if got := p.Text(ctx, "menu.greeting", map[string]string{"name": "x"}); got != "Здравствуйте, <b>x</b>" {
+	if got := p.Text(ctx, "menu.greeting", map[string]string{"name": "x"}); got != "Привет, <b>x</b> 👋\n\nВыбери, что нужно, кнопками ниже." {
 		t.Fatalf("greeting = %q", got)
 	}
-	if got := p.Button(ctx, "button.pay"); got != "Оплатить" {
+	if got := p.Button(ctx, "button.pay"); got != "💳 Оплатить" {
 		t.Fatalf("button = %q", got)
 	}
 	// цена 0 — настройки целиком невалидны, берутся из env
@@ -205,7 +205,7 @@ func TestHungSourceTimesOut(t *testing.T) {
 	p, _, ctx, buf := setup(&fakeSource{block: make(chan struct{})})
 	content.SetRefreshTimeout(p, 50*time.Millisecond)
 	start := time.Now()
-	if got := p.Button(ctx, "button.pay"); got != "Оплатить" {
+	if got := p.Button(ctx, "button.pay"); got != "💳 Оплатить" {
 		t.Fatalf("button = %q", got)
 	}
 	if d := time.Since(start); d > time.Second {
@@ -306,8 +306,8 @@ func TestUserGlobals(t *testing.T) {
 func TestUserContactLoadedOnlyWhenAsked(t *testing.T) {
 	src := &fakeSource{texts: map[string]string{"error.generic": "{{.name}}", "payment.tariffs": "{{.expireAt}}"}}
 	p, _, ctx, _ := setup(src)
-	p.Text(ctx, "payment.confirmed", nil)
-	p.Text(content.ForUser(ctx, 7), "payment.confirmed", nil) // нет переменных
+	p.Text(ctx, "payment.photo_sent", nil)
+	p.Text(content.ForUser(ctx, 7), "payment.photo_sent", nil) // нет переменных
 	p.Text(content.WithUser(ctx, 7, "A", ""), "error.generic", nil)
 	p.Text(content.WithUser(ctx, 7, "A", ""), "payment.tariffs", map[string]string{"expireAt": "x"})
 	if src.contactCalls != 0 {
@@ -334,10 +334,10 @@ func TestUnknownVarRendersEmpty(t *testing.T) {
 	if got := p.Text(ctx, "payment.tariffs", nil); got != "Выбор " {
 		t.Fatalf("got %q", got)
 	}
-	if got := p.Text(ctx, "error.generic", nil); got != "К сожалению, произошла ошибка, обратитесь в поддержку" {
+	if got := p.Text(ctx, "error.generic", nil); got != "<b>⚠️ Что-то пошло не так</b>\n\nНе получилось выполнить запрос. Попробуй ещё раз или напиши в поддержку." {
 		t.Fatalf("blank message: %q", got)
 	}
-	if got := p.Button(ctx, "button.pay"); got != "Оплатить" {
+	if got := p.Button(ctx, "button.pay"); got != "💳 Оплатить" {
 		t.Fatalf("blank button: %q", got)
 	}
 }
@@ -406,11 +406,11 @@ func TestButtonSafeGuard(t *testing.T) {
 		t.Fatalf("64 characters must pass: %q", got)
 	}
 	for range 3 {
-		if got := p.Text(ctx, "button.pay", map[string]string{"name": strings.Repeat("я", 65)}); got != "Оплатить" {
+		if got := p.Text(ctx, "button.pay", map[string]string{"name": strings.Repeat("я", 65)}); got != "💳 Оплатить" {
 			t.Fatalf("65 characters: got %q", got)
 		}
 	}
-	if got := p.Text(ctx, "button.pay", map[string]string{"name": "  "}); got != "Оплатить" {
+	if got := p.Text(ctx, "button.pay", map[string]string{"name": "  "}); got != "💳 Оплатить" {
 		t.Fatalf("empty: got %q", got)
 	}
 	if n := strings.Count(buf.String(), "does not fit"); n != 1 {

@@ -38,12 +38,12 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 	}
 	link := strings.TrimRight(h.cfg.Admin.BaseURL, "/") + "/auth?token=" + raw
 	// Ссылка только в кнопке и без превью: краулер превью Telegram сам открыл бы /auth и сжёг одноразовый токен.
-	text := buildMessage("<b>Вход в админку</b>", "", "Ссылка одноразовая, действует 5 минут")
+	text := h.c.Text(ctx, "login.message", nil)
 	_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:             h.cfg.Telegram.AdminID,
 		Text:               text,
 		ParseMode:          models.ParseModeHTML,
-		ReplyMarkup:        keyboard.Inline(keyboard.Row(keyboard.URL("Открыть админку", link))),
+		ReplyMarkup:        keyboard.Inline(keyboard.Row(urlButton(ctx, h.c, "button.login", link, keyboard.StylePrimary))),
 		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 	})
 	if errors.Is(err, bot.ErrorBadRequest) {
@@ -52,7 +52,7 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 		stlog.Warn(ctx, "login button rejected, sending plain link", "error", err)
 		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:             h.cfg.Telegram.AdminID,
-			Text:               buildMessage(text, "", "<code>"+html.EscapeString(link)+"</code>", "", "Нажми на ссылку, чтобы скопировать, и открой в браузере"),
+			Text:               buildMessage(text, "", "<code>"+html.EscapeString(link)+"</code>", "", h.c.Text(ctx, "login.fallback", nil)),
 			ParseMode:          models.ParseModeHTML,
 			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 		})

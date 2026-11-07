@@ -58,7 +58,7 @@ func TestTariffsFromSettings(t *testing.T) {
 	}
 
 	e.process(t, tgtest.Callback(userID, "price:3"))
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "<b>3 месяца</b> за <b>300 ₽</b>") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Тариф: <b>3 месяца</b>\nК оплате: <b>300 ₽</b>") {
 		t.Fatalf("confirm = %s", text)
 	}
 
@@ -69,7 +69,7 @@ func TestTariffsFromSettings(t *testing.T) {
 
 	e.process(t, tgtest.Callback(userID, "buy:3"))
 	text := e.last(t, "editMessageText").Params.Get("text")
-	if !strings.Contains(text, "с одним из комментариев:\n- <code>a&lt;b</code>\nи отправьте") {
+	if !strings.Contains(text, "2. В комментарии укажи любой из вариантов:\n- <code>a&lt;b</code>\n3. Пришли") {
 		t.Fatalf("requisites = %s", text)
 	}
 	if p := e.pending(t, userID); p.Month != 3 || p.Price != 300 {
@@ -254,7 +254,7 @@ func TestButtonStyle(t *testing.T) {
 		return out
 	}
 	e.process(t, tgtest.Message(userID, "/start"))
-	want := map[string]string{"Информация": "primary", "Оплатить": "", "Подписка": "success", "Поддержка": "danger", "Промокод": "", "Пробный период": "", "Пригласить друга": "", "Подарить": ""}
+	want := map[string]string{"ℹ️ Информация": "primary", "💳 Оплатить": "", "🔗 Подписка": "success", "💬 Поддержка": "danger", "🏷 Промокод": "", "🎁 Пробный период": "", "🤝 Пригласить друга": "", "🎁 Подарить": ""}
 	if got := styles(); !maps.Equal(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -270,7 +270,7 @@ func TestButtonStyle(t *testing.T) {
 	e.src.SetStyles(map[string]string{"button.pay": "danger", "button.info": ""})
 	e.process(t, tgtest.Message(userID, "/start"))
 	got := styles()
-	if got["Оплатить"] != "danger" || got["Информация"] != "" || got["Подписка"] != "success" {
+	if got["💳 Оплатить"] != "danger" || got["ℹ️ Информация"] != "" || got["🔗 Подписка"] != "success" {
 		t.Fatalf("got %v", got)
 	}
 	// подпись тарифа — та же кнопка реестра
@@ -280,7 +280,7 @@ func TestButtonStyle(t *testing.T) {
 		t.Fatalf("tariff = %+v", b)
 	}
 	e.process(t, tgtest.Callback(userID, "price:6"))
-	if b := keyboardButtons(t, e.last(t, "editMessageText").Params.Get("reply_markup"))[0]; b.Text != "Да" || b.Style != "danger" {
+	if b := keyboardButtons(t, e.last(t, "editMessageText").Params.Get("reply_markup"))[0]; b.Text != "✅ Да" || b.Style != "danger" {
 		t.Fatalf("yes = %+v", b)
 	}
 }

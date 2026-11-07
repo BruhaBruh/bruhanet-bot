@@ -17,7 +17,7 @@ func TestLoginAdmin(t *testing.T) {
 		t.Fatalf("tokens = %+v", toks)
 	}
 	p := e.last(t, "sendMessage").Params
-	if want := "<b>Вход в админку</b>\n\nСсылка одноразовая, действует 5 минут"; p.Get("chat_id") != "1" || p.Get("text") != want {
+	if want := "<b>🔐 Вход в админ-панель</b>\n\nСсылка одноразовая и действует 5 минут."; p.Get("chat_id") != "1" || p.Get("text") != want {
 		t.Fatalf("params = %v", p)
 	}
 	if kb := p.Get("reply_markup"); !strings.Contains(kb, `"url":"http://localhost:5173/auth?token=`) {
@@ -55,8 +55,8 @@ func TestLoginURLRejectedFallsBackToText(t *testing.T) {
 	// ссылка на localhost не кликабельна в Telegram: моноширинный блок копируется тапом
 	text := p.Get("text")
 	if p.Get("reply_markup") != "" ||
-		!strings.HasPrefix(text, "<b>Вход в админку</b>\n\nСсылка одноразовая, действует 5 минут\n\n<code>http://localhost:5173/auth?token=") ||
-		!strings.HasSuffix(text, "</code>\n\nНажми на ссылку, чтобы скопировать, и открой в браузере") {
+		!strings.HasPrefix(text, "<b>🔐 Вход в админ-панель</b>\n\nСсылка одноразовая и действует 5 минут.\n\n<code>http://localhost:5173/auth?token=") ||
+		!strings.HasSuffix(text, "</code>\n\nНажми на ссылку, чтобы скопировать её, и открой в браузере.") {
 		t.Fatalf("fallback text = %q", text)
 	}
 	if lp := p.Get("link_preview_options"); !strings.Contains(lp, `"is_disabled":true`) {
@@ -73,7 +73,7 @@ func TestLoginBothSendsFail(t *testing.T) {
 	if len(calls) != 3 {
 		t.Fatalf("sendMessage calls = %d, want 3 (button, text, error)", len(calls))
 	}
-	if got := calls[2].Params.Get("text"); !strings.Contains(got, "произошла ошибка") {
+	if got := calls[2].Params.Get("text"); !strings.Contains(got, "Что-то пошло не так") {
 		t.Fatalf("last text = %q", got)
 	}
 }
@@ -85,7 +85,7 @@ func TestStartLoginAdminGetsTheLoginButton(t *testing.T) {
 		t.Fatalf("tokens = %d", n)
 	}
 	p := e.last(t, "sendMessage").Params
-	if !strings.Contains(p.Get("text"), "Вход в админку") || !strings.Contains(p.Get("reply_markup"), `"url":"http://localhost:5173/auth?token=`) {
+	if !strings.Contains(p.Get("text"), "Вход в админ-панель") || !strings.Contains(p.Get("reply_markup"), `"url":"http://localhost:5173/auth?token=`) {
 		t.Fatalf("params = %v", p)
 	}
 	if n := e.count("sendMessage"); n != 1 {

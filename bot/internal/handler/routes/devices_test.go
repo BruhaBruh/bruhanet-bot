@@ -111,7 +111,7 @@ func TestDevicesPurchaseFlow(t *testing.T) {
 	if len(e.rw.Updates()) != 0 || e.pending(t, userID).AdvanceGranted {
 		t.Fatalf("advance for devices: %v", e.rw.Updates())
 	}
-	if !strings.Contains(e.last(t, "sendMessage").Params.Get("text"), "Вы успешно отправили фото") {
+	if !strings.Contains(e.last(t, "sendMessage").Params.Get("text"), "Фото получено") {
 		t.Fatal("no photo ack")
 	}
 
@@ -157,7 +157,7 @@ func TestDevicesRefusedWhileTariffPending(t *testing.T) {
 	e.process(t, tgtest.Callback(userID, "buy:6"))
 	tariff := e.pending(t, userID)
 	e.process(t, tgtest.Callback(userID, "devy:1"))
-	if !strings.Contains(e.text(t), "Сначала завершите текущую оплату") {
+	if !strings.Contains(e.text(t), "Сначала заверши текущую оплату") {
 		t.Fatalf("text: %s", e.text(t))
 	}
 	if got := e.pending(t, userID); got.ID != tariff.ID || len(e.pay.All()) != 1 {

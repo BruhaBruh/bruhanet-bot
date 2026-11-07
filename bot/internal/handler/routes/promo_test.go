@@ -39,7 +39,7 @@ func TestHavePromoAsksCode(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 	p := e.last(t, "editMessageText").Params
-	if !strings.Contains(p.Get("text"), "Отправьте промокод сообщением") || !strings.Contains(p.Get("reply_markup"), `"callback_data":"price:6"`) {
+	if !strings.Contains(p.Get("text"), "Пришли промокод сообщением") || !strings.Contains(p.Get("reply_markup"), `"callback_data":"price:6"`) {
 		t.Fatalf("screen = %v", p)
 	}
 	// подделанный тариф — к списку тарифов, стейт не меняется
@@ -79,7 +79,7 @@ func TestPromoDiscountPath(t *testing.T) {
 	if st := e.state(t, userID); st != "await_photo" {
 		t.Fatalf("state = %q", st)
 	}
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Переведите <b>112 ₽</b>") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Переведи <b>112 ₽</b>") {
 		t.Fatalf("payment details = %s", text)
 	}
 	if n := len(e.pay.Activations()); n != 0 {
@@ -146,7 +146,7 @@ func TestPromoFreeConfirmsImmediately(t *testing.T) {
 	if n := len(e.pay.All()); n != 1 {
 		t.Fatalf("payments = %d", n)
 	}
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "уже использовали") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "уже использовал") {
 		t.Fatalf("retry = %s", text)
 	}
 }
@@ -183,7 +183,7 @@ func TestPromoFreePanelError(t *testing.T) {
 	e.pay.AddPromo(model.Promo{Code: "FREE", Kind: model.PromoPercent, Value: 100})
 	e.rw.FailUpdateWith(errors.New("panel is down"))
 	e.process(t, tgtest.Callback(userID, "buyp:1:1"))
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Что-то пошло не так") {
 		t.Fatalf("text = %s", text)
 	}
 	if n := len(e.pay.Activations()); n != 0 {
@@ -240,17 +240,17 @@ func TestPromoRejectReasons(t *testing.T) {
 		{name: "not started", promo: model.Promo{StartsAt: ptr(now.Add(time.Hour))}, want: "ещё не начал действовать"},
 		{name: "expired", promo: model.Promo{ExpiresAt: ptr(now)}, want: "Срок действия этого промокода истёк"},
 		{name: "exhausted", promo: model.Promo{MaxActivations: ptr(0)}, want: "Активации этого промокода закончились"},
-		{name: "not yours", promo: model.Promo{TelegramID: ptr[int64](7)}, want: "предназначен другому пользователю"},
+		{name: "not yours", promo: model.Promo{TelegramID: ptr[int64](7)}, want: "выдан другому пользователю"},
 		{
 			name: "only new", promo: model.Promo{OnlyNew: true}, want: "только для новых",
 			setup: func(t *testing.T, e *env, _ int64) { confirmedWith(t, e, nil) },
 		},
 		{
-			name: "already used", want: "уже использовали",
+			name: "already used", want: "уже использовал",
 			setup: func(t *testing.T, e *env, id int64) { confirmedWith(t, e, &id) },
 		},
 		{name: "days at payment", promo: model.Promo{Kind: model.PromoDays, Value: 7}, want: "через кнопку «Промокод» в меню"},
-		{name: "discount from menu", menu: true, want: "введите её при оплате тарифа"},
+		{name: "discount from menu", menu: true, want: "Введи его при оплате тарифа"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -343,7 +343,7 @@ func TestDaysPromoFromMenu(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 	p := e.last(t, "editMessageText").Params
-	if !strings.Contains(p.Get("text"), "Отправьте промокод") || !strings.Contains(p.Get("reply_markup"), `"callback_data":"menu"`) {
+	if !strings.Contains(p.Get("text"), "Пришли промокод") || !strings.Contains(p.Get("reply_markup"), `"callback_data":"menu"`) {
 		t.Fatalf("screen = %v", p)
 	}
 	e.process(t, tgtest.Message(userID, " week "))
@@ -361,7 +361,7 @@ func TestDaysPromoFromMenu(t *testing.T) {
 
 	e.process(t, tgtest.Callback(userID, "promo"))
 	e.process(t, tgtest.Message(userID, "WEEK"))
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "уже использовали") {
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "уже использовал") {
 		t.Fatalf("retry = %s", text)
 	}
 	if n := len(e.rw.Updates()); n != 1 {
@@ -387,7 +387,7 @@ func TestDaysPromoPanelError(t *testing.T) {
 	e.rw.FailUpdateWith(errors.New("panel is down"))
 	e.process(t, tgtest.Callback(userID, "promo"))
 	e.process(t, tgtest.Message(userID, "week"))
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Что-то пошло не так") {
 		t.Fatalf("text = %s", text)
 	}
 	if n := len(e.pay.Activations()); n != 0 {
@@ -568,7 +568,7 @@ func TestDaysPromoCommitFailRestoresPanel(t *testing.T) {
 	if n := len(e.pay.Activations()); n != 0 {
 		t.Fatalf("activations = %d", n)
 	}
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Что-то пошло не так") {
 		t.Fatalf("text = %s", text)
 	}
 }

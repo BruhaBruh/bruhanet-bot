@@ -31,7 +31,7 @@ func TestInfoActiveUser(t *testing.T) {
 func TestInfoWithoutUser(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Callback(userID, "info"))
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Не куплена") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Подписки пока нет") {
 		t.Fatalf("text = %s", text)
 	}
 }
@@ -40,7 +40,7 @@ func TestInfoRemnawaveDown(t *testing.T) {
 	e := newEnv(t)
 	e.rw.FailWith(errors.New("panel is down"))
 	e.process(t, tgtest.Callback(userID, "info"))
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Что-то пошло не так") {
 		t.Fatalf("text = %s", text)
 	}
 	tgtest.FindLog(t, e.log, "failed to get remnawave user")

@@ -15,7 +15,7 @@ func TestTariffsList(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Callback(userID, "pay"))
 	p := e.last(t, "editMessageText").Params
-	if !strings.Contains(p.Get("text"), "Выберите тариф") {
+	if !strings.Contains(p.Get("text"), "На сколько оформим подписку") {
 		t.Fatalf("text = %s", p.Get("text"))
 	}
 	kb := p.Get("reply_markup")
@@ -36,7 +36,7 @@ func TestPriceAsksConfirmation(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Callback(userID, "price:6"))
 	p := e.last(t, "editMessageText").Params
-	for _, want := range []string{"6 месяцев", "800 ₽", "Верно?"} {
+	for _, want := range []string{"6 месяцев", "800 ₽", "Всё верно?"} {
 		if !strings.Contains(p.Get("text"), want) {
 			t.Fatalf("text without %q: %s", want, p.Get("text"))
 		}
@@ -50,7 +50,7 @@ func TestPriceAsksConfirmation(t *testing.T) {
 func TestPriceUnknownTariffShowsList(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Callback(userID, "price:7"))
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Выберите тариф") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "На сколько оформим подписку") {
 		t.Fatalf("text = %s", text)
 	}
 }
@@ -69,7 +69,7 @@ func TestBuyCreatesPendingPayment(t *testing.T) {
 		t.Fatalf("payment = %+v", p)
 	}
 	text := e.last(t, "editMessageText").Params.Get("text")
-	for _, want := range []string{"<b>800 ₽</b>", "<code>+7 (800) 555-35-35</code>", "<b>Т-Банк</b>", "- <code>На кофе</code>\n- <code>Перекус</code>", "фото платежа"} {
+	for _, want := range []string{"<b>800 ₽</b>", "<code>+7 (800) 555-35-35</code>", "<b>Т-Банк</b>", "- <code>На кофе</code>\n- <code>Перекус</code>", "фото или скриншот перевода"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("payment details without %q: %s", want, text)
 		}
@@ -158,7 +158,7 @@ func TestBuyRemnawaveDown(t *testing.T) {
 	if n := len(e.pay.All()); n != 0 {
 		t.Fatalf("payments = %d", n)
 	}
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Что-то пошло не так") {
 		t.Fatalf("text = %s", text)
 	}
 	tgtest.FindLog(t, e.log, "failed to create remnawave user")
@@ -183,7 +183,7 @@ func TestBuyCancelFailureKeepsReview(t *testing.T) {
 	if len(all) != 1 || all[0].ID != old.ID || all[0].Status != model.PaymentPending {
 		t.Fatalf("payments = %+v", all)
 	}
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "произошла ошибка") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Что-то пошло не так") {
 		t.Fatalf("text = %s", text)
 	}
 	if n := e.count("editMessageReplyMarkup"); n != 0 {

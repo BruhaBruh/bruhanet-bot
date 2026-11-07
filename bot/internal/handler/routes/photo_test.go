@@ -58,7 +58,7 @@ func TestPhotoSubmitsForReview(t *testing.T) {
 		t.Fatalf("advance expireAt = %v", got)
 	}
 	user := sends[1].Params
-	if user.Get("chat_id") != "42" || !strings.Contains(user.Get("text"), "выдан доступ на 1 день") {
+	if user.Get("chat_id") != "42" || !strings.Contains(user.Get("text"), "доступ открыт на 1 день") {
 		t.Fatalf("user message = %v", user)
 	}
 }
@@ -96,7 +96,7 @@ func TestPhotoAdvanceFailureStillInReview(t *testing.T) {
 		t.Fatalf("payment = %+v", p) // флаг ставится до панели: перебор лучше недобора
 	}
 	text := e.last(t, "sendMessage").Params.Get("text")
-	if !strings.Contains(text, "на проверку") || strings.Contains(text, "1 день") {
+	if !strings.Contains(text, "Фото получено") || strings.Contains(text, "1 день") {
 		t.Fatalf("user message = %s", text)
 	}
 	if l := tgtest.FindLog(t, e.log, "failed to grant advance day"); l["level"] != "ERROR" {
@@ -117,7 +117,7 @@ func TestPhotoMarkAdvanceFailureSkipsGrant(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 	text := e.last(t, "sendMessage").Params.Get("text")
-	if !strings.Contains(text, "на проверку") || strings.Contains(text, "1 день") {
+	if !strings.Contains(text, "Фото получено") || strings.Contains(text, "1 день") {
 		t.Fatalf("user message = %s", text)
 	}
 	tgtest.FindLog(t, e.log, "failed to mark advance")
@@ -169,7 +169,7 @@ func TestPhotoInReviewForwardsSilently(t *testing.T) {
 func TestPhotoWithoutPaymentShowsMenu(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Photo(userID))
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Здравствуйте") {
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Привет") {
 		t.Fatalf("text = %s", text)
 	}
 }
@@ -180,7 +180,7 @@ func TestPhotoAwaitStateWithoutPendingShowsMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.process(t, tgtest.Photo(userID))
-	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Здравствуйте") {
+	if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Привет") {
 		t.Fatalf("text = %s", text)
 	}
 	if n := e.count("copyMessage"); n != 0 {
@@ -299,7 +299,7 @@ func TestPhotoBlockedUserGetsNoAdvance(t *testing.T) {
 		t.Fatalf("state = %q", st)
 	}
 	text := e.last(t, "sendMessage").Params.Get("text")
-	if !strings.Contains(text, "на проверку") || strings.Contains(text, "доступ") || strings.Contains(strings.ToLower(text), "блок") {
+	if !strings.Contains(text, "Фото получено") || strings.Contains(text, "доступ") || strings.Contains(strings.ToLower(text), "блок") {
 		t.Fatalf("user message = %s", text)
 	}
 	if admin := e.srv.Calls("sendMessage")[0].Params.Get("text"); !strings.Contains(admin, "🚫 заблокирован") {

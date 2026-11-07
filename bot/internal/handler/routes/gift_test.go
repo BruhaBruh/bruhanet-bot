@@ -42,7 +42,7 @@ func TestGiftBuyFlow(t *testing.T) {
 	if p.Kind != model.KindGift || p.Month != 6 || p.Price != 800 || p.PromoID != nil || p.ExtraDevices != 0 {
 		t.Fatalf("payment = %+v", p)
 	}
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Оплата подарка на 6 месяцев за 800 ₽") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "Оплата подарка: 6 месяцев за 800 ₽") {
 		t.Fatalf("requisites: %s", text)
 	}
 	// двойное «Да» не плодит платежи
@@ -116,7 +116,7 @@ func (e *env) lastGiftReview(t *testing.T) string {
 func TestGiftBuyRejections(t *testing.T) {
 	e := newEnv(t)
 	e.process(t, tgtest.Callback(userID, "gprice:5"))
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "на сколько подарить") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "На сколько подарим подписку") {
 		t.Fatalf("forged price: %s", text)
 	}
 	e.process(t, tgtest.Callback(userID, "gbuy:99"))
@@ -127,7 +127,7 @@ func TestGiftBuyRejections(t *testing.T) {
 	e.process(t, tgtest.Callback(userID, "buy:6"))
 	tariff := e.pending(t, userID)
 	e.process(t, tgtest.Callback(userID, "gbuy:6"))
-	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "завершите текущую оплату") {
+	if text := e.last(t, "editMessageText").Params.Get("text"); !strings.Contains(text, "заверши текущую оплату") {
 		t.Fatalf("busy: %s", text)
 	}
 	if p := e.pending(t, userID); p.ID != tariff.ID || p.Kind != model.KindTariff || len(e.pay.Gifts()) != 0 {
@@ -153,11 +153,11 @@ func TestRedeemGiftByLink(t *testing.T) {
 	}
 	// покупателю не уходит ничего о получателе
 	buyerText, _ := routes.GiftNotice(t.Context(), e.c, e.rw, "bot", out[1])
-	if strings.Contains(buyerText, "42") || strings.Contains(buyerText, "Здравствуйте") {
+	if strings.Contains(buyerText, "42") || strings.Contains(buyerText, "Привет") {
 		t.Fatalf("buyer notice leaks the redeemer: %s", buyerText)
 	}
 	redeemerText, _ := routes.GiftNotice(t.Context(), e.c, e.rw, "bot", out[0])
-	if !strings.Contains(redeemerText, "3 месяца") || !strings.Contains(redeemerText, "Дата окончания") {
+	if !strings.Contains(redeemerText, "3 месяца") || !strings.Contains(redeemerText, "Действует до") {
 		t.Fatalf("redeemer notice: %s", redeemerText)
 	}
 	if e.pay.Grants()[len(e.pay.Grants())-1].Source != "gift" {
@@ -212,7 +212,7 @@ func TestRedeemGiftPanelFailure(t *testing.T) {
 	if g := e.pay.Gifts(); g[0].Status != model.GiftReady || len(e.pay.Outbox()) != 0 {
 		t.Fatalf("not rolled back: %+v", g[0])
 	}
-	if text := e.giftText(t); !strings.Contains(text, "ошибка") {
+	if text := e.giftText(t); !strings.Contains(text, "Что-то пошло не так") {
 		t.Fatalf("text: %s", text)
 	}
 	e.rw.FailUpdateWith(nil)

@@ -14,9 +14,9 @@ import (
 func TestReminderMessage(t *testing.T) {
 	const sub = "https://sub.example/abc"
 	c := content.New(&tgtest.Source{}, settings.Defaults(map[int]int{1: 150}, "+7", "Банк", "https://t.me/s"), 0, nil)
-	for kind, want := range map[string]string{"day": "в течение суток", "week": "скоро закончится"} {
+	for kind, want := range map[string]string{"day": "в течение суток", "week": "Продли заранее"} {
 		text, kb := routes.ReminderMessage(t.Context(), c, kind, now, sub)
-		if !strings.Contains(text, want) || !strings.Contains(text, "<b>Дата окончания подписки</b>\n10 января 2026 г. в 15:00, MSK") {
+		if !strings.Contains(text, want) || !strings.Contains(text, "Действует до: <b>10 января 2026 г. в 15:00, MSK</b>") {
 			t.Fatalf("%s: text = %s", kind, text)
 		}
 		if len(kb.InlineKeyboard) != 1 || kb.InlineKeyboard[0][0].CallbackData != "pay" || kb.InlineKeyboard[0][1].CopyText.Text != sub {
@@ -41,7 +41,7 @@ func TestGlobalVarInReminder(t *testing.T) {
 func TestGrantNotice(t *testing.T) {
 	e := newEnv(t)
 	text, kb := routes.PaymentNotice(t.Context(), e.c, e.rw, userID, "grant.days", now, 7, 0)
-	if !strings.Contains(text, "Добавлено дней: <b>7</b>") || !strings.Contains(text, "10 января 2026 г. в 15:00, MSK") || kb == nil {
+	if !strings.Contains(text, "Админ добавил дней: <b>7</b>") || !strings.Contains(text, "10 января 2026 г. в 15:00, MSK") || kb == nil {
 		t.Fatalf("text = %s kb = %v", text, kb)
 	}
 }

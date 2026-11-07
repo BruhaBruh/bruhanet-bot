@@ -129,8 +129,8 @@ func TestConfirmQueuesNotice(t *testing.T) {
 		key   string
 		text  string
 	}{
-		{"confirm", confirmPress, "payment.confirmed", "<b>Администратор подтвердил ваш платеж</b>\n\nВаша подписка была изменена"},
-		{"decline", declinePress, "payment.declined", "<b>Администратор отклонил ваш платеж</b>\n\nВаша подписка была изменена на изначальную"},
+		{"confirm", confirmPress, "payment.confirmed", "<b>✅ Платёж подтверждён</b>\n\nПодписка продлена, спасибо!\nДействует до: <b>9 июля 2026 г. в 15:00, MSK</b>"},
+		{"decline", declinePress, "payment.declined", "<b>❌ Платёж отклонён</b>\n\nСрок подписки вернулся к прежнему. Если это ошибка, напиши в поддержку."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)

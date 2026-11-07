@@ -57,7 +57,7 @@ func TestStartRefRejected(t *testing.T) {
 			if _, ok := e.pay.ReferredBy(userID); ok {
 				t.Fatal("referral recorded")
 			}
-			if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Здравствуйте") {
+			if text := e.last(t, "sendMessage").Params.Get("text"); !strings.Contains(text, "Привет") {
 				t.Fatalf("not a greeting: %s", text)
 			}
 		})
