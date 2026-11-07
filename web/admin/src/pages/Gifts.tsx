@@ -6,6 +6,7 @@ import { formatCount, formatShortDate, plural } from '../format'
 import { giftLink } from '../gift'
 import { useMe } from '../me'
 import { userLabel } from '../promo'
+import { DeleteDialog } from './delete-dialog'
 import type { Gift, GiftStatus, Settings } from '../types'
 
 const PAGE_SIZE = 50
@@ -16,20 +17,20 @@ const SEGMENTS = [
   { value: 'all', label: 'Все' },
   { value: 'ready', label: 'Активные' },
   { value: 'redeemed', label: 'Использованные' },
-  { value: 'cancelled', label: 'Отменённые' },
+  { value: 'cancelled', label: 'Отозванные' },
 ]
 const EMPTY: Record<string, string> = {
   all: 'Подарков ещё нет',
   ready: 'Активных подарков нет',
   redeemed: 'Использованных подарков нет',
-  cancelled: 'Отменённых подарков нет',
+  cancelled: 'Отозванных подарков нет',
 }
 
 const STATUS: Record<GiftStatus, [Tone, string]> = {
   pending: ['warning', 'Ждёт оплаты'],
   ready: ['success', 'Активен'],
   redeemed: ['neutral', 'Использован'],
-  cancelled: ['destructive', 'Отменён'],
+  cancelled: ['destructive', 'Отозван'],
 }
 
 const statusTag = (g: Gift) => {
@@ -50,6 +51,9 @@ async function copyText(text: string, ok: string) {
     toast('Не удалось скопировать')
   }
 }
+
+/** Удалить можно готовый (отзыв и удаление одним шагом) и отозванный; ожидающий оплаты и использованный — история. */
+const canDelete = (g: Gift) => g.status === 'ready' || g.status === 'cancelled'
 
 const failure = (e: unknown, fallback: string) => (e instanceof ApiError && e.body.message) || fallback
 
@@ -187,6 +191,7 @@ export default function Gifts() {
 
   const [creating, setCreating] = useState(false)
   const [cancelling, setCancelling] = useState<Gift>()
+  const [deleting, setDeleting] = useState<Gift>()
   const [openId, setOpenId] = useState<number>()
   const busy = useRef(false)
 
@@ -196,9 +201,9 @@ export default function Gifts() {
     busy.current = true
     try {
       await post(`/api/gifts/${g.id}/cancel`)
-      toast('Подарок отменён', { icon: 'check' })
+      toast('Подарок отозван', { icon: 'check' })
     } catch (e) {
-      toast(failure(e, 'Не удалось отменить подарок'))
+      toast(failure(e, 'Не удалось отозвать подарок'))
     } finally {
       busy.current = false
       setReloads((n) => n + 1) // и после отказа: «уже использован» значит, что строка устарела
@@ -251,8 +256,13 @@ export default function Gifts() {
             </Button>
           )}
           {g.status === 'ready' && (
-            <Button variant="destructive" size="sm" onClick={() => setCancelling(g)}>
-              Отменить
+            <Button variant="gray" size="sm" onClick={() => setCancelling(g)}>
+              Отозвать
+            </Button>
+          )}
+          {canDelete(g) && (
+            <Button variant="destructive" size="sm" onClick={() => setDeleting(g)}>
+              Удалить
             </Button>
           )}
         </div>
@@ -292,8 +302,14 @@ export default function Gifts() {
           rowActions={(g) => (
             <span className="inline-flex gap-0.5">
               {g.code && <RowAction icon="copy" label="Скопировать ссылку" onClick={() => copyLink(g)} />}
-              {g.status === 'ready' && (
-                <RowMenu label="Действия с подарком" items={[{ label: 'Отменить', destructive: true, onSelect: () => setCancelling(g) }]} />
+              {canDelete(g) && (
+                <RowMenu
+                  label="Действия с подарком"
+                  items={[
+                    ...(g.status === 'ready' ? [{ label: 'Отозвать', destructive: true, onSelect: () => setCancelling(g) }] : []),
+                    { label: 'Удалить', destructive: true, onSelect: () => setDeleting(g) },
+                  ]}
+                />
               )}
             </span>
           )}
@@ -321,12 +337,28 @@ export default function Gifts() {
       {creating && <CreateDialog onClose={() => setCreating(false)} onDone={() => setReloads((n) => n + 1)} />}
       {cancelling && (
         <Dialog
-          title="Отменить подарок?"
-          message={`Ссылка на ${monthsLabel(cancelling.months)} перестанет работать. Это нельзя отменить.`}
+          title="Отозвать подарок?"
+          message={`Ссылка на ${monthsLabel(cancelling.months)} перестанет работать. Если подарок уже активирован, срок получателя не изменится.`}
           actions={[
             { label: 'Назад', style: 'cancel', onClick: () => setCancelling(undefined) },
-            { label: 'Отменить подарок', style: 'destructive', onClick: () => void cancel(cancelling) },
+            { label: 'Отозвать подарок', style: 'destructive', onClick: () => void cancel(cancelling) },
           ]}
+        />
+      )}
+      {deleting && (
+        <DeleteDialog
+          title="Удалить подарок?"
+          message={
+            deleting.status === 'ready'
+              ? 'Ссылка перестанет работать, подарок исчезнет из списка. Это нельзя отменить.'
+              : 'Подарок исчезнет из списка. Это нельзя отменить.'
+          }
+          url={`/api/gifts/${deleting.id}`}
+          done="Подарок удалён"
+          conflict="Подарок ждёт оплаты или уже использован: его не удалить"
+          onClose={() => setDeleting(undefined)}
+          onDeleted={() => setReloads((n) => n + 1)}
+          onStale={() => setReloads((n) => n + 1)}
         />
       )}
     </>

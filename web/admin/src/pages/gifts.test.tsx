@@ -96,9 +96,9 @@ describe('Gifts list', () => {
     segment('Использованные')
     await flush()
     expect(screen.getAllByText('Использованных подарков нет').length).toBeGreaterThan(0)
-    segment('Отменённые')
+    segment('Отозванные')
     await flush()
-    expect(screen.getAllByText('Отменённых подарков нет').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Отозванных подарков нет').length).toBeGreaterThan(0)
     expect(calls.map((c) => c.url)).toEqual([
       '/api/gifts?status=all&page=1',
       '/api/gifts?status=all&page=2',
@@ -184,7 +184,7 @@ describe('Gifts create', () => {
   })
 })
 
-describe('Gifts cancel', () => {
+describe('Gifts revoke', () => {
   async function openMenu(text: string) {
     fireEvent.keyDown(within(row(text)).getByRole('button', { name: 'Действия с подарком' }), { key: 'Enter' })
     await flush()
@@ -195,35 +195,37 @@ describe('Gifts cancel', () => {
     replies['POST /api/gifts/1/cancel'] = json(204)
     await show()
     await openMenu('CODE1x…')
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Отменить' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Отозвать' }))
     const d = screen.getByRole('alertdialog')
-    expect(d.textContent).toContain('Отменить подарок?')
+    expect(d.textContent).toContain('Отозвать подарок?')
     expect(posts()).toEqual([])
-    fireEvent.click(within(d).getByRole('button', { name: 'Отменить подарок' }))
+    fireEvent.click(within(d).getByRole('button', { name: 'Отозвать подарок' }))
     await flush()
     expect(posts().map((c) => c.url)).toEqual(['/api/gifts/1/cancel'])
     expect(calls.filter((c) => c.url === '/api/gifts?status=all&page=1')).toHaveLength(2)
-    expect(screen.getByText('Подарок отменён')).toBeTruthy()
+    expect(screen.getByText('Подарок отозван')).toBeTruthy()
   })
 
   it('«Назад» in the confirmation cancels nothing', async () => {
     replies['GET /api/gifts?status=all&page=1'] = json(200, { total: 1, items: [gift(1)] })
     await show()
     await openMenu('CODE1x…')
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Отменить' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Отозвать' }))
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Назад' }))
     await flush()
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(posts()).toEqual([])
   })
 
-  it('a redeemed or cancelled gift has no cancel action', async () => {
+  it('a redeemed or pending gift has no actions; a revoked one can only be deleted', async () => {
     replies['GET /api/gifts?status=all&page=1'] = json(200, {
-      total: 2,
-      items: [gift(1, { status: 'redeemed', redeemedBy: 9 }), gift(2, { status: 'cancelled' })],
+      total: 3,
+      items: [gift(1, { status: 'redeemed', redeemedBy: 9 }), gift(2, { status: 'cancelled' }), gift(3, { status: 'pending', code: '' })],
     })
     await show()
-    expect(screen.queryByRole('button', { name: 'Действия с подарком' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Действия с подарком' })).toHaveLength(1)
+    await openMenu('CODE2x…')
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Удалить'])
   })
 
   it('«already used» from the server is shown and the list is refreshed', async () => {
@@ -231,10 +233,57 @@ describe('Gifts cancel', () => {
     replies['POST /api/gifts/1/cancel'] = json(409, { error: 'not_active', message: 'Подарок уже использован или отменён' })
     await show()
     await openMenu('CODE1x…')
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Отменить' }))
-    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Отменить подарок' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Отозвать' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Отозвать подарок' }))
     await flush()
     expect(screen.getByText('Подарок уже использован или отменён')).toBeTruthy()
+    expect(calls.filter((c) => c.url === '/api/gifts?status=all&page=1')).toHaveLength(2)
+  })
+})
+
+describe('Gifts delete', () => {
+  async function openMenu(text: string) {
+    fireEvent.keyDown(within(row(text)).getByRole('button', { name: 'Действия с подарком' }), { key: 'Enter' })
+    await flush()
+  }
+  const dels = () => calls.filter((c) => c.method === 'DELETE')
+
+  it('a ready gift offers revoke and delete; the dialog says what happens; one DELETE on a double click', async () => {
+    replies['GET /api/gifts?status=all&page=1'] = json(200, { total: 1, items: [gift(1)] })
+    replies['DELETE /api/gifts/1'] = json(204)
+    await show()
+    await openMenu('CODE1x…')
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Отозвать', 'Удалить'])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }))
+    const d = screen.getByRole('alertdialog')
+    expect(d.textContent).toContain('Удалить подарок?')
+    expect(d.textContent).toContain('Ссылка перестанет работать')
+    const ok = within(d).getByRole('button', { name: 'Удалить' })
+    fireEvent.click(ok)
+    fireEvent.click(ok)
+    await flush()
+    expect(dels().map((c) => c.url)).toEqual(['/api/gifts/1'])
+    expect(screen.getByText('Подарок удалён')).toBeTruthy()
+    expect(calls.filter((c) => c.url === '/api/gifts?status=all&page=1')).toHaveLength(2)
+  })
+
+  it('the revoke dialog explains that a redeemed gift keeps the recipient term', async () => {
+    replies['GET /api/gifts?status=all&page=1'] = json(200, { total: 1, items: [gift(1)] })
+    await show()
+    await openMenu('CODE1x…')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Отозвать' }))
+    expect(screen.getByRole('alertdialog').textContent).toContain('срок получателя не изменится')
+  })
+
+  it('«not deletable» from the server is shown and the list is refreshed', async () => {
+    replies['GET /api/gifts?status=all&page=1'] = json(200, { total: 1, items: [gift(1)] })
+    replies['DELETE /api/gifts/1'] = json(409, { error: 'not_deletable' })
+    await show()
+    await openMenu('CODE1x…')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Удалить' }))
+    await flush()
+    expect(screen.getByText('Подарок ждёт оплаты или уже использован: его не удалить')).toBeTruthy()
     expect(calls.filter((c) => c.url === '/api/gifts?status=all&page=1')).toHaveLength(2)
   })
 })
