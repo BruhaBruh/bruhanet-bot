@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"iter"
@@ -100,6 +101,8 @@ type Panel interface {
 	UserDevices(ctx context.Context, userID int) ([]api.Device, error)
 	DeleteUserDevice(ctx context.Context, userID int, hwid string) error
 	DeleteAllUserDevices(ctx context.Context, userID int) error
+	// SubpageConfig — сырой конфиг страницы подписки юзера (инструкции подключения Mini App).
+	SubpageConfig(ctx context.Context, shortUUID string) (json.RawMessage, error)
 }
 
 // PhotoSender — чтение файлов из Telegram (api/internal/telegram): чеки платежей. Фото рассылок в Telegram не

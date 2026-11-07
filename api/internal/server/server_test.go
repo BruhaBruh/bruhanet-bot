@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"iter"
@@ -555,8 +556,12 @@ type fakePanel struct {
 	squad     uuid.UUID
 
 	devices []api.Device
-	devErr  error
-	deleted []string
+
+	subpage      json.RawMessage // ответ SubpageConfig
+	subpageErr   error
+	subpageCalls int
+	devErr       error
+	deleted      []string
 }
 
 func (p *fakePanel) GetUser(context.Context, int64) (*api.UserItemInfo, error) { return p.user, p.err }
@@ -619,6 +624,11 @@ func (p *fakePanel) DeleteAllUserDevices(_ context.Context, userID int) error {
 	return p.devErr
 }
 
+func (p *fakePanel) SubpageConfig(_ context.Context, _ string) (json.RawMessage, error) {
+	p.subpageCalls++
+	return p.subpage, p.subpageErr
+}
+
 // blockingPanel висит, пока не отменят контекст.
 type blockingPanel struct{}
 
@@ -650,6 +660,11 @@ func (blockingPanel) UserDevices(ctx context.Context, _ int) ([]api.Device, erro
 func (blockingPanel) DeleteUserDevice(ctx context.Context, _ int, _ string) error {
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func (blockingPanel) SubpageConfig(ctx context.Context, _ string) (json.RawMessage, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func (blockingPanel) DeleteAllUserDevices(ctx context.Context, _ int) error {
