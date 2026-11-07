@@ -126,6 +126,10 @@ type Deps struct {
 	BaseURL string
 	Now     func() time.Time
 	Static  fs.FS
+	// Mini App (NewMiniApp): токен бота для проверки initData, origin для проверки Origin у мутаций, статика SPA.
+	BotToken   string
+	MiniOrigin string
+	MiniStatic fs.FS
 }
 
 // Requests — api_http_requests_total; route — шаблон маршрута ServeMux, без id.
@@ -139,6 +143,7 @@ type server struct {
 	botCache   lazyWho
 	adminCache lazyWho
 	avatars    *avatarCache
+	mini       *limiter // лимиты Mini App; nil у админки
 }
 
 func New(d Deps) http.Handler {
@@ -207,7 +212,7 @@ func New(d Deps) http.Handler {
 	// единственное исключение из jsonOnly: загрузка фото рассылки — multipart; сессия обязательна, тип проверяет сам хендлер.
 	mux.Handle("POST /api/photos", s.requireSession(http.HandlerFunc(s.uploadPhoto)))
 	mux.HandleFunc("/", s.static) // без метода: "GET /" конфликтует с "/api/"
-	return metrics(securityHeaders(csp(d.Static), mux))
+	return metrics(securityHeaders(csp(d.Static), true, mux))
 }
 
 type statusWriter struct {

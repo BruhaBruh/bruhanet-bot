@@ -34,7 +34,7 @@ func TestCSPHashesInlineScriptsOnly(t *testing.T) {
 }
 
 func TestSecurityHeadersOnEveryResponse(t *testing.T) {
-	h := securityHeaders("default-src 'self'", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) }))
+	h := securityHeaders("default-src 'self'", true, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/anything", nil))
 	for k, want := range map[string]string{
