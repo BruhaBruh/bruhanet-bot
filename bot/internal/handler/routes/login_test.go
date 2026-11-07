@@ -17,7 +17,7 @@ func TestLoginAdmin(t *testing.T) {
 		t.Fatalf("tokens = %+v", toks)
 	}
 	p := e.last(t, "sendMessage").Params
-	if want := "<b>🔐 Вход в админ-панель</b>\n\nСсылка одноразовая и действует 5 минут."; p.Get("chat_id") != "1" || p.Get("text") != want {
+	if want := "Привет! Вы администратор Test. Нажмите кнопку ниже, чтобы войти в админ-панель."; p.Get("chat_id") != "1" || p.Get("text") != want {
 		t.Fatalf("params = %v", p)
 	}
 	if kb := p.Get("reply_markup"); !strings.Contains(kb, `"url":"http://localhost:5173/auth?token=`) {
@@ -55,8 +55,8 @@ func TestLoginURLRejectedFallsBackToText(t *testing.T) {
 	// ссылка на localhost не кликабельна в Telegram: моноширинный блок копируется тапом
 	text := p.Get("text")
 	if p.Get("reply_markup") != "" ||
-		!strings.HasPrefix(text, "<b>🔐 Вход в админ-панель</b>\n\nСсылка одноразовая и действует 5 минут.\n\n<code>http://localhost:5173/auth?token=") ||
-		!strings.HasSuffix(text, "</code>\n\nНажми на ссылку, чтобы скопировать её, и открой в браузере.") {
+		!strings.HasPrefix(text, "Привет! Вы администратор Test. Нажмите кнопку ниже, чтобы войти в админ-панель.\n\n<code>http://localhost:5173/auth?token=") ||
+		!strings.HasSuffix(text, "</code>\n\nTelegram не принял кнопку, поэтому ссылка здесь. Нажми на неё, чтобы скопировать, и открой в браузере.") {
 		t.Fatalf("fallback text = %q", text)
 	}
 	if lp := p.Get("link_preview_options"); !strings.Contains(lp, `"is_disabled":true`) {
@@ -85,7 +85,7 @@ func TestStartLoginAdminGetsTheLoginButton(t *testing.T) {
 		t.Fatalf("tokens = %d", n)
 	}
 	p := e.last(t, "sendMessage").Params
-	if !strings.Contains(p.Get("text"), "Вход в админ-панель") || !strings.Contains(p.Get("reply_markup"), `"url":"http://localhost:5173/auth?token=`) {
+	if !strings.Contains(p.Get("text"), "Вы администратор") || !strings.Contains(p.Get("reply_markup"), `"url":"http://localhost:5173/auth?token=`) {
 		t.Fatalf("params = %v", p)
 	}
 	if n := e.count("sendMessage"); n != 1 {
