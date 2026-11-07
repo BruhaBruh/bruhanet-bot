@@ -81,6 +81,11 @@ func migrate() int {
 		slog.Error("failed to migrate", "error", err)
 		return 1
 	}
-	slog.Info("migrations applied")
+	moved, err := st.MigrateLegacyKeyboards(ctx)
+	if err != nil {
+		slog.Error("failed to migrate legacy keyboards", "error", err)
+		return 1
+	}
+	slog.Info("migrations applied", "legacy_keyboards_moved", moved)
 	return 0
 }
