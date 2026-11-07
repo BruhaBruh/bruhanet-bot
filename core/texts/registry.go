@@ -387,8 +387,10 @@ var registry = []Def{
 
 	msg("login.message", groupLogin, "Вход в админ-панель", "Привет! Вы администратор {{.name}}. Нажмите кнопку ниже, чтобы войти в админ-панель.").
 		shown("По /login от админа (и по ссылке входа со страницы панели)", "button.login"),
-	msg("login.fallback", groupLogin, "Вход: ссылка вместо кнопки", "Telegram не принял кнопку, поэтому ссылка здесь. Нажми на неё, чтобы скопировать, и открой в браузере.").
-		shown("Вместо кнопки, если Telegram не принял адрес (например, localhost при разработке): ссылка идёт блоком выше"),
+	msg("login.fallback", groupLogin, "Вход: ссылка вместо кнопки",
+		"Привет! Вы администратор {{.name}}. Telegram не принял кнопку, поэтому ссылка здесь: нажми на неё, чтобы скопировать, и открой в браузере.\n\n<code>{{.link}}</code>",
+		Var{Name: "link", Description: "Ссылка входа с одноразовым токеном", Sample: "http://localhost:5173/auth?token=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE", Max: 100}).
+		shown("Вместо сообщения с кнопкой, если Telegram не принял адрес (например, localhost при разработке)"),
 
 	btn("button.info", "Информация", "ℹ️ Информация").on(routeInfo, StylePrimary, "Главное меню, если юзер есть в панели"),
 	btn("button.pay", "Оплатить", "💳 Оплатить").on(routePay, StyleDefault, "Главное меню, если юзер есть в панели"),

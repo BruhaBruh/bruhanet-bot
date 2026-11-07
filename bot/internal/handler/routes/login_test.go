@@ -56,8 +56,8 @@ func TestLoginURLRejectedFallsBackToText(t *testing.T) {
 	// ссылка на localhost не кликабельна в Telegram: моноширинный блок копируется тапом
 	text := p.Get("text")
 	if p.Get("reply_markup") != "" ||
-		!strings.HasPrefix(text, "Привет! Вы администратор Test. Нажмите кнопку ниже, чтобы войти в админ-панель.\n\n<code>http://localhost:5173/auth?token=") ||
-		!strings.HasSuffix(text, "</code>\n\nTelegram не принял кнопку, поэтому ссылка здесь. Нажми на неё, чтобы скопировать, и открой в браузере.") {
+		!strings.HasPrefix(text, "Привет! Вы администратор Test. Telegram не принял кнопку, поэтому ссылка здесь: нажми на неё, чтобы скопировать, и открой в браузере.\n\n<code>http://localhost:5173/auth?token=") ||
+		!strings.HasSuffix(text, "</code>") {
 		t.Fatalf("fallback text = %q", text)
 	}
 	if lp := p.Get("link_preview_options"); !strings.Contains(lp, `"is_disabled":true`) {

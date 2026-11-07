@@ -3,7 +3,6 @@ package routes
 import (
 	"context"
 	"errors"
-	"html"
 	"strings"
 	"time"
 
@@ -52,7 +51,7 @@ func (h *handlers) login(ctx context.Context, b *bot.Bot, u *models.Update) {
 		stlog.Warn(ctx, "login button rejected, sending plain link", "error", err)
 		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:             h.cfg.Telegram.AdminID,
-			Text:               buildMessage(text, "", "<code>"+html.EscapeString(link)+"</code>", "", h.c.Text(ctx, "login.fallback", nil)),
+			Text:               h.c.Text(ctx, "login.fallback", map[string]string{"link": link}),
 			ParseMode:          models.ParseModeHTML,
 			LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: bot.True()},
 		})
