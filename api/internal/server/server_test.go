@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"iter"
 	"maps"
@@ -524,6 +525,10 @@ type fakePanel struct {
 	updateErr error
 	createErr error
 	squad     uuid.UUID
+
+	devices []api.Device
+	devErr  error
+	deleted []string
 }
 
 func (p *fakePanel) GetUser(context.Context, int64) (*api.UserItemInfo, error) { return p.user, p.err }
@@ -572,6 +577,20 @@ func (p *fakePanel) Users(context.Context) iter.Seq2[api.UserItemInfo, error] {
 	}
 }
 
+func (p *fakePanel) UserDevices(context.Context, int) ([]api.Device, error) {
+	return p.devices, p.devErr
+}
+
+func (p *fakePanel) DeleteUserDevice(_ context.Context, userID int, hwid string) error {
+	p.deleted = append(p.deleted, fmt.Sprintf("%d:%s", userID, hwid))
+	return p.devErr
+}
+
+func (p *fakePanel) DeleteAllUserDevices(_ context.Context, userID int) error {
+	p.deleted = append(p.deleted, fmt.Sprintf("%d:*", userID))
+	return p.devErr
+}
+
 // blockingPanel висит, пока не отменят контекст.
 type blockingPanel struct{}
 
@@ -593,6 +612,21 @@ func (blockingPanel) UpdateUser(ctx context.Context, _ int64, _ string, _ time.T
 func (blockingPanel) SetDeviceLimit(ctx context.Context, _ int64, _ int) (*api.UserItemInfo, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
+}
+
+func (blockingPanel) UserDevices(ctx context.Context, _ int) ([]api.Device, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (blockingPanel) DeleteUserDevice(ctx context.Context, _ int, _ string) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (blockingPanel) DeleteAllUserDevices(ctx context.Context, _ int) error {
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func (blockingPanel) Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error] {

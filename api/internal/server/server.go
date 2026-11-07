@@ -92,6 +92,10 @@ type Panel interface {
 	UpdateUser(ctx context.Context, telegramID int64, username string, expireAt time.Time, squadUUID uuid.UUID) (*api.UserItemInfo, error)
 	SetDeviceLimit(ctx context.Context, telegramID int64, limit int) (*api.UserItemInfo, error)
 	Users(ctx context.Context) iter.Seq2[api.UserItemInfo, error]
+	// HWID-устройства юзера по числовому id в панели.
+	UserDevices(ctx context.Context, userID int) ([]api.Device, error)
+	DeleteUserDevice(ctx context.Context, userID int, hwid string) error
+	DeleteAllUserDevices(ctx context.Context, userID int) error
 }
 
 // PhotoSender — чтение файлов из Telegram (api/internal/telegram): чеки платежей. Фото рассылок в Telegram не
@@ -168,6 +172,9 @@ func New(d Deps) http.Handler {
 	apiMux.HandleFunc("PUT /api/broadcasts/{id}", s.updateBroadcast)
 	apiMux.HandleFunc("POST /api/broadcasts/{id}/cancel", s.cancelBroadcast)
 	apiMux.HandleFunc("DELETE /api/broadcasts/{id}", s.deleteBroadcast)
+	apiMux.HandleFunc("GET /api/users/{id}/devices", s.devices)
+	apiMux.HandleFunc("DELETE /api/users/{id}/devices", s.deleteAllDevices)
+	apiMux.HandleFunc("DELETE /api/users/{id}/devices/{hwid}", s.deleteDevice)
 	apiMux.HandleFunc("POST /api/users/{id}/messages", s.directMessage)
 	apiMux.HandleFunc("POST /api/users/{id}/grant", s.grantDays)
 	apiMux.HandleFunc("POST /api/users/{id}/block", s.setBlocked(true))

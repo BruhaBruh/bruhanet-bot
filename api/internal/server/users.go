@@ -90,11 +90,14 @@ type panelInfo struct {
 	ID       *int       `json:"id"` // числовой id юзера в панели; UUID этот клиент панели не отдаёт
 	ExpireAt *time.Time `json:"expireAt"`
 	Status   *string    `json:"status"`
-	Error    *string    `json:"error"`
+	// SubscriptionURL — ссылка подписки, доступ к VPN: только в карточке, только админу; не логировать.
+	SubscriptionURL *string `json:"subscriptionUrl,omitempty"`
+	Error           *string `json:"error"`
 }
 
 func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	w.Header().Set("Cache-Control", "no-store") // в ответе ссылка подписки
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeBadRequest(w)
@@ -147,6 +150,9 @@ func (s *server) userCard(w http.ResponseWriter, r *http.Request) {
 		p.Error = ptr("panel_unavailable")
 	default:
 		p.ID, p.ExpireAt, p.Status = ptr(info.ID), ptr(info.ExpireAt.UTC()), ptr(string(info.Status))
+		if info.SubscriptionUrl != "" {
+			p.SubscriptionURL = ptr(info.SubscriptionUrl)
+		}
 	}
 	set, _, serr := s.current(ctx)
 	if serr != nil {
