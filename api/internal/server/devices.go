@@ -81,33 +81,42 @@ func panelFailed(w http.ResponseWriter, r *http.Request, msg string, err error) 
 	writeJSON(w, http.StatusBadGateway, map[string]string{"error": "panel_unavailable", "message": "Панель не ответила, повторите позже"})
 }
 
+// deviceList — HWID-устройства юзера и лимит панели; записанный 502 (ok=false) — ответ уже отправлен.
+func (s *server) deviceList(w http.ResponseWriter, r *http.Request, info *api.UserItemInfo) (items []deviceItem, limit *int, ok bool) {
+	items = []deviceItem{}
+	if info == nil {
+		return items, nil, true
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.PanelTimeout)
+	defer cancel()
+	list, err := s.Panel.UserDevices(ctx, info.ID)
+	if err != nil && !errors.Is(err, remnawave.ErrUserNotFound) {
+		panelFailed(w, r, "panel list devices", err)
+		return nil, nil, false
+	}
+	for _, d := range list {
+		items = append(items, deviceItem{
+			Hwid: d.Hwid, Platform: nilStr(d.Platform), OSVersion: nilStr(d.OsVersion),
+			DeviceModel: nilStr(d.DeviceModel), UserAgent: nilStr(d.UserAgent),
+			CreatedAt: d.CreatedAt.UTC(), UpdatedAt: d.UpdatedAt.UTC(),
+		})
+	}
+	if l, has := remnawave.DeviceLimit(*info); has {
+		limit = &l
+	}
+	stlog.L(r.Context()).Info("devices listed", slog.Int("count", len(items)))
+	return items, limit, true
+}
+
 // devices — список HWID-устройств юзера из панели. Юзера нет в панели — пустой список.
 func (s *server) devices(w http.ResponseWriter, r *http.Request) {
 	info, ok := s.panelUser(w, r)
 	if !ok {
 		return
 	}
-	items := []deviceItem{}
-	var limit *int
-	if info != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), s.PanelTimeout)
-		defer cancel()
-		list, err := s.Panel.UserDevices(ctx, info.ID)
-		if err != nil && !errors.Is(err, remnawave.ErrUserNotFound) {
-			panelFailed(w, r, "panel list devices", err)
-			return
-		}
-		for _, d := range list {
-			items = append(items, deviceItem{
-				Hwid: d.Hwid, Platform: nilStr(d.Platform), OSVersion: nilStr(d.OsVersion),
-				DeviceModel: nilStr(d.DeviceModel), UserAgent: nilStr(d.UserAgent),
-				CreatedAt: d.CreatedAt.UTC(), UpdatedAt: d.UpdatedAt.UTC(),
-			})
-		}
-		if l, has := remnawave.DeviceLimit(*info); has {
-			limit = &l
-		}
-		stlog.L(r.Context()).Info("devices listed", slog.Int("count", len(items)))
+	items, limit, ok := s.deviceList(w, r, info)
+	if !ok {
+		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "limit": limit})
@@ -132,6 +141,11 @@ func (s *server) removeDevices(w http.ResponseWriter, r *http.Request, del func(
 	if !ok {
 		return
 	}
+	s.deleteFor(w, r, info, del)
+}
+
+// deleteFor удаляет устройства юзера панели; info == nil (юзера там нет) — 404.
+func (s *server) deleteFor(w http.ResponseWriter, r *http.Request, info *api.UserItemInfo, del func(context.Context, int) error) {
 	if info == nil {
 		writeError(w, http.StatusNotFound, "not found")
 		return

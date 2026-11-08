@@ -38,6 +38,9 @@ func NewMiniApp(d Deps) http.Handler {
 	apiMux.HandleFunc("GET /m/api/subscription", s.miniSubscription)
 	apiMux.HandleFunc("POST /m/api/subscription-link", s.miniSubscriptionLink)
 	apiMux.HandleFunc("GET /m/api/instructions", s.miniInstructions)
+	apiMux.HandleFunc("GET /m/api/devices", s.miniDevices)
+	apiMux.HandleFunc("DELETE /m/api/devices/{hwid}", s.miniDeleteDevice)
+	apiMux.HandleFunc("DELETE /m/api/devices", s.miniDeleteAllDevices)
 	apiMux.HandleFunc("GET /m/api/referral", s.miniReferral)
 	apiMux.HandleFunc("GET /m/api/promos", s.miniPromos)
 	apiMux.HandleFunc("/m/api/", func(w http.ResponseWriter, _ *http.Request) {
