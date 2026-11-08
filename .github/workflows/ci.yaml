@@ -119,86 +119,86 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    name: Deploy
-    needs: build
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment: production
-    env:
-      WORK_DIR: ${{ secrets.WORK_DIR }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install ssh key
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-        run: |
-          install -m 700 -d ~/.ssh
-          install -m 600 /dev/null ~/.ssh/id_deploy
-          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_deploy
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          printf 'Host vps\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/id_deploy\n  StrictHostKeyChecking yes\n' \
-            "$SSH_HOST" "$SSH_USER" > ~/.ssh/config
-      # все ключи из deploy/.env.example должны быть в .env на VPS (иначе compose/бот упадут уже после pull).
-      # Идёт ДО копирования: ключи берём из .env.example раннера (через stdin), провал не трогает deploy/ на VPS
-      - name: Check .env keys
-        run: |
-          # shellcheck disable=SC2029 # WORK_DIR намеренно раскрывается на раннере, %q экранирует для remote shell
-          grep -oE '^[A-Z_][A-Z0-9_]*=' deploy/.env.example | sort -u | ssh vps "
-            set -eu
-            cd $(printf %q "$WORK_DIR")
-            missing=\$(while IFS== read -r k; do grep -q \"^\${k}=\" .env || echo \"\$k\"; done)
-            if [ -n \"\$missing\" ]; then
-              echo 'В .env на VPS нет ключей из .env.example (добавь вручную или запусти install.sh):'
-              echo \"\$missing\"
-              exit 1
-            fi
-          "
-      # deploy/ без .env (его в репе нет, --exclude — страховка): .env на сервере не трогается
-      - name: Copy deploy configs
-        run: |
-          # shellcheck disable=SC2029 # WORK_DIR намеренно раскрывается на раннере, %q экранирует для remote shell
-          tar -C deploy --exclude=.env -cz . \
-            | ssh vps "mkdir -p $(printf %q "$WORK_DIR") && tar -C $(printf %q "$WORK_DIR") -xz --no-same-owner --no-overwrite-dir"
-      # без --wait: оно ждало бы и долгий start_period Grafana; здоровье бота проверяем ниже
-      # sha-<7> — тот же тег, что type=sha в metadata-action: деплоим ровно собранный образ
-      - name: Pull and restart
-        run: |
-          ssh vps bash -s -- "$WORK_DIR" "sha-${GITHUB_SHA::7}" <<'EOF'
-          set -euo pipefail
-          cd "$1"
-          export BOT_IMAGE_TAG="$2"
-          docker compose --env-file .env pull
-          docker compose --env-file .env up -d --remove-orphans
-          EOF
-      # docker healthcheck по liveness /healthz: ждём healthy у bot и api до 90 с, иначе логи и fail
-      - name: Check bot and api are healthy
-        run: |
-          ssh vps bash -s -- "$WORK_DIR" 90 <<'EOF'
-          set -euo pipefail
-          cd "$1"
-          deadline=$(( $(date +%s) + $2 ))
-          for svc in bot api; do
-            id=$(docker compose --env-file .env ps -aq "$svc") || id=
-            while :; do
-              s=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null) || s=missing
-              echo "$svc: $s"
-              [ "$s" = healthy ] && break
-              if [ "$(date +%s)" -ge "$deadline" ]; then
-                docker compose --env-file .env logs --tail 50 migrate
-                docker compose --env-file .env logs --tail 50 bot
-                docker compose --env-file .env logs --tail 50 api
-                exit 1
-              fi
-              sleep 5
-            done
-          done
-          EOF
-      # только висячие слои: на VPS ещё Remnawave, prune -a снёс бы чужое
-      - name: Clean dangling images
-        if: always()
-        continue-on-error: true
-        run: ssh vps "docker image prune -f"
+  # deploy:
+  #   name: Deploy
+  #   needs: build
+  #   if: github.event_name == 'push'
+  #   runs-on: ubuntu-latest
+  #   environment: production
+  #   env:
+  #     WORK_DIR: ${{ secrets.WORK_DIR }}
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #     - name: Install ssh key
+  #       env:
+  #         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+  #         SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+  #         SSH_HOST: ${{ secrets.SSH_HOST }}
+  #         SSH_USER: ${{ secrets.SSH_USER }}
+  #       run: |
+  #         install -m 700 -d ~/.ssh
+  #         install -m 600 /dev/null ~/.ssh/id_deploy
+  #         printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_deploy
+  #         printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+  #         printf 'Host vps\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/id_deploy\n  StrictHostKeyChecking yes\n' \
+  #           "$SSH_HOST" "$SSH_USER" > ~/.ssh/config
+  #     # все ключи из deploy/.env.example должны быть в .env на VPS (иначе compose/бот упадут уже после pull).
+  #     # Идёт ДО копирования: ключи берём из .env.example раннера (через stdin), провал не трогает deploy/ на VPS
+  #     - name: Check .env keys
+  #       run: |
+  #         # shellcheck disable=SC2029 # WORK_DIR намеренно раскрывается на раннере, %q экранирует для remote shell
+  #         grep -oE '^[A-Z_][A-Z0-9_]*=' deploy/.env.example | sort -u | ssh vps "
+  #           set -eu
+  #           cd $(printf %q "$WORK_DIR")
+  #           missing=\$(while IFS== read -r k; do grep -q \"^\${k}=\" .env || echo \"\$k\"; done)
+  #           if [ -n \"\$missing\" ]; then
+  #             echo 'В .env на VPS нет ключей из .env.example (добавь вручную или запусти install.sh):'
+  #             echo \"\$missing\"
+  #             exit 1
+  #           fi
+  #         "
+  #     # deploy/ без .env (его в репе нет, --exclude — страховка): .env на сервере не трогается
+  #     - name: Copy deploy configs
+  #       run: |
+  #         # shellcheck disable=SC2029 # WORK_DIR намеренно раскрывается на раннере, %q экранирует для remote shell
+  #         tar -C deploy --exclude=.env -cz . \
+  #           | ssh vps "mkdir -p $(printf %q "$WORK_DIR") && tar -C $(printf %q "$WORK_DIR") -xz --no-same-owner --no-overwrite-dir"
+  #     # без --wait: оно ждало бы и долгий start_period Grafana; здоровье бота проверяем ниже
+  #     # sha-<7> — тот же тег, что type=sha в metadata-action: деплоим ровно собранный образ
+  #     - name: Pull and restart
+  #       run: |
+  #         ssh vps bash -s -- "$WORK_DIR" "sha-${GITHUB_SHA::7}" <<'EOF'
+  #         set -euo pipefail
+  #         cd "$1"
+  #         export BOT_IMAGE_TAG="$2"
+  #         docker compose --env-file .env pull
+  #         docker compose --env-file .env up -d --remove-orphans
+  #         EOF
+  #     # docker healthcheck по liveness /healthz: ждём healthy у bot и api до 90 с, иначе логи и fail
+  #     - name: Check bot and api are healthy
+  #       run: |
+  #         ssh vps bash -s -- "$WORK_DIR" 90 <<'EOF'
+  #         set -euo pipefail
+  #         cd "$1"
+  #         deadline=$(( $(date +%s) + $2 ))
+  #         for svc in bot api; do
+  #           id=$(docker compose --env-file .env ps -aq "$svc") || id=
+  #           while :; do
+  #             s=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null) || s=missing
+  #             echo "$svc: $s"
+  #             [ "$s" = healthy ] && break
+  #             if [ "$(date +%s)" -ge "$deadline" ]; then
+  #               docker compose --env-file .env logs --tail 50 migrate
+  #               docker compose --env-file .env logs --tail 50 bot
+  #               docker compose --env-file .env logs --tail 50 api
+  #               exit 1
+  #             fi
+  #             sleep 5
+  #           done
+  #         done
+  #         EOF
+  #     # только висячие слои: на VPS ещё Remnawave, prune -a снёс бы чужое
+  #     - name: Clean dangling images
+  #       if: always()
+  #       continue-on-error: true
+  #       run: ssh vps "docker image prune -f"
