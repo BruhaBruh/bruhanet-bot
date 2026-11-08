@@ -1,4 +1,5 @@
 packages:
   - admin
+  - miniapp
 allowBuilds:
   esbuild: true

@@ -1,0 +1,10 @@
+@import '../../admin/src/styles/index.css';
+
+/* Tailwind сам видит только этот пакет: примитивы и утилиты админки подключаем явно. */
+@source '../../admin/src/ui';
+@source '.';
+
+html,
+body {
+  overscroll-behavior: none;
+}

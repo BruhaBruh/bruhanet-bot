@@ -3,9 +3,9 @@
   "private": true,
   "packageManager": "pnpm@12.9.1",
   "scripts": {
-    "build": "pnpm -C admin build",
-    "test": "pnpm -C admin test",
-    "typecheck": "pnpm -C admin typecheck",
-    "lint": "pnpm -C admin lint"
+    "build": "pnpm -C admin build && pnpm -C miniapp build",
+    "test": "pnpm -C admin test && pnpm -C miniapp test",
+    "typecheck": "pnpm -C admin typecheck && pnpm -C miniapp typecheck",
+    "lint": "pnpm -C admin lint && pnpm -C miniapp lint"
   }
 }

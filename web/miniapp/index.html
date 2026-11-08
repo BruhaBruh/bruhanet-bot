@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>BruhaNet</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      // Тема до первой отрисовки: схема Telegram (SDK уже загружен), иначе системная.
+      ;(function () {
+        var tg = window.Telegram && window.Telegram.WebApp
+        var theme = tg && (tg.colorScheme === 'dark' || tg.colorScheme === 'light') ? tg.colorScheme : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
+  </head>
+  <body class="antialiased bg-page-bg text-text font-sans">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

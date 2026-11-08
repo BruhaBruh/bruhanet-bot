@@ -4,9 +4,11 @@ RUN corepack enable
 WORKDIR /src/web
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 COPY web/admin/package.json admin/
+COPY web/miniapp/package.json miniapp/
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 COPY web/admin/ admin/
+COPY web/miniapp/ miniapp/
 RUN pnpm build
 
 FROM golang:1.27 AS build
@@ -26,6 +28,7 @@ COPY bot/ bot/
 COPY api/ api/
 # собранный фронт заменяет заглушку в embed
 COPY --from=web /src/web/admin/dist/ api/internal/web/dist/
+COPY --from=web /src/web/miniapp/dist/ api/internal/miniappweb/dist/
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -ldflags="-s -w" -o /out/bot ./bot/cmd && \
