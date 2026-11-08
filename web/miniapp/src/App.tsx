@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ComponentType } from 'react'
 import { TabBar, type NavItem } from '@/ui/tab-bar'
 import { ApiError, get } from './lib/api'
 import { closeApp, ready } from './lib/telegram'
@@ -23,6 +23,9 @@ const TABS: (NavItem & { key: Tab })[] = [
   { key: 'friends', label: 'Друзья', icon: 'users' },
   { key: 'promos', label: 'Промокоды', icon: 'ticket' },
 ]
+
+// экраны без нужды в me принимают меньше параметров — это допустимо
+const SCREENS: Record<Tab, ComponentType<{ me: Me }>> = { subscription: Subscription, devices: Devices, friends: Friends, promos: Promos }
 
 type Boot =
   | { status: 'loading' }
@@ -93,7 +96,7 @@ export function App() {
   }
 
   const items = TABS.filter((t) => t.key !== 'friends' || boot.referralOn)
-  const Screen = { subscription: Subscription, devices: Devices, friends: Friends, promos: Promos }[tab]
+  const Screen = SCREENS[tab]
   return (
     <div className="min-h-dvh pb-[calc(var(--size-tab-bar)+env(safe-area-inset-bottom))]">
       <Screen me={boot.me} />

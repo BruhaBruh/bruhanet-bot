@@ -44,3 +44,11 @@ export function openExternal(url: string) {
   if (url.startsWith('https://') && app) app.openLink(url)
   else window.location.href = url
 }
+
+// «Поделиться» ссылкой через выбор чата Telegram.
+export function shareLink(url: string, text: string) {
+  const share = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`
+  const app = tg()
+  if (app) app.openTelegramLink(share)
+  else window.open(share, '_blank', 'noopener,noreferrer')
+}
