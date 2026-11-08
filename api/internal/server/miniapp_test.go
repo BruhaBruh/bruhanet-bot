@@ -22,17 +22,26 @@ const (
 
 func newMini(t *testing.T) (http.Handler, *fakeStore) {
 	t.Helper()
+	h, st, _ := newMiniPanel(t, &fakePanel{})
+	return h, st
+}
+
+func newMiniPanel(t *testing.T, panel *fakePanel) (http.Handler, *fakeStore, *fakeIdentity) {
+	t.Helper()
 	st := newFakeStore()
 	st.users = []model.UserSummary{{TelegramID: 42, Username: "bruha", Name: "Бруха"}}
+	id := &fakeIdentity{botUser: "bruhanet_bot", botName: "BruhaNet"}
 	h := server.NewMiniApp(server.Deps{
 		Store:      st,
+		Panel:      panel,
+		Identity:   id,
 		Defaults:   settings.Defaults(map[int]int{1: 150}, "+7 900", "Т-Банк", "https://t.me/support"),
 		BotToken:   miniToken,
 		MiniOrigin: miniOrigin,
 		Now:        func() time.Time { return now },
 		MiniStatic: fstest.MapFS{"index.html": {Data: []byte(indexHTML)}},
 	})
-	return h, st
+	return h, st, id
 }
 
 func miniReq(h http.Handler, method, target, auth string, hdr map[string]string) *httptest.ResponseRecorder {
