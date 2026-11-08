@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { StatusTag, type Tone } from '@/ui/status-tag'
 import { ApiError, get } from '~/lib/api'
 import { days, formatBytes, formatDate } from '~/lib/format'
-import type { Me } from '../App'
 import { Connect } from './Connect'
+import { Hosts } from './Hosts'
 import { PayBanner } from './PayBanner'
 import { ErrorBlock, Loading } from './states'
 
@@ -26,7 +26,7 @@ const TAGS: Record<State, { tone: Tone; label: string }> = {
 
 type Load = { status: 'loading' } | { status: 'ready'; sub: Sub } | { status: 'panelDown' } | { status: 'error' }
 
-export default function Subscription({ me }: { me: Me }) {
+export default function Subscription() {
   const [load, setLoad] = useState<Load>({ status: 'loading' })
 
   const fetchSub = useCallback(() => {
@@ -88,8 +88,9 @@ export default function Subscription({ me }: { me: Me }) {
           </>
         )}
       </section>
-      <PayBanner me={me} />
+      <PayBanner />
       {sub.state === 'active' && <Connect />}
+      {sub.state === 'active' && <Hosts />}
     </div>
   )
 }

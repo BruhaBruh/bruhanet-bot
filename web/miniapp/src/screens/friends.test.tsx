@@ -25,8 +25,8 @@ describe('Friends screen', () => {
     expect(screen.getByText('Приглашено')).toBeTruthy()
     expect(screen.getByText('5')).toBeTruthy()
     expect(screen.getByText('2')).toBeTruthy()
-    expect(screen.getByText('14 дней')).toBeTruthy()
-    expect(screen.getByText(/по 7 дней/)).toBeTruthy()
+    expect(screen.getByText('14 д.')).toBeTruthy()
+    expect(screen.getByText(/по 7 д\./)).toBeTruthy()
   })
 
   it('copies and shares the personal link', async () => {

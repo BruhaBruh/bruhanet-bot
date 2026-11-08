@@ -16,9 +16,18 @@ const subpageUUID = "7d1f5b9e-0000-4000-8000-0000000000aa"
 
 // panel: первый вызов (по shortUuid) отдаёт uuid конфига, второй (subscription-page-configs) — сам конфиг.
 func subpagePanel(t *testing.T, first func(w http.ResponseWriter), gotBody *map[string]any) *httptest.Server {
+	return subpagePanelList(t, first, gotBody, `{"response":{"total":0,"configs":[]}}`)
+}
+
+// list — ответ на список конфигов панели (GET /api/subscription-page-configs).
+func subpagePanelList(t *testing.T, first func(w http.ResponseWriter), gotBody *map[string]any, list string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/subscription-page-configs" {
+			_, _ = w.Write([]byte(list))
+			return
+		}
 		if strings.Contains(r.URL.Path, "subscription-page-configs") {
 			_, _ = w.Write([]byte(`{"response":{"uuid":"` + subpageUUID + `","viewPosition":0,"name":"main","tags":[],"config":{"platforms":{"ios":[]}}}}`))
 			return
@@ -93,5 +102,51 @@ func TestSubpageConfigErrorDoesNotLeakShortUUID(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "SECRETSHORT") {
 		t.Fatalf("the error leaks the short uuid: %v", err)
+	}
+}
+
+const nullSubpage = `{"response":{"subpageConfigUuid":null,"webpageAllowed":true}}`
+
+// Конфиг юзеру не назначен (uuid null) — страница подписки показывает конфиг по умолчанию: берём «Default», иначе первый по позиции.
+func TestSubpageConfigFallsBackToDefault(t *testing.T) {
+	cfgs := func(names ...string) string {
+		items := make([]string, 0, len(names))
+		for i, n := range names {
+			items = append(items, `{"uuid":"7d1f5b9e-0000-4000-8000-00000000000`+string(rune('1'+i))+`","viewPosition":`+string(rune('3'-i))+`,"name":"`+n+`","tags":[],"config":{"pick":"`+n+`"}}`)
+		}
+		return `{"response":{"total":` + string(rune('0'+len(names))) + `,"configs":[` + strings.Join(items, ",") + `]}}`
+	}
+	for name, tc := range map[string]struct{ list, want string }{
+		"named Default wins":          {cfgs("Zeta", "Default", "Alpha"), `{"pick":"Default"}`},
+		"no Default: lowest position": {cfgs("Zeta", "Alpha"), `{"pick":"Alpha"}`},
+	} {
+		srv := subpagePanelList(t, func(w http.ResponseWriter) { _, _ = w.Write([]byte(nullSubpage)) }, nil, tc.list)
+		rw, _ := remnawave.New(srv.URL, "t", "c=1")
+		raw, err := rw.SubpageConfig(context.Background(), "abc123")
+		srv.Close()
+		if err != nil || string(raw) != tc.want {
+			t.Fatalf("%s: raw=%s err=%v", name, raw, err)
+		}
+	}
+}
+
+func TestConnectionKeys(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if !strings.HasSuffix(r.URL.Path, "/connection-keys/42") {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"no","errorCode":"A001"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"response":{"enabledKeys":["vless://u@h:443#A","hysteria2://x@h:1#B"],"hiddenKeys":["hidden://x"],"disabledKeys":["no://x"]}}`))
+	}))
+	defer srv.Close()
+	rw, _ := remnawave.New(srv.URL, "t", "c=1")
+	keys, err := rw.ConnectionKeys(context.Background(), 42)
+	if err != nil || len(keys) != 2 || keys[0] != "vless://u@h:443#A" || keys[1] != "hysteria2://x@h:1#B" {
+		t.Fatalf("keys=%v err=%v", keys, err)
+	}
+	if _, err = rw.ConnectionKeys(context.Background(), 7); !errors.Is(err, remnawave.ErrUserNotFound) {
+		t.Fatalf("unknown user: %v", err)
 	}
 }

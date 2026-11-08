@@ -20,7 +20,29 @@ const routes: Record<string, unknown> = {
       { hwid: 'hw-2', platform: 'Windows', osVersion: '11', deviceModel: null, userAgent: null, createdAt: iso(-10 * day), updatedAt: iso(-2 * day) },
     ],
   },
-  '/m/api/instructions': { platforms: [] },
+  '/m/api/instructions': {
+    platforms: [
+      {
+        id: 'ios', title: 'iOS',
+        apps: [{
+          name: 'Happ', featured: true,
+          blocks: [
+            { title: 'Установка приложения', text: 'Откройте страницу в App Store и установите приложение.', icon: 'download', tone: 'cyan', buttons: [{ text: 'App Store', url: 'https://apps.apple.com/', kind: 'link' }] },
+            { title: 'Добавление подписки', text: 'Нажмите кнопку ниже, чтобы добавить подписку.', icon: 'cloud', tone: 'teal', buttons: [{ text: 'Добавить подписку', url: 'happ://add/{{SUBSCRIPTION_LINK}}', kind: 'subscription' }] },
+            { title: 'Подключение и использование', text: 'Выберите сервер и включите VPN большой кнопкой.', icon: 'check', tone: 'teal', buttons: [] },
+          ],
+        }],
+      },
+      { id: 'android', title: 'Android', apps: [{ name: 'V2Box', featured: false, blocks: [{ title: 'Установка', text: 'Скачайте из Google Play.', icon: 'download', tone: 'cyan', buttons: [] }] }] },
+    ],
+  },
+  '/m/api/hosts': {
+    items: [
+      { id: 'aaaaaaaaaaaaaaa1', name: '⚡️ Авто', protocol: 'vless' },
+      { id: 'aaaaaaaaaaaaaaa2', name: '📺 Авто YouTube', protocol: 'vless' },
+      { id: 'aaaaaaaaaaaaaaa3', name: '🇩🇪 Hysteria 2', protocol: 'hysteria2' },
+    ],
+  },
 }
 
 export function installMock() {
@@ -34,6 +56,7 @@ export function installMock() {
     const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
     if (!path.startsWith('/m/api/')) return real(input, init)
     if (path === '/m/api/admin/login-link') return Response.json({ url: 'https://admin.example.test/auth?token=__BRUHANET_MOCK__' })
+    if (path === '/m/api/hosts/link') return Response.json({ url: 'vless://mock@host.example:443#mock' })
     if (path === '/m/api/subscription-link') return Response.json({ url: 'https://sub.example.test/mock-subscription' })
     const body = routes[path]
     return body === undefined ? new Response(null, { status: 204 }) : Response.json(body)

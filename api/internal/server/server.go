@@ -107,6 +107,8 @@ type Panel interface {
 	DeleteAllUserDevices(ctx context.Context, userID int) error
 	// SubpageConfig — сырой конфиг страницы подписки юзера (инструкции подключения Mini App).
 	SubpageConfig(ctx context.Context, shortUUID string) (json.RawMessage, error)
+	// ConnectionKeys — ключи подключения юзера (vless://…#название): ссылки — доступ к VPN, наружу только по нажатию.
+	ConnectionKeys(ctx context.Context, userID int) ([]string, error)
 }
 
 // PhotoSender — чтение файлов из Telegram (api/internal/telegram): чеки платежей. Фото рассылок в Telegram не

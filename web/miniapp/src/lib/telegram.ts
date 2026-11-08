@@ -31,13 +31,6 @@ export function closeApp() {
   else window.close()
 }
 
-export function openBot(username: string) {
-  const url = `https://t.me/${username}`
-  const app = tg()
-  if (app) app.openTelegramLink(url)
-  else window.open(url, '_blank', 'noopener,noreferrer')
-}
-
 // https-ссылки открывает Telegram (внешний браузер), схемы приложений (happ://…) — сама система.
 export function openExternal(url: string) {
   const app = tg()

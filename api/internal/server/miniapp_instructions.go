@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -27,20 +29,24 @@ const (
 type instrButton struct {
 	Text string `json:"text"`
 	URL  string `json:"url"`
+	// Kind: link — обычная https-ссылка (магазин, релизы); subscription — схема приложения с плейсхолдером
+	// {{SUBSCRIPTION_LINK}}, ссылку подписки подставляет клиент по нажатию.
+	Kind string `json:"kind"`
 }
 
-type instrStep struct {
+// instrBlock — шаг инструкции: заголовок, описание, значок и кнопки (как блок на странице подписки).
+type instrBlock struct {
 	Title   string        `json:"title"`
 	Text    string        `json:"text"`
+	Icon    string        `json:"icon"` // download|cloud|gear|check|""
+	Tone    string        `json:"tone"` // cyan|teal|red|violet
 	Buttons []instrButton `json:"buttons"`
 }
 
 type instrApp struct {
-	Name       string      `json:"name"`
-	Featured   bool        `json:"featured"`
-	URLScheme  string      `json:"urlScheme"`
-	NeedBase64 bool        `json:"needBase64"`
-	Steps      []instrStep `json:"steps"`
+	Name     string       `json:"name"`
+	Featured bool         `json:"featured"`
+	Blocks   []instrBlock `json:"blocks"`
 }
 
 type instrPlatform struct {
@@ -49,11 +55,13 @@ type instrPlatform struct {
 	Apps  []instrApp `json:"apps"`
 }
 
-// instructionsDTO — инструкция подключения без ссылки подписки: шаблон {{SUBSCRIPTION_LINK}} остаётся плейсхолдером,
-// а схему приложения (urlScheme) клиент достраивает ссылкой, которую получил по явному нажатию.
+// instructionsDTO — инструкция подключения без ссылки подписки: плейсхолдер {{SUBSCRIPTION_LINK}} остаётся в шаблонах
+// кнопок, клиент подставляет ссылку, которую получил по явному нажатию.
 type instructionsDTO struct {
 	Platforms []instrPlatform `json:"platforms"`
 }
+
+const subscriptionPlaceholder = "{{SUBSCRIPTION_LINK}}"
 
 var (
 	platformOrder = []string{"ios", "android", "windows", "macos", "linux", "androidTV", "appleTV"}
@@ -61,46 +69,40 @@ var (
 		"ios": "iOS", "android": "Android", "windows": "Windows", "macos": "macOS", "linux": "Linux",
 		"androidTV": "Android TV", "appleTV": "Apple TV",
 	}
-	// ключ шага в конфиге панели → заголовок
-	stepKeys = []struct{ key, title string }{
-		{"installationStep", "Установка"},
-		{"additionalBeforeAddSubscriptionStep", "Перед добавлением"},
-		{"addSubscriptionStep", "Добавление подписки"},
-		{"additionalAfterAddSubscriptionStep", "После добавления"},
-		{"connectAndUseStep", "Подключение"},
-	}
-	appScheme = regexp.MustCompile(`^[a-z][a-z0-9+.-]{1,31}://`)
-	// К urlScheme клиент дописывает ссылку подписки, поэтому схема — только у известных VPN-клиентов (не denylist).
+	blockIcons = map[string]string{"DownloadIcon": "download", "CloudDownload": "cloud", "Gear": "gear", "Check": "check"}
+	blockTones = []string{"cyan", "teal", "red", "violet"}
+	appScheme  = regexp.MustCompile(`^[a-z][a-z0-9+.-]{1,31}://`)
+	// В subscriptionLink к схеме приложения клиент подставляет ссылку подписки, поэтому схема — только у известных
+	// VPN-клиентов (allowlist, не denylist). Новый клиент в конфиге панели = новая строка здесь.
 	clientSchemes = []string{
 		"happ", "v2box", "v2raytun", "v2rayng", "v2rayn", "v2rayu", "sing-box", "singbox", "clash", "clashmeta", "clash-verge",
-		"hiddify", "streisand", "karing", "flclash", "shadowrocket", "foxray", "nekoray", "nekobox", "sub", "stash", "loon",
-		"surge", "quantumult-x", "v2rayx", "mihomo",
+		"hiddify", "streisand", "karing", "flclash", "flclashx", "koala-clash", "prizrak-box", "shadowrocket", "foxray",
+		"nekoray", "nekobox", "sub", "stash", "loon", "surge", "quantumult-x", "v2rayx", "mihomo", "vpn4tv",
 	}
-	forbiddenSchm = []string{"javascript", "data", "file", "vbscript", "blob", "about", "http"}
 )
 
-// safeLink пропускает https:// и схемы приложений (happ://, v2box://…); javascript:/data:/file:/http: и прочее — нет.
-func safeLink(u string) bool {
-	if u == "" || len(u) > 512 || strings.ContainsFunc(u, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
-		return false
-	}
-	if strings.HasPrefix(u, "https://") {
-		return len(u) > len("https://")
-	}
-	if !appScheme.MatchString(u) {
-		return false
-	}
-	scheme, _, _ := strings.Cut(u, ":")
-	return !slices.Contains(forbiddenSchm, scheme)
+// safeHTTPS — ссылка вида https://хост/…: без пробелов и управляющих символов, до 512 байт.
+func safeHTTPS(u string) bool {
+	return len(u) > len("https://") && len(u) <= 512 && strings.HasPrefix(u, "https://") &&
+		!strings.ContainsFunc(u, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) })
 }
 
-// safeClientScheme — схема приложения из allowlist клиентов (happ://, v2box://…), со ссылкой не длиннее лимита.
-func safeClientScheme(u string) bool {
-	if !safeLink(u) || strings.HasPrefix(u, "https://") {
-		return false
+// subscriptionTemplate проверяет шаблон кнопки «Добавить подписку»: схема из allowlist, плейсхолдер подписки ровно один,
+// {{USERNAME}} заменяется на экранированное имя; любой другой плейсхолдер — отказ.
+func subscriptionTemplate(link, username string) (string, bool) {
+	if len(link) > 512 || !appScheme.MatchString(link) || strings.Count(link, subscriptionPlaceholder) != 1 ||
+		strings.ContainsFunc(link, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+		return "", false
 	}
-	scheme, _, _ := strings.Cut(u, ":")
-	return slices.Contains(clientSchemes, scheme)
+	scheme, _, _ := strings.Cut(link, ":")
+	if !slices.Contains(clientSchemes, scheme) {
+		return "", false
+	}
+	link = strings.ReplaceAll(link, "{{USERNAME}}", url.QueryEscape(username))
+	if strings.Contains(strings.ReplaceAll(link, subscriptionPlaceholder, ""), "{{") {
+		return "", false
+	}
+	return link, true
 }
 
 // localized достаёт русский (иначе английский, иначе первый) текст из {"ru": "...", "en": "..."} или обычной строки.
@@ -145,8 +147,9 @@ func localized(v any, limit int) string {
 func obj(v any) map[string]any { m, _ := v.(map[string]any); return m }
 
 // sanitizeInstructions переводит сырой конфиг страницы подписки в безопасный DTO: известные поля, лимиты на размер,
-// фильтр ссылок. Неизвестное отбрасывается; пустой или чужой формат — пустой список платформ.
-func sanitizeInstructions(raw []byte) (instructionsDTO, error) {
+// фильтр ссылок. Неизвестное отбрасывается; пустой или чужой формат — пустой список платформ. username подставляется
+// в {{USERNAME}} шаблонов кнопок.
+func sanitizeInstructions(raw []byte, username string) (instructionsDTO, error) {
 	var root map[string]any
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return instructionsDTO{}, errors.Join(errors.New("subpage config is not an object"), err)
@@ -188,7 +191,7 @@ func sanitizeInstructions(raw []byte) (instructionsDTO, error) {
 			if len(pl.Apps) >= 10 {
 				break
 			}
-			if app, ok := sanitizeApp(obj(a)); ok {
+			if app, ok := sanitizeApp(obj(a), username); ok {
 				pl.Apps = append(pl.Apps, app)
 			}
 		}
@@ -199,35 +202,53 @@ func sanitizeInstructions(raw []byte) (instructionsDTO, error) {
 	return out, nil
 }
 
-func sanitizeApp(a map[string]any) (instrApp, bool) {
+func sanitizeApp(a map[string]any, username string) (instrApp, bool) {
 	name := localized(a["name"], instrMaxLabel)
 	if a == nil || name == "" {
 		return instrApp{}, false
 	}
-	app := instrApp{Name: name, Steps: []instrStep{}}
+	app := instrApp{Name: name, Blocks: []instrBlock{}}
 	app.Featured, _ = a["featured"].(bool)
-	app.NeedBase64, _ = a["isNeedBase64Encoding"].(bool)
-	if sch, _ := a["urlScheme"].(string); safeClientScheme(sch) {
-		app.URLScheme = sch
-	}
-	for _, sk := range stepKeys {
-		st := obj(a[sk.key])
-		if st == nil {
+	blocks, _ := a["blocks"].([]any)
+	for _, b := range blocks {
+		if len(app.Blocks) >= 8 {
+			break
+		}
+		bm := obj(b)
+		if bm == nil {
 			continue
 		}
-		step := instrStep{Title: sk.title, Text: localized(st["description"], instrMaxText), Buttons: []instrButton{}}
-		btns, _ := st["buttons"].([]any)
-		for _, b := range btns {
-			bm := obj(b)
-			link, _ := bm["buttonLink"].(string)
-			text := localized(bm["buttonText"], instrMaxLabel)
-			if bm == nil || text == "" || !safeLink(link) || len(step.Buttons) >= 4 {
+		block := instrBlock{
+			Title: localized(bm["title"], instrMaxLabel), Text: localized(bm["description"], instrMaxText),
+			Icon: blockIcons[fmt.Sprint(bm["svgIconKey"])], Tone: "cyan", Buttons: []instrButton{},
+		}
+		if tone, _ := bm["svgIconColor"].(string); slices.Contains(blockTones, tone) {
+			block.Tone = tone
+		}
+		btns, _ := bm["buttons"].([]any)
+		for _, bt := range btns {
+			if len(block.Buttons) >= 6 {
+				break
+			}
+			btm := obj(bt)
+			link, _ := btm["link"].(string)
+			text := localized(btm["text"], instrMaxLabel)
+			if btm == nil || text == "" {
 				continue
 			}
-			step.Buttons = append(step.Buttons, instrButton{Text: text, URL: link})
+			switch kind, _ := btm["type"].(string); kind {
+			case "external":
+				if safeHTTPS(link) {
+					block.Buttons = append(block.Buttons, instrButton{Text: text, URL: link, Kind: "link"})
+				}
+			case "subscriptionLink":
+				if tpl, ok := subscriptionTemplate(link, username); ok {
+					block.Buttons = append(block.Buttons, instrButton{Text: text, URL: tpl, Kind: "subscription"})
+				}
+			}
 		}
-		if step.Text != "" || len(step.Buttons) > 0 {
-			app.Steps = append(app.Steps, step)
+		if block.Title != "" || block.Text != "" || len(block.Buttons) > 0 {
+			app.Blocks = append(app.Blocks, block)
 		}
 	}
 	return app, true
@@ -292,7 +313,7 @@ func (s *server) miniInstructions(w http.ResponseWriter, r *http.Request) {
 		panelFailed(w, r, "panel subpage config", err)
 		return
 	}
-	dto, err := sanitizeInstructions(raw)
+	dto, err := sanitizeInstructions(raw, info.Username)
 	if err != nil {
 		stlog.L(r.Context()).Warn("mini app instructions unparsable", slog.Any("error", err))
 		writeJSON(w, http.StatusOK, empty)

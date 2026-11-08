@@ -69,7 +69,7 @@ export function Dialog({ title, message, actions = DEFAULT_ACTIONS, className, c
               key={action.label}
               type="button"
               className={cn(
-                'focus-ring h-11 flex-1 cursor-pointer text-accent-text focus-visible:-outline-offset-2 active:bg-cell-highlight',
+                'focus-ring min-h-11 flex-1 cursor-pointer text-accent-text focus-visible:-outline-offset-2 active:bg-cell-highlight',
                 action.style === 'cancel' && 'font-semibold',
                 action.style === 'destructive' && 'text-destructive',
                 i > 0 &&

@@ -33,7 +33,7 @@ func (rw *remnawave) SubpageConfig(ctx context.Context, shortUUID string) (json.
 		return nil, errors.Join(ErrInvalidResponseType, fmt.Errorf("response type: %T", resp))
 	}
 	if id.Null {
-		return nil, ErrSubpageConfigNotSet
+		return rw.defaultSubpageConfig(ctx)
 	}
 	cfg, err := rw.client.SubscriptionPageConfig().GetConfigByUuid(ctx, id.Value.String())
 	if err != nil {
@@ -46,5 +46,49 @@ func (rw *remnawave) SubpageConfig(ctx context.Context, shortUUID string) (json.
 		return nil, ErrSubpageConfigNotSet
 	default:
 		return nil, errors.Join(ErrInvalidResponseType, fmt.Errorf("response type: %T", cfg))
+	}
+}
+
+// defaultSubpageConfig — конфиг по умолчанию, когда юзеру он не назначен (так же ведёт себя страница подписки): конфиг
+// с именем «Default», иначе первый по позиции. Конфигов в панели нет — ErrSubpageConfigNotSet.
+func (rw *remnawave) defaultSubpageConfig(ctx context.Context) (json.RawMessage, error) {
+	resp, err := rw.client.SubscriptionPageConfig().GetAllConfigs(ctx)
+	if err != nil {
+		return nil, errors.Join(ErrFailedToMakeRequest, err)
+	}
+	list, ok := resp.(*api.SubpageConfigsResponseResponse)
+	if !ok {
+		return nil, errors.Join(ErrInvalidResponseType, fmt.Errorf("response type: %T", resp))
+	}
+	var pick *api.Config
+	for i := range list.Response.Configs {
+		c := &list.Response.Configs[i]
+		switch {
+		case c.Name == "Default":
+			return json.RawMessage(c.Config), nil
+		case pick == nil || c.ViewPosition < pick.ViewPosition:
+			pick = c
+		}
+	}
+	if pick == nil {
+		return nil, ErrSubpageConfigNotSet
+	}
+	return json.RawMessage(pick.Config), nil
+}
+
+// ConnectionKeys — включённые ключи подключения юзера (vless://…#название, hysteria2://…), по числовому id в панели.
+// Ссылки — доступ к VPN: наружу отдавать только по явному действию юзера.
+func (rw *remnawave) ConnectionKeys(ctx context.Context, userID int) ([]string, error) {
+	resp, err := rw.client.Subscriptions().GetConnectionKeysByUserId(ctx, userID)
+	if err != nil {
+		return nil, errors.Join(ErrFailedToMakeRequest, err)
+	}
+	switch r := resp.(type) {
+	case *api.GetConnectionKeysByUserIdResponse:
+		return r.Response.EnabledKeys, nil
+	case *api.NotFoundError:
+		return nil, ErrUserNotFound
+	default:
+		return nil, errors.Join(ErrInvalidResponseType, fmt.Errorf("response type: %T", resp))
 	}
 }

@@ -611,8 +611,11 @@ type fakePanel struct {
 	subpage      json.RawMessage // ответ SubpageConfig
 	subpageErr   error
 	subpageCalls int
-	devErr       error
-	deleted      []string
+
+	keys    []string // ответ ConnectionKeys
+	keysErr error
+	devErr  error
+	deleted []string
 }
 
 func (p *fakePanel) GetUser(context.Context, int64) (*api.UserItemInfo, error) { return p.user, p.err }
@@ -675,6 +678,8 @@ func (p *fakePanel) DeleteAllUserDevices(_ context.Context, userID int) error {
 	return p.devErr
 }
 
+func (p *fakePanel) ConnectionKeys(context.Context, int) ([]string, error) { return p.keys, p.keysErr }
+
 func (p *fakePanel) SubpageConfig(_ context.Context, _ string) (json.RawMessage, error) {
 	p.subpageCalls++
 	return p.subpage, p.subpageErr
@@ -711,6 +716,11 @@ func (blockingPanel) UserDevices(ctx context.Context, _ int) ([]api.Device, erro
 func (blockingPanel) DeleteUserDevice(ctx context.Context, _ int, _ string) error {
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func (blockingPanel) ConnectionKeys(ctx context.Context, _ int) ([]string, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func (blockingPanel) SubpageConfig(ctx context.Context, _ string) (json.RawMessage, error) {

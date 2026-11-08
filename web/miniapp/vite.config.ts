@@ -17,7 +17,7 @@ export default defineConfig({
     port: 5180, // не 5174: админский Vite при занятом 5173 уходит на 5174
     strictPort: true,
     // туннель для проверки в Telegram (cloudflared/ngrok/localtunnel): Vite по умолчанию отвергает чужой Host
-    allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.app', '.ngrok.io', '.loca.lt', '.localtest.me'],
+    allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.app', '.ngrok.io', '.loca.lt', '.lhr.life', '.localhost.run', '.pinggy.link', '.pinggy.io', '.serveousercontent.com', '.localtest.me'],
     proxy: { '/m/api': 'http://localhost:8092' },
   },
   test: {

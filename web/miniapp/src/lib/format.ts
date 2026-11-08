@@ -28,4 +28,5 @@ export function plural(n: number, forms: [string, string, string]): string {
   return forms[2]
 }
 
-export const days = (n: number) => `${n} ${plural(n, ['день', 'дня', 'дней'])}`
+// Дни пишем коротко: «12 д.» — в карточках и плитках не хватает места под склонения.
+export const days = (n: number) => `${n} д.`

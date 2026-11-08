@@ -30,7 +30,7 @@ describe('Promos screen', () => {
     render(<Promos />)
     await settle()
     expect(screen.getByText('WELCOME')).toBeTruthy()
-    expect(screen.getByText('+7 дней')).toBeTruthy()
+    expect(screen.getByText('+7 д.')).toBeTruthy()
     expect(screen.getByText('скидка 10%')).toBeTruthy()
     expect(screen.getByText('скидка 100 ₽')).toBeTruthy()
   })
@@ -47,7 +47,7 @@ describe('Promos screen', () => {
     await settle()
     expect(posts(m)).toHaveLength(1)
     expect(JSON.parse((posts(m)[0][1] as RequestInit).body as string)).toEqual({ code: 'welcome' })
-    expect(screen.getByText(/Добавлено 7 дней/)).toBeTruthy()
+    expect(screen.getByText(/Добавлено 7 д\./)).toBeTruthy()
     expect((screen.getByPlaceholderText('Промокод') as HTMLInputElement).value).toBe('')
   })
 

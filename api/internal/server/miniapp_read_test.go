@@ -167,7 +167,7 @@ func TestMiniSubscriptionLinkIsNotLogged(t *testing.T) {
 }
 
 func TestMiniInstructions(t *testing.T) {
-	cfg := `{"platforms":{"ios":{"apps":[{"name":"Happ","urlScheme":"happ://add/","installationStep":{"description":{"ru":"Установи"}}}]}}}`
+	cfg := `{"platforms":{"ios":{"apps":[{"name":"Happ","blocks":[{"title":{"ru":"Установка"},"description":{"ru":"Поставь"},"svgIconKey":"DownloadIcon","svgIconColor":"cyan","buttons":[{"type":"subscriptionLink","link":"happ://add/{{SUBSCRIPTION_LINK}}","text":{"ru":"Добавить"}}]}]}]}}}`
 	panel := &fakePanel{user: activeUser(now.Add(24 * time.Hour)), subpage: json.RawMessage(cfg)}
 	h, _, _ := newMiniPanel(t, panel)
 	for range 2 {
