@@ -82,9 +82,9 @@ func (b *kbBuilder) url(key, url string, style keyboard.Style) *kbBuilder {
 }
 
 // webApp — кнопка Mini App; url уже с вкладкой (miniAppURL).
-func (b *kbBuilder) webApp(key, url string, style keyboard.Style) *kbBuilder {
+func (b *kbBuilder) webApp(key, url string, style keyboard.Style) {
 	b.args[key] = url
-	return b.put(key, webAppButton(b.ctx, b.c, key, url, style))
+	b.put(key, webAppButton(b.ctx, b.c, key, url, style))
 }
 
 func (b *kbBuilder) copy(key, value string, style keyboard.Style) *kbBuilder {

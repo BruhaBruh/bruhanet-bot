@@ -84,7 +84,8 @@ func safeLink(u string) bool {
 	if !appScheme.MatchString(u) {
 		return false
 	}
-	return !slices.Contains(forbiddenSchm, u[:strings.Index(u, ":")])
+	scheme, _, _ := strings.Cut(u, ":")
+	return !slices.Contains(forbiddenSchm, scheme)
 }
 
 // localized достаёт русский (иначе английский, иначе первый) текст из {"ru": "...", "en": "..."} или обычной строки.
