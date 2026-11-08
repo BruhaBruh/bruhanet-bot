@@ -100,15 +100,16 @@ func TestSendBroadcastIdempotent(t *testing.T) {
 	if err != nil || len(got) != 3 {
 		t.Fatalf("outbox %+v err=%v", got, err)
 	}
+	// OutboxBatch отдаёт сначала всё, что не рассылка (итог админу), затем строки рассылки: [итог, 10, 20]
 	for i, chat := range []int64{10, 20} {
-		m := got[i]
+		m := got[i+1]
 		if m.EventType != "broadcast" || m.ChatID != chat || m.Text != d.Text || m.Photo != "file1" || !m.Silent ||
 			m.ParseMode != "HTML" || m.Broadcast != b.ID.String() ||
 			m.Keyboard == nil || m.Keyboard.InlineKeyboard[0][0].URL != "https://e.com" || m.Keyboard.InlineKeyboard[0][0].Style != "primary" {
-			t.Fatalf("row %d: %+v", i, m)
+			t.Fatalf("row %d: %+v", i+1, m)
 		}
 	}
-	if m := got[2]; m.EventType != "broadcast_summary" || m.ChatID != 1 || m.Broadcast != b.ID.String() || m.ParseMode != "HTML" || m.Keyboard != nil {
+	if m := got[0]; m.EventType != "broadcast_summary" || m.ChatID != 1 || m.Broadcast != b.ID.String() || m.ParseMode != "HTML" || m.Keyboard != nil {
 		t.Fatalf("summary: %+v", m)
 	}
 
@@ -364,8 +365,9 @@ func TestEditAndCancelVersusClaim(t *testing.T) {
 	}
 	// содержимое v2 ушло получателю
 	all, _ := s.OutboxBatch(ctx, 10)
-	if all[0].Text != "v2" || !all[0].Silent {
-		t.Fatalf("sent %+v", all[0])
+	i := slices.IndexFunc(all, func(m model.OutboxItem) bool { return m.EventType == "broadcast" })
+	if i < 0 || all[i].Text != "v2" || !all[i].Silent {
+		t.Fatalf("sent %+v", all)
 	}
 
 	// отмена: больше не стартует, повтор безвреден
