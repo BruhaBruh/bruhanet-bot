@@ -74,6 +74,8 @@ type Store interface {
 	UserByUsername(ctx context.Context, username string) (model.UserSummary, error)
 	CreatePromo(ctx context.Context, p model.Promo) (model.Promo, error)
 	PromoByID(ctx context.Context, id int64) (model.Promo, error)
+	PromoByCode(ctx context.Context, code string) (model.Promo, error)
+	ActivateDaysPromo(ctx context.Context, promoID, telegramID int64, now time.Time, apply func(p model.Promo) error) error
 	ListPromos(ctx context.Context, f model.PromoFilter, now time.Time) ([]model.PromoWithUsage, error)
 	DisablePromo(ctx context.Context, id int64) error
 	DeletePromo(ctx context.Context, id int64) error

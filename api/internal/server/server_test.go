@@ -24,6 +24,7 @@ import (
 	"github.com/bruhabruh/bruhanet/core/auth"
 	"github.com/bruhabruh/bruhanet/core/broadcast"
 	"github.com/bruhabruh/bruhanet/core/model"
+	"github.com/bruhabruh/bruhanet/core/promo"
 	"github.com/bruhabruh/bruhanet/core/settings"
 	"github.com/bruhabruh/bruhanet/core/store"
 	"github.com/bruhabruh/bruhanet/core/texts"
@@ -70,6 +71,7 @@ type fakeStore struct {
 	photos       map[uuid.UUID]fakePhoto
 
 	userPromos []model.UserPromo
+	daysUsed   [][2]int64 // (промокод, юзер) уже активированных кодов на дни
 
 	syncBusy    bool
 	syncUsers   []model.PanelUser
@@ -421,6 +423,45 @@ func (f *fakeStore) UserPromos(context.Context, int64) ([]model.UserPromo, error
 }
 
 func (f *fakeStore) ReferrerRewardDays(context.Context, int64) (int, error) { return f.rewardDays, nil }
+
+// PromoByCode — как core/store: код нормализуется, нет — store.ErrNotFound.
+func (f *fakeStore) PromoByCode(_ context.Context, code string) (model.Promo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, p := range f.promos {
+		if p.Code == promo.Normalize(code) && !p.Deleted {
+			return p.Promo, nil
+		}
+	}
+	return model.Promo{}, store.ErrNotFound
+}
+
+// ActivateDaysPromo — как core/store под блокировкой: отказы promo.Err*, apply внутри, активация только при успехе apply.
+func (f *fakeStore) ActivateDaysPromo(_ context.Context, id, tg int64, _ time.Time, apply func(model.Promo) error) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var p *model.Promo
+	for i := range f.promos {
+		if f.promos[i].ID == id {
+			p = &f.promos[i].Promo
+		}
+	}
+	switch {
+	case p == nil || p.Deleted:
+		return promo.ErrNotFound
+	case p.Kind != model.PromoDays:
+		return promo.ErrWrongPlace
+	case slices.ContainsFunc(f.users, func(u model.UserSummary) bool { return u.TelegramID == tg && u.BlockedAt != nil }):
+		return promo.ErrBlocked
+	case slices.Contains(f.daysUsed, [2]int64{id, tg}):
+		return promo.ErrAlreadyUsed
+	}
+	if err := apply(*p); err != nil {
+		return err
+	}
+	f.daysUsed = append(f.daysUsed, [2]int64{id, tg})
+	return nil
+}
 
 func (f *fakeStore) UserByID(_ context.Context, id int64) (model.UserSummary, error) {
 	for _, u := range f.users {

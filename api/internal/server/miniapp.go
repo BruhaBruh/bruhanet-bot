@@ -43,6 +43,7 @@ func NewMiniApp(d Deps) http.Handler {
 	apiMux.HandleFunc("DELETE /m/api/devices", s.miniDeleteAllDevices)
 	apiMux.HandleFunc("GET /m/api/referral", s.miniReferral)
 	apiMux.HandleFunc("GET /m/api/promos", s.miniPromos)
+	apiMux.HandleFunc("POST /m/api/promos/activate", s.miniActivatePromo)
 	apiMux.HandleFunc("/m/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
