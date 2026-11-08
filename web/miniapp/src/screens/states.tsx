@@ -24,3 +24,16 @@ export function Notice({ title, children, action }: { title: string; children?: 
     </main>
   )
 }
+
+// Ошибка загрузки внутри экрана (вкладки остаются): панель не отвечает или сбой сервера.
+export function ErrorBlock({ title, text, onRetry }: { title: string; text?: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-2 p-8 text-center">
+      <h2 className="headline">{title}</h2>
+      {text && <p className="subheadline text-text-secondary">{text}</p>}
+      <Button size="md" variant="tinted" className="mt-2" onClick={onRetry}>
+        Повторить
+      </Button>
+    </div>
+  )
+}
