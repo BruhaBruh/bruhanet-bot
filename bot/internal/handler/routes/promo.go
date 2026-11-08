@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jolymmiles/remnawave-api-go/v3/api"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
@@ -116,35 +117,17 @@ func (h *handlers) menuPromoText(ctx context.Context, b *bot.Bot, u *models.Upda
 	from := tgupdate.User(u)
 	username := from.Username
 	at := h.now()
-	var expireAt, oldExpireAt time.Time
+	var res payflow.DaysPromoResult
 	p, err := h.pay.PromoByCode(ctx, u.Message.Text)
 	if err == nil {
 		// ошибка панели откатывает активацию: код можно ввести снова
-		err = h.pay.ActivateDaysPromo(ctx, p.ID, from.ID, at, func(p model.Promo) error {
-			user, err := h.ensureUser(ctx, from.ID, username, 0)
-			if err != nil {
-				return err
-			}
-			newExpireAt := later(user.ExpireAt, at).Add(time.Duration(p.Value) * 24 * time.Hour)
-			if _, err = h.rw.UpdateUser(ctx, from.ID, username, newExpireAt, h.cfg.Remnawave.InternalSquadId); err != nil {
-				return err
-			}
-			oldExpireAt, expireAt = user.ExpireAt, newExpireAt
-			return nil
+		res, err = payflow.ActivateDaysPromo(ctx, h.pay, h.rw, payflow.DaysPromoRequest{
+			PromoID: p.ID, TelegramID: from.ID, Username: username, At: at, Squad: h.cfg.Remnawave.InternalSquadId,
+			Ensure: func(ctx context.Context) (*api.UserItemInfo, error) { return h.ensureUser(ctx, from.ID, username, 0) },
 		})
 	}
-	if err != nil && !expireAt.IsZero() {
-		// панель продлена, а коммит не прошёл — возвращаем прежний срок,
-		// только если срок в панели всё ещё наш (иначе его успел поменять админ — не затираем).
-		// ponytail: GetUser→UpdateUser не атомарен; окно — миллисекунды после редкого сбоя коммита.
-		cctx := context.WithoutCancel(ctx)
-		if cur, gerr := h.rw.GetUser(cctx, from.ID); gerr != nil || !cur.ExpireAt.Equal(expireAt) {
-			stlog.Error(ctx, "days promo not restored: panel expire changed or unavailable",
-				"error", gerr, "expire_at", oldExpireAt)
-		} else if _, cerr := h.rw.UpdateUser(cctx, from.ID, username, oldExpireAt,
-			h.cfg.Remnawave.InternalSquadId); cerr != nil {
-			stlog.Error(ctx, "failed to restore expire after days promo", "error", cerr, "expire_at", oldExpireAt)
-		}
+	if errors.Is(err, payflow.ErrNotRestored) {
+		stlog.Error(ctx, "days promo not restored: panel expire changed or unavailable", "error", err)
 	}
 	if err != nil {
 		h.rejectPromo(ctx, b, u, err, promo.PlaceMenu, routeMenu)
@@ -152,7 +135,7 @@ func (h *handlers) menuPromoText(ctx context.Context, b *bot.Bot, u *models.Upda
 	}
 	h.leavePromo(ctx, from.ID)
 	send(ctx, b, tgupdate.ChatID(u), h.mainKeyboard(ctx, from.ID, "promo.days_granted"), h.c.Text(ctx, "promo.days_granted",
-		map[string]string{"days": strconv.Itoa(p.Value), "expireAt": formatTime(expireAt)}))
+		map[string]string{"days": strconv.Itoa(p.Value), "expireAt": formatTime(res.NewExpire)}))
 }
 
 // buyPromo — «Да» на тарифе со скидкой. Callback подделывается: код и тариф проверяются заново.
