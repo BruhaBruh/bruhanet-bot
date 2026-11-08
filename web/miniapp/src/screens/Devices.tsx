@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Dialog } from '@/ui/dialog'
 import { Button } from '@/ui/primitives/button'
-import { ApiError, del, get } from '~/lib/api'
+import { ApiError, del } from '~/lib/api'
 import { formatDate } from '~/lib/format'
+import { useQuery } from '~/lib/query'
 import { ErrorBlock, Loading } from './states'
 
 interface Device {
@@ -13,34 +14,26 @@ interface Device {
   createdAt: string
 }
 
-type Load = { status: 'loading' } | { status: 'ready'; items: Device[]; limit: number | null } | { status: 'panelDown' } | { status: 'error' }
+interface List {
+  items: Device[]
+  limit: number | null
+}
 
 const title = (d: Device) => d.deviceModel || d.platform || 'Устройство'
 
 export default function Devices() {
-  const [load, setLoad] = useState<Load>({ status: 'loading' })
+  const q = useQuery<List>('/m/api/devices')
   const [ask, setAsk] = useState<{ hwid: string | null } | null>(null) // hwid null — удалить все
   const [error, setError] = useState('')
   const busy = useRef(false)
 
-  const fetchList = useCallback(() => {
-    get<{ items: Device[]; limit: number | null }>('/m/api/devices').then(
-      (r) => setLoad({ status: 'ready', items: r.items, limit: r.limit }),
-      (e: unknown) => setLoad({ status: e instanceof ApiError && e.status === 502 ? 'panelDown' : 'error' }),
-    )
-  }, [])
-  useEffect(fetchList, [fetchList])
-
-  const retry = () => {
-    setLoad({ status: 'loading' })
-    fetchList()
+  if (q.isLoading) return <Loading />
+  if (!q.data) {
+    const down = q.error instanceof ApiError && q.error.status === 502
+    return down ? <ErrorBlock title="Панель не отвечает" text="Попробуй чуть позже." onRetry={() => void q.refetch()} /> : <ErrorBlock title="Не получилось загрузить" onRetry={() => void q.refetch()} />
   }
 
-  if (load.status === 'loading') return <Loading />
-  if (load.status === 'panelDown') return <ErrorBlock title="Панель не отвечает" text="Попробуй чуть позже." onRetry={retry} />
-  if (load.status === 'error') return <ErrorBlock title="Не получилось загрузить" onRetry={retry} />
-
-  const { items, limit } = load
+  const { items, limit } = q.data
   const remove = async (hwid: string | null) => {
     setAsk(null)
     if (busy.current) return
@@ -56,7 +49,9 @@ export default function Devices() {
         return
       }
     }
-    setLoad({ status: 'ready', limit, items: hwid === null ? [] : items.filter((d) => d.hwid !== hwid) })
+    // сразу правим кэш (экран и другие вкладки обновляются без запроса), а в фоне сверяемся с панелью
+    q.mutate((old) => ({ limit: old?.limit ?? limit, items: hwid === null ? [] : (old?.items ?? items).filter((d) => d.hwid !== hwid) }))
+    void q.refetch()
     busy.current = false
   }
 

@@ -13,10 +13,16 @@ const LIST = {
   ],
 }
 
+// Панель «живая»: удаление меняет следующий ответ списка (после удаления приложение сверяется с панелью).
 function stub(opts: { list?: () => Response; del?: (url: string) => Response } = {}) {
+  let items = [...LIST.items]
   const m = vi.fn(async (url: string, init?: RequestInit) => {
-    if (init?.method === 'DELETE') return (opts.del ?? (() => new Response(null, { status: 204 })))(url)
-    return (opts.list ?? (() => json(LIST)))()
+    if (init?.method === 'DELETE') {
+      const res = (opts.del ?? (() => new Response(null, { status: 204 })))(url)
+      if (res.ok || res.status === 404) items = url === '/m/api/devices' ? [] : items.filter((d) => d.hwid !== decodeURIComponent(url.split('/').pop() ?? ''))
+      return res
+    }
+    return (opts.list ?? (() => json({ ...LIST, items })))()
   })
   vi.stubGlobal('fetch', m)
   return m

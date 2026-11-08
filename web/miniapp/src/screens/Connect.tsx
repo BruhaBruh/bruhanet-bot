@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Icon, type IconName } from '@/ui/icon'
 import { Button } from '@/ui/primitives/button'
 import { SegmentedControl } from '@/ui/segmented-control'
-import { get } from '~/lib/api'
+import { useQuery } from '~/lib/query'
 import { openExternal } from '~/lib/telegram'
 import { fetchSubscriptionLink, useLinkActions } from './linkActions'
 
@@ -30,25 +30,14 @@ function detect(platforms: Platform[]): string {
 }
 
 export function Connect() {
-  const [platforms, setPlatforms] = useState<Platform[] | null>(null)
-  const [platformId, setPlatformId] = useState('')
+  const q = useQuery<{ platforms: Platform[] }>('/m/api/instructions')
+  const [picked, setPicked] = useState('')
   const [appName, setAppName] = useState('')
   const links = useLinkActions()
 
-  useEffect(() => {
-    let stopped = false
-    get<{ platforms: Platform[] }>('/m/api/instructions').then(
-      (r) => {
-        if (stopped) return
-        setPlatforms(r.platforms)
-        setPlatformId(detect(r.platforms))
-      },
-      () => !stopped && setPlatforms([]),
-    )
-    return () => {
-      stopped = true
-    }
-  }, [])
+  // сбой инструкций не страшен: остаётся ручное добавление по ссылке
+  const platforms = q.data?.platforms ?? (q.error ? [] : null)
+  const platformId = picked || (platforms ? detect(platforms) : '')
 
   const platform = platforms?.find((p) => p.id === platformId)
   const app = platform?.apps.find((a) => a.name === appName) ?? platform?.apps[0]
@@ -63,7 +52,7 @@ export function Connect() {
             options={platforms.map((p) => ({ value: p.id, label: p.title }))}
             value={platformId}
             onChange={(id) => {
-              setPlatformId(id)
+              setPicked(id)
               setAppName('')
             }}
           />

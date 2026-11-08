@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Icon } from '@/ui/icon'
 import { Button } from '@/ui/primitives/button'
-import { get } from '~/lib/api'
+import { useQuery } from '~/lib/query'
 import { hostLinkFetcher, useLinkActions } from './linkActions'
 
 interface Host { id: string; name: string; protocol: string }
@@ -10,21 +10,11 @@ const COLLAPSED = 5
 
 // Ключи подключения: каждый хост отдельно, как на странице подписки. Ссылки в списке нет — только по нажатию.
 export function Hosts() {
-  const [hosts, setHosts] = useState<Host[]>([])
+  const q = useQuery<{ items: Host[] }>('/m/api/hosts')
   const [all, setAll] = useState(false)
   const links = useLinkActions()
-
-  useEffect(() => {
-    let stopped = false
-    // сбой списка не мешает остальному экрану: карточка просто не показывается
-    get<{ items: Host[] }>('/m/api/hosts').then(
-      (r) => !stopped && setHosts(r.items),
-      () => {},
-    )
-    return () => {
-      stopped = true
-    }
-  }, [])
+  // сбой списка не мешает остальному экрану: карточка просто не показывается
+  const hosts = q.data?.items ?? []
 
   if (hosts.length === 0) return null
   const shown = all ? hosts : hosts.slice(0, COLLAPSED)

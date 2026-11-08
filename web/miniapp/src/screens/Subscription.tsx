@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
 import { StatusTag, type Tone } from '@/ui/status-tag'
-import { ApiError, get } from '~/lib/api'
+import { ApiError } from '~/lib/api'
 import { days, formatBytes, formatDate } from '~/lib/format'
+import { useQuery } from '~/lib/query'
 import { Connect } from './Connect'
 import { Hosts } from './Hosts'
 import { PayBanner } from './PayBanner'
@@ -24,29 +24,16 @@ const TAGS: Record<State, { tone: Tone; label: string }> = {
   none: { tone: 'neutral', label: 'Нет подписки' },
 }
 
-type Load = { status: 'loading' } | { status: 'ready'; sub: Sub } | { status: 'panelDown' } | { status: 'error' }
-
 export default function Subscription() {
-  const [load, setLoad] = useState<Load>({ status: 'loading' })
+  const q = useQuery<Sub>('/m/api/subscription')
 
-  const fetchSub = useCallback(() => {
-    get<Sub>('/m/api/subscription').then(
-      (sub) => setLoad({ status: 'ready', sub }),
-      (e: unknown) => setLoad({ status: e instanceof ApiError && e.status === 502 ? 'panelDown' : 'error' }),
-    )
-  }, [])
-  useEffect(fetchSub, [fetchSub])
-
-  const retry = () => {
-    setLoad({ status: 'loading' })
-    fetchSub()
+  if (q.isLoading) return <Loading />
+  if (!q.data) {
+    const down = q.error instanceof ApiError && q.error.status === 502
+    return down ? <ErrorBlock title="Панель не отвечает" text="Попробуй чуть позже." onRetry={() => void q.refetch()} /> : <ErrorBlock title="Не получилось загрузить" onRetry={() => void q.refetch()} />
   }
 
-  if (load.status === 'loading') return <Loading />
-  if (load.status === 'panelDown') return <ErrorBlock title="Панель не отвечает" text="Попробуй чуть позже." onRetry={retry} />
-  if (load.status === 'error') return <ErrorBlock title="Не получилось загрузить" onRetry={retry} />
-
-  const { sub } = load
+  const sub = q.data
   const tag = TAGS[sub.state]
   const limit = sub.trafficLimitBytes
   return (

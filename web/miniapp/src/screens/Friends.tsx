@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { copyText } from '@/lib/clipboard'
 import { Button } from '@/ui/primitives/button'
-import { get } from '~/lib/api'
 import { days } from '~/lib/format'
+import { useQuery } from '~/lib/query'
 import { shareLink } from '~/lib/telegram'
 import { ErrorBlock, Loading } from './states'
 
@@ -15,8 +15,6 @@ interface Referral {
   rewardDays: number
 }
 
-type Load = { status: 'loading' } | { status: 'ready'; ref: Referral } | { status: 'error' }
-
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex flex-1 flex-col items-center gap-0.5 rounded-md bg-fill-tertiary px-2 py-3">
@@ -27,30 +25,12 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function Friends() {
-  const [load, setLoad] = useState<Load>({ status: 'loading' })
+  const q = useQuery<Referral>('/m/api/referral')
   const [copied, setCopied] = useState(false)
 
-  const fetchRef = useCallback(() => {
-    get<Referral>('/m/api/referral').then(
-      (ref) => setLoad({ status: 'ready', ref }),
-      () => setLoad({ status: 'error' }),
-    )
-  }, [])
-  useEffect(fetchRef, [fetchRef])
-
-  if (load.status === 'loading') return <Loading />
-  if (load.status === 'error') {
-    return (
-      <ErrorBlock
-        title="Не получилось загрузить"
-        onRetry={() => {
-          setLoad({ status: 'loading' })
-          fetchRef()
-        }}
-      />
-    )
-  }
-  const { ref } = load
+  if (q.isLoading) return <Loading />
+  if (!q.data) return <ErrorBlock title="Не получилось загрузить" onRetry={() => void q.refetch()} />
+  const ref = q.data
   const copy = async () => {
     if (await copyText(ref.link)) {
       setCopied(true)

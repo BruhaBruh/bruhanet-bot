@@ -1,8 +1,12 @@
 import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
+import { clearQueryCache } from '../lib/query'
 
 // без globals: true RTL сам не чистит DOM между тестами
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  clearQueryCache() // кэш экранов не должен переходить из теста в тест
+})
 
 // Radix меряет контент через ResizeObserver, в jsdom его нет.
 globalThis.ResizeObserver ??= class {

@@ -99,6 +99,36 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: 'Подписка' })).toBeTruthy()
   })
 
+  it('returns to a visited tab instantly from the cache and refreshes it in the background', async () => {
+    const dev = (model: string) => ({ limit: 5, items: [{ hwid: 'h', platform: 'iOS', osVersion: '18', deviceModel: model, createdAt: '2026-10-01T10:00:00Z' }] })
+    let devicesCalls = 0
+    let releaseSecond: (r: Response) => void = () => {}
+    const second = new Promise<Response>((res) => (releaseSecond = res))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/m/api/me') return json(ME)
+        if (url === '/m/api/referral') return referral(true)()
+        if (url === '/m/api/devices') return ++devicesCalls === 1 ? json(dev('Старый')) : second
+        return json({ items: [], state: 'none', devices: {} }, 200)
+      }),
+    )
+    window.history.replaceState(null, '', '/?tab=devices')
+    render(<App />)
+    await flush()
+    expect(screen.getByText('Старый')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Промокоды' }))
+    await flush()
+    fireEvent.click(screen.getByRole('button', { name: 'Устройства' }))
+    // кэш виден сразу, без индикатора загрузки, запрос за свежими данными ещё висит
+    expect(screen.getByText('Старый')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(devicesCalls).toBe(2)
+    await act(async () => releaseSecond(json(dev('Новый'))))
+    expect(screen.getByText('Новый')).toBeTruthy()
+    expect(screen.queryByText('Старый')).toBeNull()
+  })
+
   describe('admin button', () => {
     const ADMIN = { ...ME, isAdmin: true }
 
