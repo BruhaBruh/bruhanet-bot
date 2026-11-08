@@ -28,10 +28,14 @@ done
 REQUIRED=(TELEGRAM_TOKEN TELEGRAM_ADMIN_ID REMNAWAVE_PANEL_URL REMNAWAVE_API_TOKEN REMNAWAVE_INTERNAL_SQUAD_ID
   XRAY_DOMAIN XRAY_UUID XRAY_PBK XRAY_SID)
 # ключи только для наблюдаемости: в минимальной установке не спрашиваем, пишем значения по умолчанию (CI требует, чтобы ключи были)
-OBS_KEYS=(GRAFANA_PORT GRAFANA_ADMIN_PASSWORD GRAFANA_ALLOWED_ORIGINS ALERT_TELEGRAM_TOKEN ALERT_TELEGRAM_CHAT_ID)
+OBS_KEYS=(GRAFANA_PORT GRAFANA_ADMIN_PASSWORD GRAFANA_ALLOWED_ORIGINS ALERT_TELEGRAM_TOKEN ALERT_TELEGRAM_CHAT_ID
+  OBSERVABILITY_ADDR API_OBSERVABILITY_ADDR) # адреса метрик compose задаёт сам, без Prometheus они не нужны
 ((MINIMAL)) || REQUIRED+=(GRAFANA_ADMIN_PASSWORD ALERT_TELEGRAM_TOKEN ALERT_TELEGRAM_CHAT_ID)
 
 is_obs() { [[ " ${OBS_KEYS[*]} " == *" $1 "* ]]; }
+
+# will_ask <key>: спросит ли prompt_key это значение (иначе заголовок раздела тоже не показываем)
+will_ask() { [[ $1 != COMPOSE_FILE ]] && ! { ((MINIMAL)) && is_obs "$1"; }; }
 
 # какие compose-файлы поднимает стек (читает docker compose из COMPOSE_FILE в .env)
 compose_value() {
@@ -217,15 +221,20 @@ else
   envnew="$dir/.env.new"
   (umask 077 && : >"$envnew")
   n=0
+  pending=()
   for line in "${example[@]}"; do
     [[ -z ${line//[[:space:]]/} ]] && continue
     if [[ $line == '#'* ]]; then
-      echo
-      echo "${line#\# }"
+      pending+=("${line#\# }") # заголовок раздела: покажем, только если в разделе будет вопрос
       continue
     fi
     [[ $line == *=* ]] || continue
     key="${line%%=*}"
+    if will_ask "$key" && ((${#pending[@]})); then
+      echo
+      printf '%s\n' "${pending[@]}"
+    fi
+    pending=()
     prompt_key "$key" "$(default_of "$line")"
     printf "%s='%s'\n" "$key" "$val" >>"$envnew"
     n=$((n + 1))
@@ -246,14 +255,19 @@ if [[ ${BRUHANET_SKIP_UP:-} == 1 ]]; then
 fi
 
 dc=(docker compose --env-file .env)
-"${dc[@]}" pull </dev/null
+"${dc[@]}" pull --quiet </dev/null
 "${dc[@]}" up -d --remove-orphans </dev/null
 "${dc[@]}" ps </dev/null
 
-port="$(sed -n 's/^GRAFANA_PORT=["'"'"']\{0,1\}\([^"'"'"']*\).*/\1/p' .env)"
-cat <<MSG
-
-Готово. Grafana: http://127.0.0.1:${port:-3030}
-Обновить:  curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | BRUHANET_DIR=$dir bash
-Логи:      cd $dir && docker compose --env-file .env logs -f bot
-MSG
+env_get() { sed -n "s/^$1=[\"']\{0,1\}\([^\"']*\).*/\1/p" .env | head -1; }
+mini_origin="$(env_get MINIAPP_ORIGIN)"
+echo
+if [[ $(env_get COMPOSE_FILE) != *observability* ]]; then
+  echo "Готово. Стек без наблюдаемости: bot, api (админка), Mini App, Postgres, Redis, xray, бэкапы."
+else
+  echo "Готово. Grafana: http://127.0.0.1:$(env_get GRAFANA_PORT | sed 's/^$/3030/')"
+fi
+echo "Админка:   http://127.0.0.1:8090 (наружу через nginx, см. README); вход — команда /login боту"
+[[ -z $mini_origin ]] || echo "Mini App:  http://127.0.0.1:8092 → $mini_origin (nginx на этот порт, адрес — в BotFather)"
+echo "Обновить:  curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | BRUHANET_DIR=$dir bash"
+echo "Логи:      cd $dir && docker compose --env-file .env logs -f bot"
