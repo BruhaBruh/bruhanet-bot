@@ -165,3 +165,35 @@ func TestMiniSubscriptionLinkIsNotLogged(t *testing.T) {
 		t.Fatalf("log leaks secrets: %s", buf.String())
 	}
 }
+
+func TestMiniInstructions(t *testing.T) {
+	cfg := `{"platforms":{"ios":{"apps":[{"name":"Happ","urlScheme":"happ://add/","installationStep":{"description":{"ru":"Установи"}}}]}}}`
+	panel := &fakePanel{user: activeUser(now.Add(24 * time.Hour)), subpage: json.RawMessage(cfg)}
+	h, _, _ := newMiniPanel(t, panel)
+	for range 2 {
+		code, m, raw := getMini(t, h, http.MethodGet, "/m/api/instructions", "")
+		pl, _ := m["platforms"].([]any)
+		if code != 200 || len(pl) != 1 || strings.Contains(raw, miniSubURL) {
+			t.Fatalf("%d %s", code, raw)
+		}
+	}
+	if panel.subpageCalls != 1 {
+		t.Fatalf("panel called %d times, the second answer must come from the cache", panel.subpageCalls)
+	}
+
+	for name, p := range map[string]*fakePanel{
+		"not in panel":   {err: remnawave.ErrUserNotFound},
+		"config not set": {user: activeUser(now.Add(time.Hour)), subpageErr: remnawave.ErrSubpageConfigNotSet},
+		"garbage config": {user: activeUser(now.Add(time.Hour)), subpage: json.RawMessage(`not json`)},
+	} {
+		h, _, _ := newMiniPanel(t, p)
+		code, m, raw := getMini(t, h, http.MethodGet, "/m/api/instructions", "")
+		if pl, ok := m["platforms"].([]any); code != 200 || !ok || len(pl) != 0 {
+			t.Fatalf("%s: %d %s", name, code, raw)
+		}
+	}
+	h, _, _ = newMiniPanel(t, &fakePanel{user: activeUser(now.Add(time.Hour)), subpageErr: http.ErrHandlerTimeout})
+	if code, m, _ := getMini(t, h, http.MethodGet, "/m/api/instructions", ""); code != 502 || m["error"] != "panel_unavailable" {
+		t.Fatalf("panel down: %d %v", code, m)
+	}
+}

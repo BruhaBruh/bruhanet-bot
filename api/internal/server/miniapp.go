@@ -31,12 +31,13 @@ func NewMiniApp(d Deps) http.Handler {
 		d.PanelTimeout = 5 * time.Second
 	}
 	d.Static = d.MiniStatic
-	s := &server{Deps: d, secure: true, avatars: newAvatarCache(), mini: newLimiter()}
+	s := &server{Deps: d, secure: true, avatars: newAvatarCache(), mini: newLimiter(), instr: newInstrCache()}
 
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /m/api/me", s.miniMe)
 	apiMux.HandleFunc("GET /m/api/subscription", s.miniSubscription)
 	apiMux.HandleFunc("POST /m/api/subscription-link", s.miniSubscriptionLink)
+	apiMux.HandleFunc("GET /m/api/instructions", s.miniInstructions)
 	apiMux.HandleFunc("GET /m/api/referral", s.miniReferral)
 	apiMux.HandleFunc("GET /m/api/promos", s.miniPromos)
 	apiMux.HandleFunc("/m/api/", func(w http.ResponseWriter, _ *http.Request) {

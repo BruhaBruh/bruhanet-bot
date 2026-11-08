@@ -148,6 +148,7 @@ type server struct {
 	adminCache lazyWho
 	avatars    *avatarCache
 	mini       *limiter // лимиты Mini App; nil у админки
+	instr      *instrCache
 }
 
 func New(d Deps) http.Handler {
