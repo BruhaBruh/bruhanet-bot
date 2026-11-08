@@ -77,3 +77,21 @@ func TestSubpageConfigErrors(t *testing.T) {
 		}
 	}
 }
+
+// shortUuid — секрет подписки: ошибка транспорта (в тексте *url.Error есть полный адрес запроса) не должна его нести в логи.
+func TestSubpageConfigErrorDoesNotLeakShortUUID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := srv.URL
+	srv.Close() // дальше соединение отвергается, и ошибка содержит адрес запроса
+	rw, err := remnawave.New(url, "t", "c=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = rw.SubpageConfig(context.Background(), "SECRETSHORT")
+	if err == nil || !errors.Is(err, remnawave.ErrFailedToMakeRequest) {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), "SECRETSHORT") {
+		t.Fatalf("the error leaks the short uuid: %v", err)
+	}
+}

@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TgLogin from './TgLogin'
@@ -60,5 +61,28 @@ describe('TgLogin', () => {
     await flush()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(screen.getByText('нужен вход')).toBeTruthy()
+  })
+})
+
+describe('TgLogin under StrictMode', () => {
+  it('sends the signature once: a second effect run must not turn into a refusal', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+    window.history.replaceState(null, '', `/tg#tgWebAppData=${encodeURIComponent(INIT)}`)
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={['/tg']}>
+          <Routes>
+            <Route path="/tg" element={<TgLogin />} />
+            <Route path="/" element={<p>главная</p>} />
+            <Route path="/login-required" element={<p>нужен вход</p>} />
+          </Routes>
+        </MemoryRouter>
+      </StrictMode>,
+    )
+    await flush()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('главная')).toBeTruthy()
   })
 })

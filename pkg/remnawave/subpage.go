@@ -21,7 +21,7 @@ func (rw *remnawave) SubpageConfig(ctx context.Context, shortUUID string) (json.
 		RequestHeaders: api.GetSubpageConfigByShortUuidBodyRequestHeaders{"user-agent": subpageUserAgent},
 	}, shortUUID)
 	if err != nil {
-		return nil, errors.Join(ErrFailedToMakeRequest, err)
+		return nil, errors.Join(ErrFailedToMakeRequest, redact(err, shortUUID))
 	}
 	var id api.NilUUID
 	switch r := resp.(type) {

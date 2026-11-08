@@ -62,7 +62,13 @@ func (s *server) miniActivatePromo(w http.ResponseWriter, r *http.Request) {
 	pw := panelWrite{s}
 	res, err := payflow.ActivateDaysPromo(ctx, s.Store, pw, payflow.DaysPromoRequest{
 		PromoID: p.ID, TelegramID: tg.ID, Username: tg.Username, At: now, Squad: s.Squad,
-		Ensure: func(ctx context.Context) (*api.UserItemInfo, error) { return pw.GetUser(ctx, tg.ID) },
+		Ensure: func(ctx context.Context) (*api.UserItemInfo, error) {
+			u, err := pw.GetUser(ctx, tg.ID)
+			if err != nil && !errors.Is(err, remnawave.ErrUserNotFound) {
+				return nil, errors.Join(payflow.ErrPanel, err) // таймаут/сбой панели при чтении — 502, не 500
+			}
+			return u, err
+		},
 	})
 	switch {
 	case err == nil:

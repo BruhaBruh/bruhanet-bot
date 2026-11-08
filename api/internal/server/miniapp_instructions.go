@@ -69,7 +69,13 @@ var (
 		{"additionalAfterAddSubscriptionStep", "После добавления"},
 		{"connectAndUseStep", "Подключение"},
 	}
-	appScheme     = regexp.MustCompile(`^[a-z][a-z0-9+.-]{1,31}://`)
+	appScheme = regexp.MustCompile(`^[a-z][a-z0-9+.-]{1,31}://`)
+	// К urlScheme клиент дописывает ссылку подписки, поэтому схема — только у известных VPN-клиентов (не denylist).
+	clientSchemes = []string{
+		"happ", "v2box", "v2raytun", "v2rayng", "v2rayn", "v2rayu", "sing-box", "singbox", "clash", "clashmeta", "clash-verge",
+		"hiddify", "streisand", "karing", "flclash", "shadowrocket", "foxray", "nekoray", "nekobox", "sub", "stash", "loon",
+		"surge", "quantumult-x", "v2rayx", "mihomo",
+	}
 	forbiddenSchm = []string{"javascript", "data", "file", "vbscript", "blob", "about", "http"}
 )
 
@@ -86,6 +92,15 @@ func safeLink(u string) bool {
 	}
 	scheme, _, _ := strings.Cut(u, ":")
 	return !slices.Contains(forbiddenSchm, scheme)
+}
+
+// safeClientScheme — схема приложения из allowlist клиентов (happ://, v2box://…), со ссылкой не длиннее лимита.
+func safeClientScheme(u string) bool {
+	if !safeLink(u) || strings.HasPrefix(u, "https://") {
+		return false
+	}
+	scheme, _, _ := strings.Cut(u, ":")
+	return slices.Contains(clientSchemes, scheme)
 }
 
 // localized достаёт русский (иначе английский, иначе первый) текст из {"ru": "...", "en": "..."} или обычной строки.
@@ -192,7 +207,7 @@ func sanitizeApp(a map[string]any) (instrApp, bool) {
 	app := instrApp{Name: name, Steps: []instrStep{}}
 	app.Featured, _ = a["featured"].(bool)
 	app.NeedBase64, _ = a["isNeedBase64Encoding"].(bool)
-	if sch, _ := a["urlScheme"].(string); safeLink(sch) && !strings.HasPrefix(sch, "https://") {
+	if sch, _ := a["urlScheme"].(string); safeClientScheme(sch) {
 		app.URLScheme = sch
 	}
 	for _, sk := range stepKeys {

@@ -151,14 +151,15 @@ type server struct {
 	avatars    *avatarCache
 	mini       *limiter // лимиты Mini App; nil у админки
 	instr      *instrCache
-	tma        *limiter // попытки входа через Mini App (/auth/tma)
+	tma        *limiter // попытки входа через Mini App (/auth/tma), ключ — юзер из подписи
+	tmaSeen    *seenSet // уже использованные подписи входа (одноразовые)
 }
 
 func New(d Deps) http.Handler {
 	if d.PanelTimeout == 0 {
 		d.PanelTimeout = 5 * time.Second
 	}
-	s := &server{Deps: d, secure: strings.HasPrefix(d.BaseURL, "https://"), avatars: newAvatarCache(), tma: newLimiter()}
+	s := &server{Deps: d, secure: strings.HasPrefix(d.BaseURL, "https://"), avatars: newAvatarCache(), tma: newLimiter(), tmaSeen: newSeenSet()}
 	// default-deny: всё под /api/ живёт в apiMux и проходит jsonOnly (дёшево, без БД) и сессию.
 	// Тот же *Request уходит во вложенный мукс, он перезаписывает r.Pattern — метрика видит точный шаблон.
 	apiMux := http.NewServeMux()

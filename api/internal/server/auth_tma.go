@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -14,22 +15,17 @@ import (
 const (
 	tmaMaxAge   = 5 * time.Minute // для входа в админку подпись должна быть свежей
 	tmaBody     = 4 << 10
-	tmaPerMin   = 20 // общий потолок попыток: за прокси все приходят с одного адреса, поэтому ключа по IP нет
-	tmaRateKey  = "tma"
+	tmaPerMin   = 20 // попыток в минуту на юзера из подписи (по IP нельзя: за прокси все с одного адреса)
 	tmaUnauthed = "unauthorized"
 )
 
 // authTMA — вход админа одним тапом: Mini App открывается кнопкой бота, страница /tg присылает initData, сервер
 // проверяет подпись (токен бота), свежесть и что это AdminID, и ставит ту же сессионную cookie, что и /auth.
-// Любой отказ — один и тот же 401; ограничение 20 попыток в минуту (страдает только этот вход, /login работает).
+// Любой отказ — один и тот же 401; подпись одноразовая; 20 попыток в минуту на юзера из подписи.
 func (s *server) authTMA(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Header.Get("Origin") != strings.TrimRight(s.BaseURL, "/") {
 		writeError(w, http.StatusForbidden, "forbidden")
-		return
-	}
-	if !s.tma.allow(tmaRateKey, tmaPerMin, time.Minute, s.Now()) {
-		writeError(w, http.StatusTooManyRequests, "rate_limited")
 		return
 	}
 	var in struct {
@@ -39,8 +35,24 @@ func (s *server) authTMA(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, tmaUnauthed)
 		return
 	}
+	// невалидная подпись ничего не тратит: мусор не должен блокировать вход
 	u, err := parseInitData(in.InitData, s.BotToken, s.Now(), tmaMaxAge)
-	if err != nil || s.BotToken == "" || u.ID != s.AdminID {
+	if err != nil || s.BotToken == "" {
+		writeError(w, http.StatusUnauthorized, tmaUnauthed)
+		return
+	}
+	// лимит по юзеру из подписи: чужой юзер выбивает только свой
+	if !s.tma.allow(limitKey("tma", u.ID), tmaPerMin, time.Minute, s.Now()) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited")
+		return
+	}
+	if u.ID != s.AdminID {
+		writeError(w, http.StatusUnauthorized, tmaUnauthed)
+		return
+	}
+	// подпись одноразовая: перехваченный initData второй раз не пройдёт
+	q, _ := url.ParseQuery(in.InitData)
+	if !s.tmaSeen.first(q.Get("hash"), tmaMaxAge+time.Minute, s.Now()) {
 		writeError(w, http.StatusUnauthorized, tmaUnauthed)
 		return
 	}

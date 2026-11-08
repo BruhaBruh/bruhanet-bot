@@ -81,3 +81,26 @@ func TestInstrCache(t *testing.T) {
 		t.Fatal("different key must miss")
 	}
 }
+
+// К схеме приложения клиент дописывает ссылку подписки, поэтому разрешены только схемы известных VPN-клиентов:
+// ftp://, ssh://, intent:// и прочее увело бы ссылку не туда.
+func TestSanitizeInstructionsSchemeAllowlist(t *testing.T) {
+	scheme := func(s string) string {
+		raw := `{"platforms":{"ios":{"apps":[{"name":"X","urlScheme":"` + s + `"}]}}}`
+		dto, err := sanitizeInstructions([]byte(raw))
+		if err != nil || len(dto.Platforms) != 1 {
+			t.Fatalf("%s: %+v %v", s, dto, err)
+		}
+		return dto.Platforms[0].Apps[0].URLScheme
+	}
+	for _, ok := range []string{"happ://add/", "v2box://install-sub?url=", "v2raytun://import/", "sing-box://import-remote-profile?url=", "clash://install-config?url=", "hiddify://import/", "streisand://import/", "karing://install-config?url=", "flclash://install-config?url="} {
+		if scheme(ok) != ok {
+			t.Errorf("%s must be allowed", ok)
+		}
+	}
+	for _, bad := range []string{"ftp://evil.example/", "ssh://evil.example/", "intent://evil#Intent;end", "tg://resolve?domain=x", "mailto:x@y.z", "evil://x", "HAPP://x"} {
+		if got := scheme(bad); got != "" {
+			t.Errorf("%s must be dropped, got %q", bad, got)
+		}
+	}
+}

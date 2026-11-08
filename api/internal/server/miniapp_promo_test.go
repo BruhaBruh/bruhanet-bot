@@ -141,3 +141,13 @@ func TestMiniPromoBodyLimit(t *testing.T) {
 		t.Fatalf("got %d", w.Code)
 	}
 }
+
+// Любой сбой панели при чтении юзера в активации — 502 с русским текстом, а не 500.
+func TestMiniPromoPanelReadFailureIs502(t *testing.T) {
+	h, st, _ := newMiniPanel(t, &fakePanel{err: http.ErrHandlerTimeout})
+	seedPromos(st)
+	w := promoRequest(t, h, "WELCOME")
+	if w.Code != 502 || !strings.Contains(w.Body.String(), "panel_unavailable") {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+}

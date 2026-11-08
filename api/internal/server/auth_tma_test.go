@@ -110,3 +110,43 @@ func TestAuthTMARateLimit(t *testing.T) {
 		t.Fatalf("21st attempt in a minute must be limited, got %d", w.Code)
 	}
 }
+
+// Подпись одноразовая: перехваченный initData из Mini App нельзя предъявить второй раз.
+func TestAuthTMAInitDataIsSingleUse(t *testing.T) {
+	h, st := newServerTMA(t)
+	init := adminInit(t, time.Minute, "1")
+	if w := tmaLogin(h, init, "https://evil.test", "application/json"); w.Code != 403 {
+		t.Fatalf("foreign origin: %d", w.Code)
+	}
+	if w := tmaLogin(h, init, tmaBase, "application/json"); w.Code != 204 {
+		t.Fatalf("a refused request must not burn the signature, got %d", w.Code)
+	}
+	if w := tmaLogin(h, init, tmaBase, "application/json"); w.Code != 401 || len(w.Result().Cookies()) != 0 {
+		t.Fatalf("replay must be refused, got %d", w.Code)
+	}
+	if st.sessionCount() != 1 {
+		t.Fatalf("sessions = %d", st.sessionCount())
+	}
+	// другой запуск Mini App (другая подпись) проходит
+	if w := tmaLogin(h, server.SignInitData(t, miniToken, now.Add(-30*time.Second), `{"id":1,"first_name":"A"}`, "query_id", "AAZ"), tmaBase, "application/json"); w.Code != 204 {
+		t.Fatalf("a new launch must pass, got %d", w.Code)
+	}
+}
+
+// Лимит считается по юзеру из подписи: мусор и чужой юзер не могут заблокировать вход админа.
+func TestAuthTMALimitIsPerSignedUser(t *testing.T) {
+	h, _ := newServerTMA(t)
+	for range 60 {
+		tmaLogin(h, "hash=00", tmaBase, "application/json") // подпись невалидна: ничего не тратит
+	}
+	other := adminInit(t, time.Minute, "42")
+	for range 25 {
+		tmaLogin(h, other, tmaBase, "application/json") // 42 выбил свой лимит
+	}
+	if w := tmaLogin(h, other, tmaBase, "application/json"); w.Code != 429 {
+		t.Fatalf("user 42 must be limited, got %d", w.Code)
+	}
+	if w := tmaLogin(h, adminInit(t, time.Minute, "1"), tmaBase, "application/json"); w.Code != 204 {
+		t.Fatalf("the admin must still log in, got %d", w.Code)
+	}
+}
