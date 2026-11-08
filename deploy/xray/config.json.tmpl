@@ -1,0 +1,60 @@
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [
+    {
+      "tag": "http-in",
+      "listen": "0.0.0.0",
+      "port": 10809,
+      "protocol": "http",
+      "settings": {}
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "vpn",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "__XRAY_DOMAIN__",
+            "port": __XRAY_PORT__,
+            "users": [
+              {
+                "id": "__XRAY_UUID__",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "__XRAY_DOMAIN__",
+          "fingerprint": "__XRAY_FINGERPRINT__",
+          "publicKey": "__XRAY_PBK__",
+          "shortId": "__XRAY_SID__"
+        }
+      }
+    },
+    { "tag": "direct", "protocol": "freedom" }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": ["http-in"],
+        "domain": ["domain:telegram.org", "domain:t.me", "domain:telegram.me"],
+        "outboundTag": "vpn"
+      },
+      {
+        "type": "field",
+        "inboundTag": ["http-in"],
+        "outboundTag": "direct"
+      }
+    ]
+  }
+}

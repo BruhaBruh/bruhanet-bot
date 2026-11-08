@@ -8,6 +8,16 @@ x-logging: &logging
 
 x-database-url: &database_url postgres://bruhanet:${POSTGRES_PASSWORD}@postgres:5432/bruhanet?sslmode=disable
 
+# Исходящий HTTP(S) к Telegram идёт через xray (VLESS Reality): в xray только telegram.org/t.me уходят в VPN, остальное direct.
+# Внутренние адреса и частные сети — мимо прокси. Нижний регистр нужен curl (backup), верхний — Go.
+x-proxy: &proxy
+  HTTP_PROXY: http://xray:10809
+  HTTPS_PROXY: http://xray:10809
+  NO_PROXY: localhost,127.0.0.1,::1,postgres,redis,xray,loki,tempo,alloy,prometheus,grafana,bot,api,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+  http_proxy: http://xray:10809
+  https_proxy: http://xray:10809
+  no_proxy: localhost,127.0.0.1,::1,postgres,redis,xray,loki,tempo,alloy,prometheus,grafana,bot,api,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+
 services:
   bot:
     image: ghcr.io/bruhabruh/bruhanet-bot:${BOT_IMAGE_TAG:-latest}
@@ -18,7 +28,7 @@ services:
       DATABASE_URL: *database_url
       LOG_JSON: "true"
       OBSERVABILITY_ADDR: ":8081"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      <<: *proxy
     command: ["/app/bot"]
     restart: unless-stopped
     stop_grace_period: 35s
@@ -36,6 +46,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      xray:
+        condition: service_started
     labels:
       logging: alloy
 
@@ -49,6 +61,7 @@ services:
       LOG_JSON: "true"
       API_ADDR: ":8090"
       API_OBSERVABILITY_ADDR: ":8091"
+      <<: *proxy
       # Mini App слушает только при заданном MINIAPP_ORIGIN (nginx app.bruhanet.ru → 127.0.0.1:8092)
       MINIAPP_ADDR: "${MINIAPP_ORIGIN:+:8092}"
     command: ["/app/api"]
@@ -67,6 +80,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      xray:
+        condition: service_started
     labels:
       logging: alloy
 
@@ -115,6 +130,7 @@ services:
       TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID}
       TZ: Europe/Moscow
       BACKUP_AT: "04:00"
+      <<: *proxy
     # ponytail: curl ставится на старте, при недоступном зеркале Alpine контейнер рестартует; упрётся — собрать свой образ
     command: ["sh", "-c", "apk add --no-cache curl >/dev/null && exec sh /backup.sh"]
     volumes:
@@ -122,6 +138,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      xray:
+        condition: service_started
     labels:
       logging: alloy
 
@@ -138,86 +156,37 @@ services:
       timeout: 3s
       retries: 10
 
-  loki:
-    image: grafana/loki:3.7.9
+  # Прокси для исходящего трафика к Telegram: http-inbound :10809 только во внутренней сети compose, наружу не публикуется.
+  # Параметры соединения (XRAY_*) — в .env; config.json собирает xray-config из шаблона.
+  xray-config:
+    image: alpine:3.21
     logging: *logging
-    restart: unless-stopped
-    command: [-config.file=/etc/loki/loki.yaml]
-    volumes:
-      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
-      - loki-data:/loki
-    # ponytail: образ loki без shell — healthcheck невозможен, зависимые ждут только старта
-
-  alloy:
-    image: grafana/alloy:v1.21.2
-    logging: *logging
-    restart: unless-stopped
-    command: [run, --storage.path=/var/lib/alloy/data, /etc/alloy/config.alloy]
-    volumes:
-      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - alloy-data:/var/lib/alloy/data
-    depends_on:
-      - loki
-
-  # логи prometheus/tempo в Loki не собираем — без labels.logging
-  prometheus:
-    image: prom/prometheus:v3.15.1
-    logging: *logging
-    restart: unless-stopped
-    command:
-      - --config.file=/etc/prometheus/prometheus.yaml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=30d
-    volumes:
-      - ./prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
-      - prometheus-data:/prometheus
-
-  tempo:
-    image: grafana/tempo:2.10.10
-    logging: *logging
-    restart: unless-stopped
-    command: [-config.file=/etc/tempo/tempo.yaml]
-    volumes:
-      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
-      # /var/tempo в образе принадлежит uid 10001 — новый том наследует владельца
-      - tempo-data:/var/tempo
-
-  grafana:
-    image: grafana/grafana:13.2.4
-    logging: *logging
-    restart: unless-stopped
-    ports:
-      - 127.0.0.1:${GRAFANA_PORT:-3030}:3000
+    restart: "no"
     environment:
-      # применяется только при первой инициализации тома grafana-data
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
-      GF_AUTH_ANONYMOUS_ENABLED: "false"
-      GF_SECURITY_CSRF_TRUSTED_ORIGINS: ${GRAFANA_ALLOWED_ORIGINS:-}
-      ALERT_TELEGRAM_TOKEN: ${ALERT_TELEGRAM_TOKEN:?set ALERT_TELEGRAM_TOKEN}
-      ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:?set ALERT_TELEGRAM_CHAT_ID}
+      XRAY_DOMAIN: ${XRAY_DOMAIN:-}
+      XRAY_PORT: ${XRAY_PORT:-443}
+      XRAY_UUID: ${XRAY_UUID:-}
+      XRAY_PBK: ${XRAY_PBK:-}
+      XRAY_SID: ${XRAY_SID:-}
+      XRAY_FINGERPRINT: ${XRAY_FINGERPRINT:-firefox}
+    command: ["sh", "/xray/render.sh"]
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana-data:/var/lib/grafana
-    healthcheck:
-      test: [CMD-SHELL, "wget -qO- http://localhost:3000/api/health | grep -q ok"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      # первый старт: миграции на свежем томе занимают до ~4 минут
-      start_period: 300s
-      start_interval: 5s
+      - ./xray:/xray:ro
+      - xray-config:/out
+
+  # ponytail: образ xray без shell — healthcheck невозможен, зависимые ждут только старта (рестарт: unless-stopped)
+  xray:
+    image: ghcr.io/xtls/xray-core:26.10.31
+    logging: *logging
+    restart: unless-stopped
+    command: ["run", "-c", "/etc/xray/config.json"]
+    volumes:
+      - xray-config:/etc/xray:ro
     depends_on:
-      - loki
-      - prometheus
-      - tempo
+      xray-config:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:
   redis-data:
-  loki-data:
-  alloy-data:
-  grafana-data:
-  prometheus-data:
-  tempo-data:
+  xray-config:

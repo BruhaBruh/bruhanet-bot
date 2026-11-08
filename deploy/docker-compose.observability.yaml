@@ -1,0 +1,104 @@
+# Наблюдаемость: логи, метрики, трейсы, дашборды и алерты. Подключается через COMPOSE_FILE в .env
+# (docker-compose.yaml:docker-compose.observability.yaml); минимальная установка (install.sh --minimal) её не берёт.
+x-proxy: &proxy
+  HTTP_PROXY: http://xray:10809
+  HTTPS_PROXY: http://xray:10809
+  NO_PROXY: localhost,127.0.0.1,::1,postgres,redis,xray,loki,tempo,alloy,prometheus,grafana,bot,api,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+  http_proxy: http://xray:10809
+  https_proxy: http://xray:10809
+  no_proxy: localhost,127.0.0.1,::1,postgres,redis,xray,loki,tempo,alloy,prometheus,grafana,bot,api,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # трейсы бота уходят в Tempo; без этого файла OTEL не настроен и трассировка выключена
+  bot:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+
+  loki:
+    image: grafana/loki:3.7.9
+    logging: *logging
+    restart: unless-stopped
+    command: [-config.file=/etc/loki/loki.yaml]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    # ponytail: образ loki без shell — healthcheck невозможен, зависимые ждут только старта
+
+  alloy:
+    image: grafana/alloy:v1.21.2
+    logging: *logging
+    restart: unless-stopped
+    command: [run, --storage.path=/var/lib/alloy/data, /etc/alloy/config.alloy]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      - loki
+
+  # логи prometheus/tempo в Loki не собираем — без labels.logging
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    logging: *logging
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ./prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+
+  tempo:
+    image: grafana/tempo:2.10.10
+    logging: *logging
+    restart: unless-stopped
+    command: [-config.file=/etc/tempo/tempo.yaml]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      # /var/tempo в образе принадлежит uid 10001 — новый том наследует владельца
+      - tempo-data:/var/tempo
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    logging: *logging
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:${GRAFANA_PORT:-3030}:3000
+    environment:
+      # применяется только при первой инициализации тома grafana-data
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_CSRF_TRUSTED_ORIGINS: ${GRAFANA_ALLOWED_ORIGINS:-}
+      ALERT_TELEGRAM_TOKEN: ${ALERT_TELEGRAM_TOKEN:?set ALERT_TELEGRAM_TOKEN}
+      ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:?set ALERT_TELEGRAM_CHAT_ID}
+      <<: *proxy
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:3000/api/health | grep -q ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      # первый старт: миграции на свежем томе занимают до ~4 минут
+      start_period: 300s
+      start_interval: 5s
+    depends_on:
+      - loki
+      - prometheus
+      - tempo
+
+volumes:
+  loki-data:
+  alloy-data:
+  grafana-data:
+  prometheus-data:
+  tempo-data:

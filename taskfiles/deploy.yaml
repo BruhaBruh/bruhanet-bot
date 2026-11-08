@@ -2,36 +2,43 @@
 
 version: '3'
 
+# COMPOSE_FILE (полный или минимальный стек) читается из deploy/.env, пути в нём относительные — запускаем из deploy/
 vars:
-  DEPLOY_COMPOSE: docker compose -f deploy/docker-compose.yaml --env-file deploy/.env
+  DEPLOY_COMPOSE: docker compose --env-file .env
 
 tasks:
   deploy:config:
     desc: Проверить прод-compose
+    dir: deploy
     cmds:
       - '{{.DEPLOY_COMPOSE}} config --quiet'
 
   deploy:up:
     desc: Поднять прод-стек
+    dir: deploy
     cmds:
       - '{{.DEPLOY_COMPOSE}} up -d'
 
   deploy:down:
     desc: Остановить прод-стек (данные сохраняются)
+    dir: deploy
     cmds:
       - '{{.DEPLOY_COMPOSE}} down'
 
   deploy:pull:
     desc: Скачать свежие образы прод-стека
+    dir: deploy
     cmds:
       - '{{.DEPLOY_COMPOSE}} pull'
 
   deploy:logs:
     desc: 'Логи прод-стека (пример: task deploy:logs -- bot)'
+    dir: deploy
     cmds:
       - '{{.DEPLOY_COMPOSE}} logs -f {{.CLI_ARGS}}'
 
   deploy:ps:
     desc: Статус контейнеров прод-стека
+    dir: deploy
     cmds:
       - '{{.DEPLOY_COMPOSE}} ps'

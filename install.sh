@@ -1,14 +1,42 @@
 #!/usr/bin/env bash
 # Установка/обновление прод-стека BruhaNet:
 #   curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | bash
+# Минимальный стек (bot, api, Mini App, Postgres, Redis, xray, бэкапы; без Grafana/Loki/Prometheus/Tempo/Alloy):
+#   curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | bash -s -- --minimal
 # Env: BRUHANET_DIR (каталог), BRUHANET_REF (ветка/тег), BRUHANET_TARBALL (локальный архив, для тестов),
-#      BRUHANET_INPUT (откуда читать ответы, по умолчанию /dev/tty), BRUHANET_SKIP_UP=1 (без pull/up).
+#      BRUHANET_INPUT (откуда читать ответы, по умолчанию /dev/tty), BRUHANET_SKIP_UP=1 (без pull/up),
+#      BRUHANET_MINIMAL=1 (то же, что --minimal).
 set -euo pipefail
 
 die() { echo "Ошибка: $*" >&2; exit 1; }
 
+MINIMAL="${BRUHANET_MINIMAL:-0}"
+while (($#)); do
+  case "$1" in
+    --minimal) MINIMAL=1 ;;
+    -h | --help)
+      echo "Использование: install.sh [--minimal]"
+      echo "  --minimal  без наблюдаемости (Grafana, Loki, Prometheus, Tempo, Alloy): bot, api, Mini App, Postgres, Redis, xray, бэкапы"
+      exit 0
+      ;;
+    *) die "неизвестный аргумент '$1' (есть только --minimal)" ;;
+  esac
+  shift
+done
+[[ $MINIMAL == 1 ]] || MINIMAL=0
+
 REQUIRED=(TELEGRAM_TOKEN TELEGRAM_ADMIN_ID REMNAWAVE_PANEL_URL REMNAWAVE_API_TOKEN REMNAWAVE_INTERNAL_SQUAD_ID
-  GRAFANA_ADMIN_PASSWORD ALERT_TELEGRAM_TOKEN ALERT_TELEGRAM_CHAT_ID)
+  XRAY_DOMAIN XRAY_UUID XRAY_PBK XRAY_SID)
+# ключи только для наблюдаемости: в минимальной установке не спрашиваем, пишем значения по умолчанию (CI требует, чтобы ключи были)
+OBS_KEYS=(GRAFANA_PORT GRAFANA_ADMIN_PASSWORD GRAFANA_ALLOWED_ORIGINS ALERT_TELEGRAM_TOKEN ALERT_TELEGRAM_CHAT_ID)
+((MINIMAL)) || REQUIRED+=(GRAFANA_ADMIN_PASSWORD ALERT_TELEGRAM_TOKEN ALERT_TELEGRAM_CHAT_ID)
+
+is_obs() { [[ " ${OBS_KEYS[*]} " == *" $1 "* ]]; }
+
+# какие compose-файлы поднимает стек (читает docker compose из COMPOSE_FILE в .env)
+compose_value() {
+  if ((MINIMAL)); then echo "docker-compose.yaml"; else echo "docker-compose.yaml:docker-compose.observability.yaml"; fi
+}
 
 for c in curl tar docker; do
   command -v "$c" >/dev/null || die "не найден '$c' — установи его и запусти снова"
@@ -51,10 +79,18 @@ default_of() {
 # prompt_key <key> <default> -> значение в $val (спрашивает, пока не получит годное)
 prompt_key() {
   local key="$1" def="$2" required=0 secret=0
+  if [[ $key == COMPOSE_FILE ]]; then
+    val="$(compose_value)"
+    return 0
+  fi
+  if ((MINIMAL)) && is_obs "$key"; then
+    val="$def"
+    return 0
+  fi
   [[ $key == BOT_IMAGE_TAG ]] && def=latest
   [[ $key == POSTGRES_PASSWORD ]] && def="$(gen_password)"
   [[ " ${REQUIRED[*]} " == *" $key "* ]] && required=1
-  [[ $key =~ TOKEN|PASSWORD|COOKIE|SECRET ]] && secret=1
+  [[ $key =~ TOKEN|PASSWORD|COOKIE|SECRET|UUID ]] && secret=1
   while :; do
     if [[ $key == POSTGRES_PASSWORD ]]; then
       ask "$key (Enter — сгенерировать): " -s
@@ -79,6 +115,15 @@ prompt_key() {
     fi
     if [[ -z $val ]] && ((required)); then
       echo "  $key обязателен." >&2
+      continue
+    fi
+    # значения XRAY_* попадают в JSON-конфиг через sed: пускаем только безопасные символы (как в deploy/xray/render.sh)
+    if [[ $key == XRAY_PORT && ! $val =~ ^[0-9]+$ ]]; then
+      echo "  $key: только число." >&2
+      continue
+    fi
+    if [[ $key == XRAY_* && $key != XRAY_PORT && ! $val =~ ^[A-Za-z0-9._-]+$ ]]; then
+      echo "  $key: допустимы латиница, цифры и . _ -" >&2
       continue
     fi
     break
@@ -117,6 +162,9 @@ mapfile -t example <.env.example
 
 if [[ -f .env ]]; then
   echo ".env уже есть — существующие значения не трогаю (режим обновления конфигов)."
+  if ((MINIMAL)) && grep -q "^COMPOSE_FILE=" .env; then
+    echo "  COMPOSE_FILE уже задан в .env — не меняю. Для минимального стека поставь COMPOSE_FILE=docker-compose.yaml и перезапусти: docker compose up -d --remove-orphans."
+  fi
   missing=()
   declare -A mdef=()
   for line in "${example[@]}"; do
@@ -131,7 +179,9 @@ if [[ -f .env ]]; then
       # без ввода: ключи с дефолтом берём как есть, остальные — ошибка со списком
       nodef=()
       for k in "${missing[@]}"; do
-        [[ -n ${mdef[$k]} || $k == POSTGRES_PASSWORD ]] || nodef+=("$k")
+        [[ -n ${mdef[$k]} || $k == POSTGRES_PASSWORD ]] && continue
+        ((MINIMAL)) && is_obs "$k" && continue
+        nodef+=("$k")
       done
       ((${#nodef[@]} == 0)) || die "в .env нет ключей без значения по умолчанию: ${nodef[*]} — запусти с терминала или BRUHANET_INPUT=<файл>"
     fi
@@ -140,7 +190,9 @@ if [[ -f .env ]]; then
     envnew="$dir/.env.new"
     cp -p .env "$envnew"
     for k in "${missing[@]}"; do
-      if ((have_input)); then
+      if [[ $k == COMPOSE_FILE ]]; then
+        val="$(compose_value)"
+      elif ((have_input)); then
         prompt_key "$k" "${mdef[$k]}"
       elif [[ $k == POSTGRES_PASSWORD ]]; then
         val="$(gen_password)"
@@ -154,7 +206,7 @@ if [[ -f .env ]]; then
     mv "$envnew" .env
     chmod 600 .env
     envnew=""
-    if ! err="$(docker compose -f docker-compose.yaml --env-file .env config -q </dev/null 2>&1)"; then
+    if ! err="$(docker compose --env-file .env config -q </dev/null 2>&1)"; then
       mv .env.bak .env
       die "получился невалидный .env, откатил: $err"
     fi
@@ -182,7 +234,7 @@ else
   mv "$envnew" .env
   envnew=""
   # env_file: .env в compose должен существовать, поэтому проверяем уже после mv
-  if ! err="$(docker compose -f docker-compose.yaml --env-file .env config -q </dev/null 2>&1)"; then
+  if ! err="$(docker compose --env-file .env config -q </dev/null 2>&1)"; then
     rm -f .env
     die "получился невалидный .env, ничего не сохранено: $err"
   fi
@@ -193,9 +245,9 @@ if [[ ${BRUHANET_SKIP_UP:-} == 1 ]]; then
   exit 0
 fi
 
-dc=(docker compose -f docker-compose.yaml --env-file .env)
+dc=(docker compose --env-file .env)
 "${dc[@]}" pull </dev/null
-"${dc[@]}" up -d </dev/null
+"${dc[@]}" up -d --remove-orphans </dev/null
 "${dc[@]}" ps </dev/null
 
 port="$(sed -n 's/^GRAFANA_PORT=["'"'"']\{0,1\}\([^"'"'"']*\).*/\1/p' .env)"
@@ -203,5 +255,5 @@ cat <<MSG
 
 Готово. Grafana: http://127.0.0.1:${port:-3030}
 Обновить:  curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | BRUHANET_DIR=$dir bash
-Логи:      cd $dir && docker compose -f docker-compose.yaml --env-file .env logs -f bot
+Логи:      cd $dir && docker compose --env-file .env logs -f bot
 MSG

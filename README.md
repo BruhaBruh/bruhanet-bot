@@ -26,6 +26,31 @@ curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install
 
 Повторный запуск обновляет конфиги и перезапускает стек, существующий `.env` не трогает.
 
+### Минимальная установка (без наблюдаемости)
+
+Только bot, api с админкой и Mini App, Postgres, Redis, xray и бэкапы. Без Grafana, Loki, Prometheus, Tempo и Alloy (и без алертов, они живут в Grafana):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bruhabruh/bruhanet-bot/main/install.sh | bash -s -- --minimal
+```
+
+Режим задаёт ключ `COMPOSE_FILE` в `.env`: `docker-compose.yaml` (минимум) или `docker-compose.yaml:docker-compose.observability.yaml` (полный). Ключи Grafana и алертов в минимальной установке пустые, но остаются в `.env`: CI требует все ключи из `deploy/.env.example`. Перейти между режимами можно, поменяв `COMPOSE_FILE` и выполнив `docker compose up -d --remove-orphans` в каталоге установки (`task deploy:*` сами берут `COMPOSE_FILE` из `deploy/.env`). Смена на минимальный остановит контейнеры наблюдаемости, тома с данными останутся.
+
+### Xray: прокси к Telegram
+
+Сервер бота может не достучаться до Telegram напрямую, поэтому исходящие запросы bot, api и backup идут через сервис `xray` (внутри сети compose, наружу порт не публикуется). В VPN уходят только `telegram.org`, `t.me` и `telegram.me`, остальное идёт напрямую. Свой сервер задаётся в `.env`:
+
+| Ключ | Что это |
+|---|---|
+| `XRAY_DOMAIN` | домен VLESS Reality сервера |
+| `XRAY_PORT` | порт, по умолчанию `443` |
+| `XRAY_UUID` | UUID пользователя |
+| `XRAY_PBK` | публичный ключ Reality (`publicKey`) |
+| `XRAY_SID` | `shortId` |
+| `XRAY_FINGERPRINT` | по умолчанию `firefox` |
+
+`install.sh` спросит их при установке. Конфиг `config.json` собирает одноразовый контейнер `xray-config` из `deploy/xray/config.json.tmpl`; значения проверяются (латиница, цифры, `. _ -`), неверное или пустое останавливает запуск с именем ключа в логе `xray-config`. Менять сами значения нужно в `.env`, затем `docker compose up -d`.
+
 Откат — только перезапуском старого деплоя в CI (он вернёт старый `deploy/`), не через `BOT_IMAGE_TAG=… up`: старый образ с ENTRYPOINT сломает команды api/migrate.
 
 ## Админка
