@@ -27,7 +27,7 @@ func CheckCatalog(t *testing.T) {
 			_, ok = templateBlock[name]
 		case texts.ActionLink, texts.ActionURLKind:
 			_, bound := argKey[a.ID] // «link:login» питает экран входа, как flow/copy
-			ok = a.ID == "link:support" || a.ID == "link:miniapp" || bound
+			ok = a.ID == "link:support" || a.ID == "link:miniapp" || a.ID == "link:admin" || bound
 		}
 		if !ok {
 			t.Errorf("action %s (%s) has no implementation", a.ID, kind)
@@ -40,7 +40,7 @@ func TestConditionEvaluators(t *testing.T) {
 	set := settings.Settings{DevicePrice: 60, ReferralDays: 7, Prices: map[int]int{1: 100}, MiniAppURL: "https://m.example/app"}
 	p := content.New(&tgtest.Source{}, set, time.Hour, nil)
 	e := &condEnv{ctx: t.Context(), c: p, panel: func() bool { return true }, trial: func() bool { return false }}
-	want := map[string]bool{"in_panel": true, "trial_available": false, "devices_sale_on": true, "gifts_on": true, "referral_on": true, "miniapp_on": true}
+	want := map[string]bool{"in_panel": true, "trial_available": false, "devices_sale_on": true, "gifts_on": true, "referral_on": true, "miniapp_on": true, "is_admin": false}
 	for _, c := range texts.Conditions() {
 		w, ok := want[c.ID]
 		if !ok {

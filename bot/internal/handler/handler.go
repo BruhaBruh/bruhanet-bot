@@ -35,6 +35,7 @@ func New(logger *slog.Logger, cfg *config.Config, deps Deps, opts ...bot.Option)
 	if deps.FSM == nil || deps.InFlight == nil || deps.Remnawave == nil || deps.Payments == nil || deps.Content == nil {
 		return nil, errors.New("handler: deps.FSM, deps.InFlight, deps.Remnawave, deps.Payments and deps.Content are required")
 	}
+	deps.Content.SetAdmin(cfg.Telegram.AdminID, cfg.Admin.BaseURL)
 	now := deps.Now
 	if now == nil {
 		now = time.Now

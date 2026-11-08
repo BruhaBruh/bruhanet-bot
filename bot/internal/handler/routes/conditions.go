@@ -39,6 +39,8 @@ func (e *condEnv) eval(id string) bool {
 		v = e.c.Settings(e.ctx).ReferralEnabled()
 	case "miniapp_on":
 		v = e.c.Settings(e.ctx).MiniAppURL != ""
+	case "is_admin":
+		v = e.c.IsAdmin(e.ctx) && e.c.AdminURL() != ""
 	default:
 		stlog.Error(e.ctx, "unknown keyboard condition", "condition", id)
 	}

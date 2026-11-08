@@ -158,7 +158,7 @@ func (d Def) on(route, style, when string) Def {
 
 // mainButtons — главная клавиатура (routes.mainKeyboard): набор зависит от того, есть ли юзер в панели.
 var mainButtons = []string{
-	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.trial", "button.referral", "button.gift", "button.service_down",
+	"button.info", "button.pay", "button.buy", "button.subscription", "button.support", "button.promo", "button.devices", "button.trial", "button.referral", "button.gift", "button.admin", "button.service_down",
 }
 
 const reasonPromo = "В ответ на присланный промокод: "
@@ -430,6 +430,7 @@ var registry = []Def{
 	btn("button.devices_custom", "Своё число устройств", "✏️ Своё число").on("devc", StyleDefault, "Меню докупки устройств"),
 	btn("button.drop_devices", "Без доп. устройств", "Без доп. устройств").on("buyd", StyleDefault, "Подтверждение тарифа, если у юзера есть доп. устройства"),
 	btn("button.trial", "Пробный период (в меню)", "🎁 Пробный период").on("trial", StyleDefault, "Главное меню, пока пробный включён в настройках и юзер на него имеет право"),
+	btn("button.admin", "Админка (в меню, только админу)", "🛠 Админка").on("url:adminUrl", StyleDefault, "Главное меню, только у админа бота"),
 	btn("button.referral", "Пригласить друга (в меню)", "🤝 Пригласить друга").on("referral", StyleDefault, "Главное меню, пока дни рефералки в настройках больше нуля"),
 	btn("button.gift", "Подарить (в меню)", "🎁 Подарить").on("gift", StyleDefault, "Главное меню, пока в настройках есть тарифы"),
 	btn("button.copy_link", "Скопировать ссылку приглашения или подарка", "📋 Скопировать ссылку").on("copy:ссылка приглашения или подарка", StyleSuccess, "Экран «Пригласить друга» и сообщение о готовом подарке"),

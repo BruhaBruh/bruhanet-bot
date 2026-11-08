@@ -32,6 +32,7 @@ var conditions = []Condition{
 	{"devices_sale_on", "Продажа устройств включена", "Цена дополнительного устройства в настройках больше нуля."},
 	{"gifts_on", "Подарки доступны", "В настройках есть хотя бы один тариф."},
 	{"referral_on", "Рефералка включена", "Дни за приглашённого друга в настройках больше нуля."},
+	{"is_admin", "Это админ бота", "Кнопку видит только TELEGRAM_ADMIN_ID, и только если ADMIN_BASE_URL — https-адрес."},
 	{"miniapp_on", "Задана ссылка на MiniApp", "В настройках «Устройства» указана ссылка на Mini App «Кабинет» (подписка, устройства, друзья, промокоды)."},
 }
 
@@ -82,6 +83,7 @@ var actions = []Action{
 	{ID: "route:referral", Title: "Пригласить друга", Kind: ActionRoute, Guard: "referral_on"},
 	{ID: "link:support", Title: "Поддержка (ссылка из настроек)", Kind: ActionLink},
 	{ID: "link:miniapp", Title: "Кабинет: Mini App внутри Telegram (ссылка из настроек)", Kind: ActionLink, Guard: "miniapp_on"},
+	{ID: "link:admin", Title: "Админка: вход одним тапом (только админу)", Kind: ActionLink, Guard: "is_admin"},
 	{ID: "link:login", Title: "Ссылка входа в админ-панель", Kind: ActionLink, Bound: true},
 	{ID: "copy:subscription", Title: "Скопировать ссылку подписки", Kind: ActionCopy, Bound: true},
 	{ID: "copy:referral_link", Title: "Скопировать реферальную ссылку", Kind: ActionCopy, Bound: true},
@@ -248,6 +250,8 @@ func cellSpec(kbID, slot string) Cell {
 		c.Action = "route:gift"
 	case "button.referral":
 		c.Action = "route:referral"
+	case "button.admin":
+		c.Action = "link:admin"
 	case "button.back":
 		c.Action = "route:menu"
 		switch kbID {
@@ -321,6 +325,7 @@ func menuDefault() ([]Keyboard, MsgLayout) {
 		{in(cellSpec("menu", "button.subscription")), in(cellSpec("menu", "button.support"))},
 		{in(cellSpec("menu", "button.promo")), in(cellSpec("menu", "button.devices"))},
 		{cellSpec("menu", "button.gift"), cellSpec("menu", "button.referral")},
+		{cellSpec("menu", "button.admin")},
 	}}
 }
 

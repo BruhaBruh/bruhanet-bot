@@ -132,7 +132,7 @@ func btns(ids ...string) map[string][][]string {
 
 func TestArrange(t *testing.T) {
 	menu := kbOf(t, "menu")
-	allMenu := []string{"button.info", "button.pay", "button.subscription", "button.support", "button.trial", "button.promo", "button.devices", "button.gift", "button.referral"}
+	allMenu := []string{"button.info", "button.pay", "button.subscription", "button.support", "button.trial", "button.promo", "button.devices", "button.gift", "button.referral", "button.admin"}
 	eq := func(name string, got, want [][]string) {
 		t.Helper()
 		if !slices.EqualFunc(got, want, slices.Equal) {
