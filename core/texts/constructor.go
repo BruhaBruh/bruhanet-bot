@@ -33,7 +33,7 @@ var conditions = []Condition{
 	{"gifts_on", "Подарки доступны", "В настройках есть хотя бы один тариф."},
 	{"referral_on", "Рефералка включена", "Дни за приглашённого друга в настройках больше нуля."},
 	{"is_admin", "Это админ бота", "Кнопку видит только TELEGRAM_ADMIN_ID, и только если ADMIN_BASE_URL — https-адрес."},
-	{"miniapp_on", "Задана ссылка на MiniApp", "В настройках «Устройства» указана ссылка на Mini App «Кабинет» (подписка, устройства, друзья, промокоды)."},
+	{"miniapp_on", "Задана ссылка на MiniApp", "Задан MINIAPP_ORIGIN: Mini App «Кабинет» (подписка, устройства, друзья, промокоды) включён."},
 }
 
 // Conditions — каталог условий (копия).
@@ -82,7 +82,7 @@ var actions = []Action{
 	{ID: "route:gift", Title: "Подарить подписку", Kind: ActionRoute, Guard: "gifts_on"},
 	{ID: "route:referral", Title: "Пригласить друга", Kind: ActionRoute, Guard: "referral_on"},
 	{ID: "link:support", Title: "Поддержка (ссылка из настроек)", Kind: ActionLink},
-	{ID: "link:miniapp", Title: "Кабинет: Mini App внутри Telegram (ссылка из настроек)", Kind: ActionLink, Guard: "miniapp_on"},
+	{ID: "link:miniapp", Title: "Кабинет: Mini App внутри Telegram (адрес из MINIAPP_ORIGIN)", Kind: ActionLink, Guard: "miniapp_on"},
 	{ID: "link:admin", Title: "Админка: вход одним тапом (только админу)", Kind: ActionLink, Guard: "is_admin"},
 	{ID: "link:login", Title: "Ссылка входа в админ-панель", Kind: ActionLink, Bound: true},
 	{ID: "copy:subscription", Title: "Скопировать ссылку подписки", Kind: ActionCopy, Bound: true},

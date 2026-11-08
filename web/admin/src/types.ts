@@ -212,7 +212,6 @@ export interface Settings {
   devicePrice: number
   deviceOptions: number[]
   deviceMax: number
-  miniAppUrl: string
   trialDays: number
   trialDevices: number
   referralDays: number

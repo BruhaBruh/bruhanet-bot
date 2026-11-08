@@ -99,6 +99,7 @@ type Provider struct {
 	snap atomic.Pointer[snapshot]
 
 	admin atomic.Pointer[adminInfo]
+	mini  atomic.Pointer[string] // адрес Mini App (MINIAPP_ORIGIN), только https
 
 	mu         sync.Mutex // loadedAt, refreshing
 	loadedAt   time.Time
@@ -272,6 +273,24 @@ func (p *Provider) SetAdmin(id int64, baseURL string) {
 		info.url = base + "/tg"
 	}
 	p.admin.Store(info)
+}
+
+// SetMiniApp запоминает адрес Mini App «Кабинет» (MINIAPP_ORIGIN): кнопки на него открываются как web_app, то есть
+// только по https. Пусто — Mini App выключен, кнопок нет.
+func (p *Provider) SetMiniApp(origin string) {
+	u := strings.TrimRight(origin, "/")
+	if !strings.HasPrefix(u, "https://") {
+		u = ""
+	}
+	p.mini.Store(&u)
+}
+
+// MiniAppURL — адрес Mini App без слэша на конце; пусто — выключен.
+func (p *Provider) MiniAppURL() string {
+	if u := p.mini.Load(); u != nil {
+		return *u
+	}
+	return ""
 }
 
 // IsAdmin — получатель из контекста (автор апдейта или ForUser) и есть админ.

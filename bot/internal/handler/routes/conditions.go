@@ -38,7 +38,7 @@ func (e *condEnv) eval(id string) bool {
 	case "referral_on":
 		v = e.c.Settings(e.ctx).ReferralEnabled()
 	case "miniapp_on":
-		v = e.c.Settings(e.ctx).MiniAppURL != ""
+		v = e.c.MiniAppURL() != ""
 	case "is_admin":
 		v = e.c.IsAdmin(e.ctx) && e.c.AdminURL() != ""
 	default:

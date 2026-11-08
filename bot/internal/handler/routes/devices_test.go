@@ -445,14 +445,14 @@ func TestDevicesClearNeedsAPanelUser(t *testing.T) {
 	}
 }
 
-// Ссылка на MiniApp для точечного удаления: кнопка есть, только пока в настройках задан адрес.
+// Кнопка Mini App есть, только пока задан MINIAPP_ORIGIN.
 func TestDevicesMiniAppButton(t *testing.T) {
 	e := devicesEnv(t, 20*day)
 	e.process(t, tgtest.Callback(userID, "devices"))
 	if strings.Contains(e.markup(t), "https://") {
 		t.Fatalf("no link without a setting: %s", e.markup(t))
 	}
-	e.src.SetSettings(map[string][]byte{"devicePrice": []byte("60"), "miniAppUrl": []byte(`"https://sub.example/app"`)})
+	e.c.SetMiniApp("https://sub.example/app")
 	e.process(t, tgtest.Callback(userID, "devices"))
 	if !strings.Contains(e.markup(t), `"web_app":{"url":"https://sub.example/app?tab=devices"}`) {
 		t.Fatalf("link missing: %s", e.markup(t))
@@ -462,7 +462,7 @@ func TestDevicesMiniAppButton(t *testing.T) {
 // Кнопка MiniApp — web_app (в обычной URL-кнопке нет initData, вход в кабинет не сработает); открывается сразу на устройствах.
 func TestDevicesScreenMiniAppIsWebApp(t *testing.T) {
 	e := newEnv(t)
-	e.src.SetSettings(map[string][]byte{"miniAppUrl": []byte(`"https://app.example/cabinet"`)})
+	e.c.SetMiniApp("https://app.example/cabinet")
 	e.rw.AddUser(userID, now.Add(20*day))
 	e.process(t, tgtest.Callback(userID, "devices"))
 	kb := e.markup(t)
@@ -472,7 +472,7 @@ func TestDevicesScreenMiniAppIsWebApp(t *testing.T) {
 	if strings.Contains(kb, `Управлять устройствами","url"`) {
 		t.Fatalf("miniapp must not be a plain url button: %s", kb)
 	}
-	e.src.SetSettings(map[string][]byte{"miniAppUrl": []byte(`""`)})
+	e.c.SetMiniApp("")
 	e.process(t, tgtest.Callback(userID, "devices"))
 	if strings.Contains(e.markup(t), "web_app") {
 		t.Fatalf("no URL, no button: %s", e.markup(t))

@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -101,8 +102,6 @@ func TestValidateBotKeys(t *testing.T) {
 		"base big":       func(s *Settings) { s.DevicesBase = 101 },
 		"price negative": func(s *Settings) { s.DevicePrice = -1 },
 		"price big":      func(s *Settings) { s.DevicePrice = 100_001 },
-		"miniapp http":   func(s *Settings) { s.MiniAppURL = "http://x.example" },
-		"miniapp space":  func(s *Settings) { s.MiniAppURL = "https://x.example/a b" },
 		"max zero":       func(s *Settings) { s.DeviceMax = 0 },
 		"max big":        func(s *Settings) { s.DeviceMax = 101 },
 		"options none":   func(s *Settings) { s.DeviceOptions = nil },
@@ -331,5 +330,16 @@ func TestValidate(t *testing.T) {
 				t.Fatalf("err = %v", err)
 			}
 		})
+	}
+}
+
+// Адрес Mini App теперь только в env (MINIAPP_ORIGIN): ключ, сохранённый прежней версией, молча игнорируется и в ответ не попадает.
+func TestMergeIgnoresDroppedMiniAppURL(t *testing.T) {
+	got, err := Merge(def(), map[string][]byte{"miniAppUrl": []byte(`"https://old.example/app"`), "bank": []byte(`"B2"`)})
+	if err != nil || got.Bank != "B2" {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+	if b, _ := json.Marshal(got); strings.Contains(strings.ToLower(string(b)), "miniapp") {
+		t.Fatalf("settings still expose the Mini App URL: %s", b)
 	}
 }

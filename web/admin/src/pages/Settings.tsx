@@ -21,7 +21,6 @@ type Form = {
   devicePrice: string
   deviceOptions: string
   deviceMax: string
-  miniAppUrl: string
   trialDays: string
   trialDevices: string
   referralDays: string
@@ -45,7 +44,6 @@ const toForm = (s: S): Form => ({
   devicePrice: String(s.devicePrice),
   deviceOptions: s.deviceOptions.join(', '),
   deviceMax: String(s.deviceMax),
-  miniAppUrl: s.miniAppUrl,
   trialDays: String(s.trialDays),
   trialDevices: String(s.trialDevices),
   referralDays: String(s.referralDays),
@@ -75,12 +73,6 @@ function optionsError(v: string, max: string): string {
   if (o.some((n, i) => i > 0 && n <= o[i - 1])) return 'Варианты числа устройств должны идти по возрастанию без повторов'
   if (o.some((n) => n > m)) return 'Вариант не может быть больше наибольшего числа устройств за раз'
   return ''
-}
-
-/** Пусто — кнопки «Управлять устройствами» нет; иначе адрес https без пробелов. */
-function miniAppError(v: string): string {
-  const url = v.trim()
-  return url && !/^https:\/\/\S+$/.test(url) ? 'Ссылка на MiniApp должна начинаться с https:// и не содержать пробелов' : ''
 }
 
 function tariffsError(tariffs: Tariff[]): string {
@@ -161,7 +153,7 @@ export default function Settings() {
   async function save() {
     if (inFlight.current || !form) return
     setProblems([])
-    const invalid = tariffsError(form.tariffs) || timesError(form.reminderTimes) || varsError(form.vars) || optionsError(form.deviceOptions, form.deviceMax) || miniAppError(form.miniAppUrl)
+    const invalid = tariffsError(form.tariffs) || timesError(form.reminderTimes) || varsError(form.vars) || optionsError(form.deviceOptions, form.deviceMax)
     setError(invalid)
     if (invalid) return
     const body: S = {
@@ -179,7 +171,6 @@ export default function Settings() {
       devicePrice: Number(form.devicePrice),
       deviceOptions: parseOptions(form.deviceOptions),
       deviceMax: Number(form.deviceMax),
-      miniAppUrl: form.miniAppUrl.trim(),
       trialDays: Number(form.trialDays),
       trialDevices: Number(form.trialDevices),
       referralDays: Number(form.referralDays),
@@ -303,13 +294,6 @@ export default function Settings() {
             hint="Потолок и для «Своё число»: больше этого юзер ввести не сможет"
           />
         </div>
-        <Input
-          label="Ссылка на MiniApp для удаления устройств"
-          placeholder="https://…"
-          value={form.miniAppUrl}
-          onChange={(e) => patch({ miniAppUrl: e.target.value })}
-          hint="Страница, где юзер удаляет устройства по одному. Пусто — на экране «Устройства» остаётся только «Очистить все»"
-        />
       </Card>
 
       <Card title="Пробный период" aside="один раз новым пользователям, как аванс">

@@ -37,8 +37,9 @@ func CheckCatalog(t *testing.T) {
 
 // Условия каталога: каждое считается из настроек и состояния юзера; неизвестное — ложь.
 func TestConditionEvaluators(t *testing.T) {
-	set := settings.Settings{DevicePrice: 60, ReferralDays: 7, Prices: map[int]int{1: 100}, MiniAppURL: "https://m.example/app"}
+	set := settings.Settings{DevicePrice: 60, ReferralDays: 7, Prices: map[int]int{1: 100}}
 	p := content.New(&tgtest.Source{}, set, time.Hour, nil)
+	p.SetMiniApp("https://m.example/app")
 	e := &condEnv{ctx: t.Context(), c: p, panel: func() bool { return true }, trial: func() bool { return false }}
 	want := map[string]bool{"in_panel": true, "trial_available": false, "devices_sale_on": true, "gifts_on": true, "referral_on": true, "miniapp_on": true, "is_admin": false}
 	for _, c := range texts.Conditions() {

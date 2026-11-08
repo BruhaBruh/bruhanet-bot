@@ -13,4 +13,5 @@ type Config struct {
 	Database      coreconfig.DatabaseConfig
 	Notification  coreconfig.NotificationConfig
 	Observability ObservabilityConfig
+	MiniApp       coreconfig.MiniAppConfig
 }

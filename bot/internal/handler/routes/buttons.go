@@ -27,7 +27,7 @@ func webAppButton(ctx context.Context, c *content.Provider, key, url string, sty
 	return keyboard.WebApp(c.Button(ctx, key), url).Style(c.Style(ctx, key, style))
 }
 
-// miniAppURL — адрес Mini App из настроек; tab открывает вкладку (пусто — главная).
+// miniAppURL — адрес Mini App (MINIAPP_ORIGIN); tab открывает вкладку (пусто — главная).
 func miniAppURL(base, tab string) string {
 	if tab == "" {
 		return base
@@ -192,7 +192,7 @@ func (b *kbBuilder) cell(c texts.Cell, defStyle keyboard.Style) (keyboard.Button
 	case c.Action == "link:support":
 		return keyboard.URL(label, b.c.Settings(b.ctx).SupportURL).Style(style), true
 	case c.Action == "link:miniapp":
-		if u := b.c.Settings(b.ctx).MiniAppURL; u != "" {
+		if u := b.c.MiniAppURL(); u != "" {
 			tab := ""
 			if b.id == "devices" { // с экрана «Устройства» кабинет открывается на устройствах
 				tab = "devices"

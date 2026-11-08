@@ -425,7 +425,7 @@ var registry = []Def{
 	btn("button.devices_add", "Добавить устройства", "+{{.count}} — {{.price}} ₽", Var{Name: "count", Description: "Сколько устройств добавляется числом", Sample: "2", Max: 3}, varDevTotal).
 		on("dev", StyleDefault, "Экран «Устройства», по кнопке на количество"),
 	btn("button.devices_clear", "Очистить устройства", "🧹 Очистить устройства").on("devclr", StyleDefault, "Экран «Устройства»"),
-	btn("button.devices_miniapp", "Управлять устройствами (MiniApp)", "📲 Управлять устройствами").on("url:miniAppUrl", StyleDefault, "Экран «Устройства», пока в настройках задана ссылка на MiniApp"),
+	btn("button.devices_miniapp", "Управлять устройствами (MiniApp)", "📲 Управлять устройствами").on("url:miniApp", StyleDefault, "Экран «Устройства», пока задан MINIAPP_ORIGIN"),
 	btn("button.devices_buy", "Докупить устройства", "➕ Докупить").on("devbuy", StyleDefault, "Экран «Устройства», пока подписка действует"),
 	btn("button.devices_custom", "Своё число устройств", "✏️ Своё число").on("devc", StyleDefault, "Меню докупки устройств"),
 	btn("button.drop_devices", "Без доп. устройств", "Без доп. устройств").on("buyd", StyleDefault, "Подтверждение тарифа, если у юзера есть доп. устройства"),

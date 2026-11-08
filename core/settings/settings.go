@@ -50,9 +50,7 @@ type Settings struct {
 	DevicePrice int `json:"devicePrice"` // ₽ за каждое доп. устройство в месяц; 0 — продажа устройств выключена
 	// DeviceOptions — варианты числа устройств на экране докупки: 1..maxDeviceOptions по возрастанию, каждый ≤ DeviceMax.
 	DeviceOptions []int `json:"deviceOptions"`
-	// MiniAppURL — страница, где юзер удаляет устройства по одному (MiniApp/страница подписки); пусто — кнопки нет.
-	MiniAppURL string `json:"miniAppUrl"`
-	DeviceMax  int    `json:"deviceMax"` // наибольшее число устройств за одну докупку, в том числе «своим числом», 1..100
+	DeviceMax     int   `json:"deviceMax"` // наибольшее число устройств за одну докупку, в том числе «своим числом», 1..100
 
 	TrialDays    int `json:"trialDays"`    // дней пробного периода; 0 — пробный выключен, 0..30
 	TrialDevices int `json:"trialDevices"` // устройств на пробном периоде, 1..100
@@ -236,7 +234,6 @@ func Merge(def Settings, raw map[string][]byte) (Settings, error) {
 	apply("reminderDayHours", num(&def.ReminderDayHours))
 	apply("devicesBase", num(&def.DevicesBase))
 	apply("devicePrice", num(&def.DevicePrice))
-	apply("miniAppUrl", str(&def.MiniAppURL))
 	apply("deviceMax", num(&def.DeviceMax))
 	apply("deviceOptions", func(b []byte) error {
 		var v []int
@@ -311,9 +308,6 @@ func (s Settings) Validate() error {
 	}
 	if s.DevicePrice < 0 || s.DevicePrice > 100_000 {
 		p = append(p, "цена доп. устройства должна быть от 0 до 100 000 ₽ в месяц")
-	}
-	if s.MiniAppURL != "" && !texts.ValidHTTPSURL(s.MiniAppURL, 512) {
-		p = append(p, "ссылка на MiniApp должна быть адресом https:// без пробелов (до 512 символов) или пустой")
 	}
 	if s.DeviceMax < 1 || s.DeviceMax > 100 {
 		p = append(p, "наибольшее число устройств за раз должно быть от 1 до 100")

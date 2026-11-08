@@ -519,3 +519,22 @@ func TestProviderAdmin(t *testing.T) {
 		t.Fatal("id 0 is never admin")
 	}
 }
+
+func TestProviderMiniApp(t *testing.T) {
+	p := content.New(&fakeSource{}, settings.Defaults(map[int]int{1: 150}, "+7", "Б", "https://t.me/s"), 0, nil)
+	if p.MiniAppURL() != "" {
+		t.Fatal("no Mini App until SetMiniApp")
+	}
+	p.SetMiniApp("https://app.example.test/")
+	if got := p.MiniAppURL(); got != "https://app.example.test" {
+		t.Fatalf("MiniAppURL = %q", got)
+	}
+	p.SetMiniApp("http://localhost:5174")
+	if p.MiniAppURL() != "" {
+		t.Fatal("web_app needs https: no URL for an http origin")
+	}
+	p.SetMiniApp("")
+	if p.MiniAppURL() != "" {
+		t.Fatal("empty origin disables the button")
+	}
+}

@@ -107,8 +107,8 @@ func (h *handlers) devices(ctx context.Context, b *bot.Bot, u *models.Update) {
 		kb.callback("button.devices_buy", routeDevicesBuy, keyboard.StyleDefault)
 	}
 	kb.callback("button.devices_clear", routeDevicesClear, keyboard.StyleDefault)
-	if set.MiniAppURL != "" {
-		kb.webApp("button.devices_miniapp", miniAppURL(set.MiniAppURL, "devices"), keyboard.StyleDefault)
+	if u := h.c.MiniAppURL(); u != "" {
+		kb.webApp("button.devices_miniapp", miniAppURL(u, "devices"), keyboard.StyleDefault)
 	}
 	show(ctx, b, u, kb.callback("button.back", routeMenu, keyboard.StyleDefault).markup(), h.c.Text(ctx, "devices.menu", vars))
 }
