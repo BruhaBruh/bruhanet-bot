@@ -315,3 +315,11 @@ func TestMessageLayoutProblemIsPlain(t *testing.T) {
 		}
 	}
 }
+
+// Кнопка кабинета (MiniApp) служебная: без неё на экране «Устройства» некуда вести юзера из бота в Mini App.
+func TestMiniAppButtonIsLocked(t *testing.T) {
+	_, locked, ok := texts.MessageDefault("devices.menu")
+	if !ok || !slices.Contains(locked, "devices_miniapp") {
+		t.Fatalf("devices_miniapp must be locked, locked = %v", locked)
+	}
+}

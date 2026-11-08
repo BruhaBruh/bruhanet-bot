@@ -81,3 +81,13 @@ func TestGrid(t *testing.T) {
 		t.Fatalf("Inline(Grid...) = %d rows", len(kb.InlineKeyboard))
 	}
 }
+
+func TestWebAppButton(t *testing.T) {
+	b := keyboard.Inline(keyboard.Row(keyboard.WebApp("Кабинет", "https://app.example/?tab=devices").Style(keyboard.StylePrimary))).InlineKeyboard[0][0]
+	if b.WebApp == nil || b.WebApp.URL != "https://app.example/?tab=devices" {
+		t.Fatalf("web app: %+v", b)
+	}
+	if b.URL != "" || b.CallbackData != "" || b.CopyText != nil || b.Style != "primary" {
+		t.Fatalf("web app must carry only WebApp and style: %+v", b)
+	}
+}

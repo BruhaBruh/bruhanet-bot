@@ -17,6 +17,7 @@ const (
 	kindCallback kind = iota
 	kindURL
 	kindCopy
+	kindWebApp
 )
 
 type Button struct {
@@ -40,6 +41,11 @@ func Copy(text, value string) Button {
 	return Button{kind: kindCopy, text: text, copy: value}
 }
 
+// WebApp — кнопка, открывающая Mini App внутри Telegram: только такая кнопка передаёт ему initData.
+func WebApp(text, url string) Button {
+	return Button{kind: kindWebApp, text: text, url: url}
+}
+
 func (b Button) Style(s Style) Button {
 	b.style = s
 	return b
@@ -54,6 +60,8 @@ func (b Button) build() models.InlineKeyboardButton {
 		out.URL = b.url
 	case kindCopy:
 		out.CopyText = &models.CopyTextButton{Text: b.copy}
+	case kindWebApp:
+		out.WebApp = &models.WebAppInfo{URL: b.url}
 	}
 	return out
 }

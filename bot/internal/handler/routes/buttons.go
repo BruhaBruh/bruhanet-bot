@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	neturl "net/url"
 	"strings"
 
 	"github.com/go-telegram/bot/models"
@@ -20,6 +21,25 @@ func callbackButton(ctx context.Context, c *content.Provider, key, data string, 
 
 func urlButton(ctx context.Context, c *content.Provider, key, url string, style keyboard.Style) keyboard.Button {
 	return keyboard.URL(c.Button(ctx, key), url).Style(c.Style(ctx, key, style))
+}
+
+func webAppButton(ctx context.Context, c *content.Provider, key, url string, style keyboard.Style) keyboard.Button {
+	return keyboard.WebApp(c.Button(ctx, key), url).Style(c.Style(ctx, key, style))
+}
+
+// miniAppURL — адрес Mini App из настроек; tab открывает вкладку (пусто — главная).
+func miniAppURL(base, tab string) string {
+	if tab == "" {
+		return base
+	}
+	u, err := neturl.Parse(base)
+	if err != nil {
+		return base
+	}
+	q := u.Query()
+	q.Set("tab", tab)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func copyButton(ctx context.Context, c *content.Provider, key, value string, style keyboard.Style) keyboard.Button {
@@ -59,6 +79,12 @@ func (b *kbBuilder) callback(key, data string, style keyboard.Style) *kbBuilder 
 func (b *kbBuilder) url(key, url string, style keyboard.Style) *kbBuilder {
 	b.args[key] = url
 	return b.put(key, urlButton(b.ctx, b.c, key, url, style))
+}
+
+// webApp — кнопка Mini App; url уже с вкладкой (miniAppURL).
+func (b *kbBuilder) webApp(key, url string, style keyboard.Style) *kbBuilder {
+	b.args[key] = url
+	return b.put(key, webAppButton(b.ctx, b.c, key, url, style))
 }
 
 func (b *kbBuilder) copy(key, value string, style keyboard.Style) *kbBuilder {
@@ -167,7 +193,11 @@ func (b *kbBuilder) cell(c texts.Cell, defStyle keyboard.Style) (keyboard.Button
 		return keyboard.URL(label, b.c.Settings(b.ctx).SupportURL).Style(style), true
 	case c.Action == "link:miniapp":
 		if u := b.c.Settings(b.ctx).MiniAppURL; u != "" {
-			return keyboard.URL(label, u).Style(style), true
+			tab := ""
+			if b.id == "devices" { // с экрана «Устройства» кабинет открывается на устройствах
+				tab = "devices"
+			}
+			return keyboard.WebApp(label, miniAppURL(u, tab)).Style(style), true
 		}
 		return keyboard.Button{}, false
 	case c.Action == "link:login": // ссылка с одноразовым токеном знает только экран входа

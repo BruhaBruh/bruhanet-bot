@@ -279,7 +279,7 @@ var keyboards = []Keyboard{
 	kb("confirm_promo", "Подтверждение тарифа со скидкой", []string{"promo.confirm_discount"},
 		fx("button.yes", "button.no", "button.remove_promo"), nil, yesNo, row("button.remove_promo")),
 	kb("devices", "Устройства", []string{"devices.menu"},
-		slices.Concat(fx("button.devices_buy", "button.back"), rm("button.devices_clear", "button.devices_miniapp")), nil,
+		slices.Concat(fx("button.devices_buy", "button.devices_miniapp", "button.back"), rm("button.devices_clear")), nil,
 		row("button.devices_buy"), row("button.devices_clear", "button.devices_miniapp"), row("button.back")),
 	kb("devices_clear_confirm", "Очистка устройств: подтверждение", []string{"devices.clear_confirm"}, fx(yesNo...), nil, yesNo),
 	kb("devices_buy", "Докупка устройств", []string{"devices.buy"},

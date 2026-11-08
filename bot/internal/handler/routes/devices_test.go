@@ -454,7 +454,27 @@ func TestDevicesMiniAppButton(t *testing.T) {
 	}
 	e.src.SetSettings(map[string][]byte{"devicePrice": []byte("60"), "miniAppUrl": []byte(`"https://sub.example/app"`)})
 	e.process(t, tgtest.Callback(userID, "devices"))
-	if !strings.Contains(e.markup(t), `"url":"https://sub.example/app"`) {
+	if !strings.Contains(e.markup(t), `"web_app":{"url":"https://sub.example/app?tab=devices"}`) {
 		t.Fatalf("link missing: %s", e.markup(t))
+	}
+}
+
+// Кнопка MiniApp — web_app (в обычной URL-кнопке нет initData, вход в кабинет не сработает); открывается сразу на устройствах.
+func TestDevicesScreenMiniAppIsWebApp(t *testing.T) {
+	e := newEnv(t)
+	e.src.SetSettings(map[string][]byte{"miniAppUrl": []byte(`"https://app.example/cabinet"`)})
+	e.rw.AddUser(userID, now.Add(20*day))
+	e.process(t, tgtest.Callback(userID, "devices"))
+	kb := e.markup(t)
+	if !strings.Contains(kb, `"web_app"`) || !strings.Contains(kb, "https://app.example/cabinet?tab=devices") {
+		t.Fatalf("miniapp button must be web_app with ?tab=devices: %s", kb)
+	}
+	if strings.Contains(kb, `Управлять устройствами","url"`) {
+		t.Fatalf("miniapp must not be a plain url button: %s", kb)
+	}
+	e.src.SetSettings(map[string][]byte{"miniAppUrl": []byte(`""`)})
+	e.process(t, tgtest.Callback(userID, "devices"))
+	if strings.Contains(e.markup(t), "web_app") {
+		t.Fatalf("no URL, no button: %s", e.markup(t))
 	}
 }
