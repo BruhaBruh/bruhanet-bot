@@ -200,11 +200,6 @@ func (b *kbBuilder) cell(c texts.Cell, defStyle keyboard.Style) (keyboard.Button
 			return keyboard.WebApp(label, miniAppURL(u, tab)).Style(style), true
 		}
 		return keyboard.Button{}, false
-	case c.Action == "link:admin": // вход в админку одним тапом: только админу и только если адрес https
-		if !b.env.eval("is_admin") {
-			return keyboard.Button{}, false
-		}
-		return keyboard.WebApp(label, b.c.AdminURL()).Style(style), true
 	case c.Action == "link:login": // ссылка с одноразовым токеном знает только экран входа
 		v, ok := b.args[argKey[c.Action]]
 		if !ok {

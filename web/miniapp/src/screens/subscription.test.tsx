@@ -6,7 +6,7 @@ const openBot = vi.fn()
 const openExternal = vi.fn()
 vi.mock('~/lib/telegram', async (orig) => ({ ...(await orig<typeof import('~/lib/telegram')>()), openBot: (u: string) => openBot(u), openExternal: (u: string) => openExternal(u) }))
 
-const ME = { name: 'Бруха', username: 'bruha', botUsername: 'bruhanet_bot', blocked: false }
+const ME = { name: 'Бруха', username: 'bruha', botUsername: 'bruhanet_bot', blocked: false, isAdmin: false }
 const LINK = 'https://sub.example.test/SECRET-LINK-TOKEN'
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 

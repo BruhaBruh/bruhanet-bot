@@ -102,7 +102,13 @@ server {
 }
 ```
 
-В BotFather можно задать Menu Button на этот адрес. Кнопки внутри бота открываются как `web_app`: Mini App не открывается по обычной ссылке-кнопке (без неё нет `initData`). Локально Telegram принимает только https, поэтому для проверки в Telegram нужен туннель; вёрстку можно смотреть в `pnpm -C web/miniapp dev` на моках.
+В BotFather можно задать Menu Button на этот адрес. Кнопки внутри бота открываются как `web_app`: Mini App не открывается по обычной ссылке-кнопке (без неё нет `initData`). Локально Telegram принимает только https, поэтому для проверки в Telegram нужен туннель.
+
+Dev-режим:
+
+- Вёрстка без бота и панели: `pnpm -C web/miniapp dev` → http://localhost:5180, данные из моков (`src/dev/mock.ts`, включаются только вне Telegram).
+- Сквозной прогон в Telegram: запусти бота и api с `MINIAPP_ADDR=:8092` и `MINIAPP_ORIGIN=https://<адрес туннеля>`, запусти `pnpm -C web/miniapp dev`, направь туннель (cloudflared, ngrok, localtunnel) на порт 5180 и в BotFather укажи этот адрес как Mini App или Menu Button. Vite проксирует `/m/api` на :8092. В Telegram моков нет, работает настоящий API.
+- Кнопка «Админка» (видна только админу) ведёт на `ADMIN_BASE_URL`: в dev это localhost, на телефоне он недоступен, проверяй в Telegram Desktop.
 
 ## Postgres, бэкап и восстановление
 

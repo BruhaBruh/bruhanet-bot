@@ -6,7 +6,7 @@ const day = 24 * 3600 * 1000
 const iso = (offset: number) => new Date(Date.now() + offset).toISOString()
 
 const routes: Record<string, unknown> = {
-  '/m/api/me': { name: 'Бруха', username: 'bruha', botUsername: 'bruhanet_bot', blocked: false },
+  '/m/api/me': { name: 'Бруха', username: 'bruha', botUsername: 'bruhanet_bot', blocked: false, isAdmin: true },
   '/m/api/subscription': {
     state: 'active', expireAt: iso(12 * day), daysLeft: 12, trafficUsedBytes: 12 * 1024 ** 3, trafficLimitBytes: 100 * 1024 ** 3,
     devices: { used: 2, limit: 5 },
@@ -33,6 +33,7 @@ export function installMock() {
   window.fetch = async (input, init) => {
     const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
     if (!path.startsWith('/m/api/')) return real(input, init)
+    if (path === '/m/api/admin/login-link') return Response.json({ url: 'https://admin.example.test/auth?token=__BRUHANET_MOCK__' })
     if (path === '/m/api/subscription-link') return Response.json({ url: 'https://sub.example.test/mock-subscription' })
     const body = routes[path]
     return body === undefined ? new Response(null, { status: 204 }) : Response.json(body)

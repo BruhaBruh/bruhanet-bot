@@ -11,7 +11,6 @@ import Payments from './pages/Payments'
 import PromoNew from './pages/PromoNew'
 import Promos from './pages/Promos'
 import Settings from './pages/Settings'
-import TgLogin from './pages/TgLogin'
 import UserCard from './pages/UserCard'
 import Users from './pages/Users'
 import { useTheme } from './theme'
@@ -41,7 +40,6 @@ export function App() {
     <ToastProvider>
       <Routes>
         <Route path="/login-required" element={<LoginRequired />} />
-        <Route path="/tg" element={<TgLogin />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Overview />} />
           <Route path="/broadcasts" element={<Broadcasts />} />

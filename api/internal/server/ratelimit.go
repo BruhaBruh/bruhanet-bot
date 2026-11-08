@@ -44,27 +44,3 @@ func (l *limiter) allow(key string, n int, window time.Duration, now time.Time) 
 	l.hits[key] = append(kept, now)
 	return true
 }
-
-// seenSet запоминает ключи на ttl: одноразовые подписи. Просроченные выбрасываются при обращении.
-type seenSet struct {
-	mu sync.Mutex
-	m  map[string]time.Time
-}
-
-func newSeenSet() *seenSet { return &seenSet{m: map[string]time.Time{}} }
-
-// first отмечает key и возвращает true, если за ttl его ещё не видели.
-func (s *seenSet) first(key string, ttl time.Duration, now time.Time) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for k, at := range s.m {
-		if now.Sub(at) >= ttl {
-			delete(s.m, k)
-		}
-	}
-	if _, dup := s.m[key]; dup {
-		return false
-	}
-	s.m[key] = now
-	return true
-}

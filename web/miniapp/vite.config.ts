@@ -13,7 +13,13 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   build: { outDir: 'dist' },
-  server: { port: 5174, proxy: { '/m/api': 'http://localhost:8092' } },
+  server: {
+    port: 5180, // не 5174: админский Vite при занятом 5173 уходит на 5174
+    strictPort: true,
+    // туннель для проверки в Telegram (cloudflared/ngrok/localtunnel): Vite по умолчанию отвергает чужой Host
+    allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.app', '.ngrok.io', '.loca.lt', '.localtest.me'],
+    proxy: { '/m/api': 'http://localhost:8092' },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],

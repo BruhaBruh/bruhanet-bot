@@ -37,8 +37,6 @@ func (e *condEnv) eval(id string) bool {
 		v = giftOffered(e.ctx, e.c)
 	case "referral_on":
 		v = e.c.Settings(e.ctx).ReferralEnabled()
-	case "is_admin":
-		v = e.c.IsAdmin(e.ctx) && e.c.AdminURL() != ""
 	default:
 		stlog.Error(e.ctx, "unknown keyboard condition", "condition", id)
 	}

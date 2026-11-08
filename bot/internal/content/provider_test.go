@@ -497,29 +497,6 @@ func TestProviderLabel(t *testing.T) {
 	}
 }
 
-func TestProviderAdmin(t *testing.T) {
-	p := content.New(&fakeSource{}, settings.Defaults(map[int]int{1: 150}, "+7", "Б", "https://t.me/s"), 0, nil)
-	as := func(id int64) context.Context { return content.WithUser(t.Context(), id, "n", "u") }
-	if p.IsAdmin(as(1)) || p.AdminURL() != "" {
-		t.Fatal("nobody is admin until SetAdmin")
-	}
-	p.SetAdmin(1, "https://admin.example.test/")
-	if !p.IsAdmin(as(1)) || p.IsAdmin(as(2)) || p.IsAdmin(t.Context()) {
-		t.Fatal("only the recipient equal to the admin id is admin")
-	}
-	if got := p.AdminURL(); got != "https://admin.example.test/tg" {
-		t.Fatalf("AdminURL = %q", got)
-	}
-	p.SetAdmin(1, "http://localhost:5173")
-	if p.AdminURL() != "" {
-		t.Fatal("web_app needs https: no URL for an http base")
-	}
-	p.SetAdmin(0, "https://admin.example.test")
-	if p.IsAdmin(t.Context()) {
-		t.Fatal("id 0 is never admin")
-	}
-}
-
 func TestProviderMiniApp(t *testing.T) {
 	p := content.New(&fakeSource{}, settings.Defaults(map[int]int{1: 150}, "+7", "Б", "https://t.me/s"), 0, nil)
 	if p.MiniAppURL() != "" {

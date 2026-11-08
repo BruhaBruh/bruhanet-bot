@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ComponentType } from 'react'
 import { TabBar, type NavItem } from '@/ui/tab-bar'
 import { ApiError, get } from './lib/api'
 import { closeApp, ready } from './lib/telegram'
+import { AdminButton } from './screens/AdminButton'
 import Devices from './screens/Devices'
 import Friends from './screens/Friends'
 import Promos from './screens/Promos'
@@ -13,6 +14,7 @@ export interface Me {
   username: string
   botUsername: string
   blocked: boolean
+  isAdmin: boolean
 }
 
 type Tab = 'subscription' | 'devices' | 'friends' | 'promos'
@@ -99,6 +101,7 @@ export function App() {
   const Screen = SCREENS[tab]
   return (
     <div className="min-h-dvh pb-[calc(var(--size-tab-bar)+env(safe-area-inset-bottom))]">
+      {boot.me.isAdmin && <AdminButton />}
       <Screen me={boot.me} />
       <div className="fixed inset-x-0 bottom-0 bg-bottom-bar-bg pb-[env(safe-area-inset-bottom)]">
         <TabBar items={items} value={tab} onChange={choose} />

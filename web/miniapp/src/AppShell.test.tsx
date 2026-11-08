@@ -2,6 +2,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 
+const openAdmin = vi.fn()
+vi.mock('~/lib/telegram', async (orig) => ({ ...(await orig<typeof import('~/lib/telegram')>()), openAdmin: (u: string) => openAdmin(u) }))
+
 const ME = { name: 'Бруха', username: 'bruha', botUsername: 'bruhanet_bot', blocked: false }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
@@ -94,5 +97,55 @@ describe('App shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
     await flush()
     expect(screen.getByRole('button', { name: 'Подписка' })).toBeTruthy()
+  })
+
+  describe('admin button', () => {
+    const ADMIN = { ...ME, isAdmin: true }
+
+    it('is shown only to the admin', async () => {
+      stubApi({ '/m/api/me': () => json(ME), '/m/api/referral': referral(false) })
+      const { unmount } = render(<App />)
+      await flush()
+      expect(screen.queryByRole('button', { name: 'Админка' })).toBeNull()
+      unmount()
+      stubApi({ '/m/api/me': () => json(ADMIN), '/m/api/referral': referral(false) })
+      render(<App />)
+      await flush()
+      expect(screen.getByRole('button', { name: 'Админка' })).toBeTruthy()
+    })
+
+    it('asks the server for a one-time link on tap and opens it', async () => {
+      const m = stubApi({
+        '/m/api/me': () => json(ADMIN),
+        '/m/api/referral': referral(false),
+        '/m/api/admin/login-link': () => json({ url: 'https://admin.example.test/auth?token=T' }),
+      })
+      render(<App />)
+      await flush()
+      const calls = () => m.mock.calls.filter(([u]) => u === '/m/api/admin/login-link').length
+      expect(calls()).toBe(0)
+      fireEvent.click(screen.getByRole('button', { name: 'Админка' }))
+      await flush()
+      expect(calls()).toBe(1)
+      expect(openAdmin).toHaveBeenCalledWith('https://admin.example.test/auth?token=T')
+    })
+
+    it('explains a stale signature and a failure', async () => {
+      let status = 401
+      stubApi({
+        '/m/api/me': () => json(ADMIN),
+        '/m/api/referral': referral(false),
+        '/m/api/admin/login-link': () => json({ error: status === 401 ? 'session_expired' : 'x' }, status),
+      })
+      render(<App />)
+      await flush()
+      fireEvent.click(screen.getByRole('button', { name: 'Админка' }))
+      await flush()
+      expect(screen.getByText('Открой кабинет заново из бота')).toBeTruthy()
+      status = 500
+      fireEvent.click(screen.getByRole('button', { name: 'Админка' }))
+      await flush()
+      expect(screen.getByText('Не получилось открыть админку')).toBeTruthy()
+    })
   })
 })

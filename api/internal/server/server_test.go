@@ -150,6 +150,13 @@ func (f *fakeStore) ConsumeLoginToken(_ context.Context, hash []byte, now time.T
 	return nil
 }
 
+func (f *fakeStore) CreateLoginToken(_ context.Context, hash []byte, exp time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tokens[hex.EncodeToString(hash)] = exp
+	return nil
+}
+
 func (f *fakeStore) CreateSession(_ context.Context, hash []byte, id int64, exp time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

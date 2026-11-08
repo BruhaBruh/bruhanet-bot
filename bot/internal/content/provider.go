@@ -98,8 +98,7 @@ type Provider struct {
 	// снимок читается без блокировок; обновляет его ровно одна горутина
 	snap atomic.Pointer[snapshot]
 
-	admin atomic.Pointer[adminInfo]
-	mini  atomic.Pointer[string] // адрес Mini App (MINIAPP_ORIGIN), только https
+	mini atomic.Pointer[string] // адрес Mini App (MINIAPP_ORIGIN), только https
 
 	mu         sync.Mutex // loadedAt, refreshing
 	loadedAt   time.Time
@@ -260,21 +259,6 @@ func (p *Provider) Label(ctx context.Context, raw string) string {
 }
 
 // RecipientID — telegram id получателя текста из контекста (0 — не задан).
-type adminInfo struct {
-	id  int64
-	url string // адрес входа одним тапом; пусто, пока адрес админки не https
-}
-
-// SetAdmin запоминает админа и адрес админки (ADMIN_BASE_URL): кнопка «Админка» нужна только ему и только по https
-// (Telegram не принимает http в web_app).
-func (p *Provider) SetAdmin(id int64, baseURL string) {
-	info := &adminInfo{id: id}
-	if base := strings.TrimRight(baseURL, "/"); strings.HasPrefix(base, "https://") {
-		info.url = base + "/tg"
-	}
-	p.admin.Store(info)
-}
-
 // SetMiniApp запоминает адрес Mini App «Кабинет» (MINIAPP_ORIGIN): кнопки на него открываются как web_app, то есть
 // только по https. Пусто — Mini App выключен, кнопок нет.
 func (p *Provider) SetMiniApp(origin string) {
@@ -289,21 +273,6 @@ func (p *Provider) SetMiniApp(origin string) {
 func (p *Provider) MiniAppURL() string {
 	if u := p.mini.Load(); u != nil {
 		return *u
-	}
-	return ""
-}
-
-// IsAdmin — получатель из контекста (автор апдейта или ForUser) и есть админ.
-func (p *Provider) IsAdmin(ctx context.Context) bool {
-	a := p.admin.Load()
-	id := RecipientID(ctx)
-	return a != nil && id != 0 && id == a.id
-}
-
-// AdminURL — адрес страницы входа одним тапом; пусто — кнопку не показываем.
-func (p *Provider) AdminURL() string {
-	if a := p.admin.Load(); a != nil {
-		return a.url
 	}
 	return ""
 }

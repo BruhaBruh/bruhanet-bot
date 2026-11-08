@@ -279,8 +279,8 @@ func TestLegacyToLayout(t *testing.T) {
 			newOnly++
 		}
 	}
-	if newOnly != 3 { // buy + support_new + «Админка» (появилась в коде позже: встаёт в конец набора menu_new)
-		t.Errorf("not-in-panel cells = %d, want 3", newOnly)
+	if newOnly != 2 { // buy + support_new
+		t.Errorf("not-in-panel cells = %d, want 2", newOnly)
 	}
 }
 

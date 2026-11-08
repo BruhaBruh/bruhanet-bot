@@ -254,14 +254,14 @@ func row(ids ...string) []string { return ids }
 // админские «Подтвердить/Отклонить», ссылка входа) сюда не входят: расставлять там нечего.
 var keyboards = []Keyboard{
 	kb("menu", "Главное меню", mainMenuMessages(), slices.Concat(
-		rm("button.info", "button.pay", "button.subscription", "button.support", "button.trial", "button.promo", "button.devices", "button.gift", "button.referral", "button.admin")),
+		rm("button.info", "button.pay", "button.subscription", "button.support", "button.trial", "button.promo", "button.devices", "button.gift", "button.referral")),
 		nil,
 		row("button.trial"), row("button.info", "button.pay"), row("button.subscription", "button.support"),
-		row("button.promo", "button.devices"), row("button.gift", "button.referral"), row("button.admin")),
+		row("button.promo", "button.devices"), row("button.gift", "button.referral")),
 	kb("menu_new", "Главное меню, когда юзера нет в панели", mainMenuMessages(), slices.Concat(
-		fx("button.buy"), rm("button.trial", "button.promo", "button.support", "button.gift", "button.referral", "button.admin")),
+		fx("button.buy"), rm("button.trial", "button.promo", "button.support", "button.gift", "button.referral")),
 		nil,
-		row("button.buy", "button.trial"), row("button.promo", "button.support"), row("button.gift", "button.referral"), row("button.admin")),
+		row("button.buy", "button.trial"), row("button.promo", "button.support"), row("button.gift", "button.referral")),
 	kb("info", "Информация о подписке", []string{"menu.info"},
 		slices.Concat(rm("button.renew", "button.subscription"), fx("button.back")), nil,
 		row("button.renew", "button.subscription"), row("button.back")),

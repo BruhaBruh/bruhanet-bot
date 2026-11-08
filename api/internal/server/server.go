@@ -24,6 +24,7 @@ import (
 // Store — методы core/store, которыми пользуется api.
 type Store interface {
 	ConsumeLoginToken(ctx context.Context, hash []byte, now time.Time) error
+	CreateLoginToken(ctx context.Context, hash []byte, expiresAt time.Time) error
 	CreateSession(ctx context.Context, hash []byte, telegramID int64, expiresAt time.Time) error
 	SessionTelegramID(ctx context.Context, hash []byte, now time.Time) (int64, error)
 	DeleteSession(ctx context.Context, hash []byte) error
@@ -151,15 +152,13 @@ type server struct {
 	avatars    *avatarCache
 	mini       *limiter // лимиты Mini App; nil у админки
 	instr      *instrCache
-	tma        *limiter // попытки входа через Mini App (/auth/tma), ключ — юзер из подписи
-	tmaSeen    *seenSet // уже использованные подписи входа (одноразовые)
 }
 
 func New(d Deps) http.Handler {
 	if d.PanelTimeout == 0 {
 		d.PanelTimeout = 5 * time.Second
 	}
-	s := &server{Deps: d, secure: strings.HasPrefix(d.BaseURL, "https://"), avatars: newAvatarCache(), tma: newLimiter(), tmaSeen: newSeenSet()}
+	s := &server{Deps: d, secure: strings.HasPrefix(d.BaseURL, "https://"), avatars: newAvatarCache()}
 	// default-deny: всё под /api/ живёт в apiMux и проходит jsonOnly (дёшево, без БД) и сессию.
 	// Тот же *Request уходит во вложенный мукс, он перезаписывает r.Pattern — метрика видит точный шаблон.
 	apiMux := http.NewServeMux()
@@ -217,7 +216,6 @@ func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /auth", s.auth)
 	mux.HandleFunc("GET /auth/bot", s.authBot)
-	mux.Handle("POST /auth/tma", jsonOnly(http.HandlerFunc(s.authTMA)))
 	mux.Handle("/api/", jsonOnly(s.requireSession(apiMux)))
 	// единственное исключение из jsonOnly: загрузка фото рассылки — multipart; сессия обязательна, тип проверяет сам хендлер.
 	mux.Handle("POST /api/photos", s.requireSession(http.HandlerFunc(s.uploadPhoto)))

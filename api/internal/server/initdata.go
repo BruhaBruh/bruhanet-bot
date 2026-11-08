@@ -27,6 +27,8 @@ type tgUser struct {
 	Username  string `json:"username"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
+	// AuthDate — когда Telegram подписал запуск Mini App (не из JSON user, а из поля auth_date).
+	AuthDate time.Time `json:"-"`
 }
 
 // parseInitData проверяет подпись Telegram Mini App (HMAC-SHA256 токеном бота) и возраст auth_date.
@@ -77,5 +79,6 @@ func parseInitData(raw, botToken string, now time.Time, maxAge time.Duration) (t
 	if err = json.Unmarshal([]byte(q.Get("user")), &u); err != nil || u.ID == 0 {
 		return tgUser{}, errInitDataInvalid
 	}
+	u.AuthDate = time.Unix(sec, 0)
 	return u, nil
 }

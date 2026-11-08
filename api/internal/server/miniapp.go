@@ -36,6 +36,7 @@ func NewMiniApp(d Deps) http.Handler {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /m/api/me", s.miniMe)
 	apiMux.HandleFunc("GET /m/api/subscription", s.miniSubscription)
+	apiMux.HandleFunc("POST /m/api/admin/login-link", s.miniAdminLoginLink)
 	apiMux.HandleFunc("POST /m/api/subscription-link", s.miniSubscriptionLink)
 	apiMux.HandleFunc("GET /m/api/instructions", s.miniInstructions)
 	apiMux.HandleFunc("GET /m/api/devices", s.miniDevices)
@@ -121,5 +122,6 @@ func (s *server) miniMe(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": u.Name, "username": u.Username, "botUsername": s.botWho(r.Context()).Username, "blocked": u.BlockedAt != nil,
+		"isAdmin": tg.ID == s.AdminID,
 	})
 }

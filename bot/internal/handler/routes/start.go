@@ -159,7 +159,4 @@ func menuExtras(kb *kbBuilder, set settings.Settings) {
 	if set.ReferralEnabled() {
 		kb.callback("button.referral", routeReferral, keyboard.StyleDefault)
 	}
-	if kb.env.eval("is_admin") { // «Админка» — только админу, web_app на страницу входа
-		kb.webApp("button.admin", kb.c.AdminURL(), keyboard.StyleDefault)
-	}
 }

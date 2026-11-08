@@ -76,7 +76,7 @@ func TestTextsMessageKeyboardShape(t *testing.T) {
 		t.Error("message without buttons must have keyboard null")
 	}
 	greet := out.kb("menu.greeting")
-	if greet == nil || greet.Overridden || len(greet.Rows) != 7 || len(greet.Locked) != 1 || greet.Locked[0] != "buy" {
+	if greet == nil || greet.Overridden || len(greet.Rows) != 6 || len(greet.Locked) != 1 || greet.Locked[0] != "buy" {
 		t.Fatalf("greeting: %+v", greet)
 	}
 	if out.kb("payment.confirmed") == nil {

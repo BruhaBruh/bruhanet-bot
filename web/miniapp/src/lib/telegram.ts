@@ -45,6 +45,13 @@ export function openExternal(url: string) {
   else window.location.href = url
 }
 
+// Вход в админку по одноразовой ссылке: https открывает Telegram (внешний браузер), http (dev) — новая вкладка.
+export function openAdmin(url: string) {
+  const app = tg()
+  if (url.startsWith('https://') && app) app.openLink(url)
+  else window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 // «Поделиться» ссылкой через выбор чата Telegram.
 export function shareLink(url: string, text: string) {
   const share = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`
