@@ -323,3 +323,16 @@ func TestMiniAppButtonIsLocked(t *testing.T) {
 		t.Fatalf("devices_miniapp must be locked, locked = %v", locked)
 	}
 }
+
+// Mini App включается только адресом из env (MINIAPP_ORIGIN): отдельного условия «для превью» в редакторе и схеме нет,
+// кнопка просто не строится ботом, пока адреса нет.
+func TestMiniAppHasNoPreviewCondition(t *testing.T) {
+	for _, c := range texts.Conditions() {
+		if c.ID == "miniapp_on" {
+			t.Fatal("miniapp_on must not be a preview condition")
+		}
+	}
+	if a, ok := texts.LookupAction("link:miniapp"); !ok || a.Guard != "" {
+		t.Fatalf("link:miniapp must exist without a guard: %+v ok=%v", a, ok)
+	}
+}
